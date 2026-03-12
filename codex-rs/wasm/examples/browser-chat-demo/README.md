@@ -31,7 +31,8 @@ Current baseline:
 - model listing calls the real provider `/models` endpoint;
 - chat turns stream from the real provider `/responses` endpoint;
 - the preferred path for external providers is router-first (`xrouter`-style), not direct provider integration;
-- ChatGPT account login remains a separate research track and is not the product baseline.
+- there is no ChatGPT account login in this demo or in the XCodex WASM baseline;
+- authentication is `BYOK` only via provider or router-compatible API keys stored in browser-managed storage;
 - when `XROUTER_BROWSER_DIR` is set during build, `XRouter Browser` mode uses the generated `xrouter-browser` wasm package.
 - the default demo mode is `XRouter Browser` with the `DeepSeek` preset.
 
