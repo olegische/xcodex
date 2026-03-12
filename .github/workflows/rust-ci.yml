@@ -83,6 +83,22 @@ jobs:
       - name: cargo shear
         run: cargo shear
 
+  wasm_core:
+    name: wasm-core check (wasm32)
+    runs-on: ubuntu-24.04
+    needs: changed
+    if: ${{ needs.changed.outputs.codex == 'true' || needs.changed.outputs.workflows == 'true' || github.event_name == 'push' }}
+    defaults:
+      run:
+        working-directory: codex-rs
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.93.0
+        with:
+          targets: wasm32-unknown-unknown
+      - name: cargo check codex-wasm-core
+        run: cargo check -p codex-wasm-core --target wasm32-unknown-unknown
+
   # --- CI to validate on different os/targets --------------------------------
   lint_build:
     name: Lint/Build — ${{ matrix.runner }} - ${{ matrix.target }}${{ matrix.profile == 'release' && ' (release)' || '' }}

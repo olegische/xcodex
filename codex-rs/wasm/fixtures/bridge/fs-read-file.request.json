@@ -1,0 +1,10 @@
+{
+  "id": "msg-1",
+  "payload": {
+    "kind": "request",
+    "method": "fsReadFile",
+    "params": {
+      "path": "/repo/src/lib.rs"
+    }
+  }
+}

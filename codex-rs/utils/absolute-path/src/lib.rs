@@ -1,11 +1,12 @@
 use dirs::home_dir;
-use path_absolutize::Absolutize;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
 use serde::de::Error as SerdeError;
 use std::cell::RefCell;
+use std::io;
+use std::path::Component;
 use std::path::Display;
 use std::path::Path;
 use std::path::PathBuf;
@@ -48,14 +49,14 @@ impl AbsolutePathBuf {
         base_path: B,
     ) -> std::io::Result<Self> {
         let expanded = Self::maybe_expand_home_directory(path.as_ref());
-        let absolute_path = expanded.absolutize_from(base_path.as_ref())?;
-        Ok(Self(absolute_path.into_owned()))
+        let absolute_path = normalize_path(expanded, Some(base_path.as_ref()))?;
+        Ok(Self(absolute_path))
     }
 
     pub fn from_absolute_path<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
         let expanded = Self::maybe_expand_home_directory(path.as_ref());
-        let absolute_path = expanded.absolutize()?;
-        Ok(Self(absolute_path.into_owned()))
+        let absolute_path = normalize_path(expanded, None)?;
+        Ok(Self(absolute_path))
     }
 
     pub fn current_dir() -> std::io::Result<Self> {
@@ -95,6 +96,52 @@ impl AbsolutePathBuf {
 
     pub fn display(&self) -> Display<'_> {
         self.0.display()
+    }
+}
+
+fn normalize_path(path: PathBuf, base_path: Option<&Path>) -> io::Result<PathBuf> {
+    let mut normalized = if path.is_absolute() {
+        PathBuf::new()
+    } else {
+        match base_path {
+            Some(base_path) => {
+                if !base_path.is_absolute() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "base path must be absolute",
+                    ));
+                }
+                base_path.to_path_buf()
+            }
+            None => std::env::current_dir()?,
+        }
+    };
+
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let popped = normalized.pop();
+                if !popped {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "path escapes the filesystem root",
+                    ));
+                }
+            }
+            Component::Normal(segment) => normalized.push(segment),
+        }
+    }
+
+    if normalized.is_absolute() {
+        Ok(normalized)
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "path did not resolve to an absolute path",
+        ))
     }
 }
 

@@ -1,0 +1,13 @@
+{
+  "id": "evt-1",
+  "payload": {
+    "kind": "event",
+    "event": "modelDelta",
+    "payload": {
+      "requestId": "req-1",
+      "payload": {
+        "delta": "hello"
+      }
+    }
+  }
+}

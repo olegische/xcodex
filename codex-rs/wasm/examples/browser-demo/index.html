@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex WASM Browser Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Codex WASM</p>
+        <h1>Browser Demo</h1>
+        <p class="lede">
+          Strict browser host. No native binary. No WebContainer. Thread state in
+          IndexedDB, file workflow in browser memory, and turn/session orchestration in WASM.
+        </p>
+        <div class="actions">
+          <button id="run-demo" type="button">Run Demo Turn</button>
+          <button id="reset-demo" type="button" class="ghost">Reset Workspace</button>
+        </div>
+        <p id="status" class="status">Loading WASM runtime…</p>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Workspace Files</h2>
+            <span class="badge">Browser host</span>
+          </div>
+          <pre id="workspace-view" class="code"></pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Search Context</h2>
+            <span class="badge">read + search</span>
+          </div>
+          <pre id="search-view" class="code"></pre>
+        </article>
+
+        <article class="panel wide">
+          <div class="panel-head">
+            <h2>Turn Events</h2>
+            <span class="badge">WASM runtime</span>
+          </div>
+          <pre id="events-view" class="code"></pre>
+        </article>
+
+        <article class="panel wide">
+          <div class="panel-head">
+            <h2>Model Output</h2>
+            <span class="badge">streaming</span>
+          </div>
+          <pre id="output-view" class="code"></pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Patch</h2>
+            <span class="badge">apply_patch</span>
+          </div>
+          <pre id="patch-view" class="code"></pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Diff</h2>
+            <span class="badge">before / after</span>
+          </div>
+          <pre id="diff-view" class="code"></pre>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -64,6 +64,7 @@ members = [
     "codex-client",
     "codex-api",
     "state",
+    "wasm/core",
     "codex-experimental-api-macros",
     "test-macros",
     "package-manager",
@@ -147,6 +148,7 @@ codex-utils-sandbox-summary = { path = "utils/sandbox-summary" }
 codex-utils-sleep-inhibitor = { path = "utils/sleep-inhibitor" }
 codex-utils-stream-parser = { path = "utils/stream-parser" }
 codex-utils-string = { path = "utils/string" }
+codex-wasm-core = { path = "wasm/core" }
 codex-windows-sandbox = { path = "windows-sandbox-rs" }
 core_test_support = { path = "core/tests/common" }
 mcp_test_support = { path = "mcp-server/tests/common" }
@@ -202,6 +204,7 @@ indexmap = "2.12.0"
 insta = "1.46.3"
 inventory = "0.3.19"
 itertools = "0.14.0"
+js-sys = "=0.3.91"
 keyring = { version = "3.6", default-features = false }
 landlock = "0.4.4"
 lazy_static = "1"
@@ -246,6 +249,7 @@ semver = "1.0"
 sentry = "0.46.0"
 serde = "1"
 serde_json = "1"
+serde-wasm-bindgen = "0.6"
 serde_path_to_error = "0.1.20"
 serde_with = "3.17"
 serde_yaml = "0.9"
@@ -302,9 +306,11 @@ unicode-segmentation = "1.12.0"
 unicode-width = "0.2"
 url = "2"
 urlencoding = "2.1"
-uuid = "1"
+uuid = { version = "1", features = ["js"] }
 vt100 = "0.16.2"
 walkdir = "2.5.0"
+wasm-bindgen = "=0.2.114"
+wasm-bindgen-futures = "=0.4.64"
 webbrowser = "1.0"
 which = "8"
 wildmatch = "2.6.1"

@@ -137,20 +137,35 @@ fn can_preserve_source_bytes(format: ImageFormat) -> bool {
 }
 
 fn read_file_bytes(path: &Path, path_for_error: &Path) -> Result<Vec<u8>, ImageProcessingError> {
-    match tokio::runtime::Handle::try_current() {
-        // If we're inside a Tokio runtime, avoid block_on (it panics on worker threads).
-        // Use block_in_place and do a standard blocking read safely.
-        Ok(_) => tokio::task::block_in_place(|| std::fs::read(path)).map_err(|source| {
-            ImageProcessingError::Read {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = path;
+        Err(ImageProcessingError::Read {
+            path: path_for_error.to_path_buf(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "local image file loading is unavailable on wasm32",
+            ),
+        })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        match tokio::runtime::Handle::try_current() {
+            // If we're inside a Tokio runtime, avoid block_on (it panics on worker threads).
+            // Use block_in_place and do a standard blocking read safely.
+            Ok(_) => tokio::task::block_in_place(|| std::fs::read(path)).map_err(|source| {
+                ImageProcessingError::Read {
+                    path: path_for_error.to_path_buf(),
+                    source,
+                }
+            }),
+            // Outside a runtime, just read synchronously.
+            Err(_) => std::fs::read(path).map_err(|source| ImageProcessingError::Read {
                 path: path_for_error.to_path_buf(),
                 source,
-            }
-        }),
-        // Outside a runtime, just read synchronously.
-        Err(_) => std::fs::read(path).map_err(|source| ImageProcessingError::Read {
-            path: path_for_error.to_path_buf(),
-            source,
-        }),
+            }),
+        }
     }
 }
 

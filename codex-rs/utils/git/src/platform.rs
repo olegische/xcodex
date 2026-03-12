@@ -34,4 +34,14 @@ pub fn create_symlink(
 }
 
 #[cfg(not(any(unix, windows)))]
-compile_error!("codex-git symlink support is only implemented for Unix and Windows");
+pub fn create_symlink(
+    _source: &Path,
+    _link_target: &Path,
+    _destination: &Path,
+) -> Result<(), GitToolingError> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "codex-git symlink support is unavailable on this platform",
+    )
+    .into())
+}

@@ -5,7 +5,13 @@ use std::num::NonZeroUsize;
 use lru::LruCache;
 use sha1::Digest;
 use sha1::Sha1;
+#[cfg(target_arch = "wasm32")]
+use std::sync::Mutex;
+#[cfg(target_arch = "wasm32")]
+use std::sync::MutexGuard;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::MutexGuard;
 
 /// A minimal LRU cache protected by a Tokio mutex.
@@ -123,8 +129,16 @@ fn lock_if_runtime<K, V>(m: &Mutex<LruCache<K, V>>) -> Option<MutexGuard<'_, Lru
 where
     K: Eq + Hash,
 {
-    tokio::runtime::Handle::try_current().ok()?;
-    Some(tokio::task::block_in_place(|| m.blocking_lock()))
+    #[cfg(target_arch = "wasm32")]
+    {
+        m.lock().ok()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        tokio::runtime::Handle::try_current().ok()?;
+        Some(tokio::task::block_in_place(|| m.blocking_lock()))
+    }
 }
 
 /// Computes the SHA-1 digest of `bytes`.
