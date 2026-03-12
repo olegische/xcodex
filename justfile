@@ -89,3 +89,13 @@ write-hooks-schema:
 # Tail logs from the state SQLite database
 log *args:
     if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p codex-state --bin logs_client -- "$@"
+
+wasm-build-runtime app="apps/webui":
+    ./wasm/tools/build-web-runtime.sh --app {{app}}
+
+wasm-webui-build-runtime:
+    ./wasm/tools/build-web-runtime.sh --app apps/webui
+
+wasm-webui-dev:
+    ./wasm/tools/build-web-runtime.sh --app apps/webui
+    cd wasm/apps/webui && npm run dev
