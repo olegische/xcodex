@@ -1,6 +1,5 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import type { ModelPreset } from "../runtime";
   import type { ProviderDraft } from "../runtime";
 
   const dispatch = createEventDispatcher<{
@@ -14,7 +13,6 @@
   export let open = false;
   export let disabled = false;
   export let draft: ProviderDraft;
-  export let models: ModelPreset[] = [];
 
   function closeModal() {
     dispatch("close");
@@ -50,7 +48,7 @@
           <div class="eyebrow">Settings</div>
           <h3>Provider Configuration</h3>
         </div>
-        <button class="button ghost" on:click={closeModal}>Close</button>
+        <button class="button ghost" type="button" on:click={closeModal}>Close</button>
       </div>
 
       <form class="settings-form" on:submit|preventDefault={() => dispatch("save")}>
@@ -92,34 +90,28 @@
         </label>
 
         <label>
-          <span>Reasoning Effort</span>
-          <input bind:value={draft.modelReasoningEffort} disabled={disabled} />
+          <span>Reasoning</span>
+          <select bind:value={draft.modelReasoningEffort} disabled={disabled}>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
         </label>
 
         <label>
           <span>Personality</span>
           <input bind:value={draft.personality} disabled={disabled} />
         </label>
-
-        <label class="full-width">
-          <span>Model</span>
-          <select bind:value={draft.model} disabled={disabled}>
-            <option value="">Select model</option>
-            {#each models as model}
-              <option value={model.id}>{model.displayName || model.id}</option>
-            {/each}
-          </select>
-        </label>
       </div>
 
       <div class="modal-actions">
-        <button class="button ghost" disabled={disabled} on:click={() => dispatch("refreshaccount")}>
+        <button class="button ghost" type="button" disabled={disabled} on:click={() => dispatch("refreshaccount")}>
           Refresh Account
         </button>
-        <button class="button ghost" disabled={disabled} on:click={() => dispatch("refreshmodels")}>
+        <button class="button ghost" type="button" disabled={disabled} on:click={() => dispatch("refreshmodels")}>
           Refresh Models
         </button>
-        <button class="button ghost" disabled={disabled} on:click={() => dispatch("clearauth")}>
+        <button class="button ghost" type="button" disabled={disabled} on:click={() => dispatch("clearauth")}>
           Clear Auth
         </button>
         <button class="button primary" type="submit" disabled={disabled}>

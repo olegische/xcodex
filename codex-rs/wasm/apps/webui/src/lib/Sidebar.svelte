@@ -15,6 +15,9 @@
   export let currentModel = "";
   export let status = "";
   export let running = false;
+
+  $: runtimeStateLabel = running ? "Running" : "Ready";
+  $: runtimeToneClass = running ? "running" : "ready";
 </script>
 
 <aside class="sidebar">
@@ -40,12 +43,20 @@
   </div>
 
   <div class="sidebar-group runtime-group">
-    <div class="sidebar-group-title">Workspace</div>
+    <div class="runtime-group-header">
+      <div class="sidebar-group-title">Runtime</div>
+      <div class:running={running} class:ready={!running} class="runtime-badge">
+        <span class="runtime-badge-dot"></span>
+        <span>{runtimeStateLabel}</span>
+      </div>
+    </div>
     <div class="sidebar-meta">
-      <span>{providerSummary || "Not configured"}</span>
+      <span>{providerSummary || "Provider not configured"}</span>
       <strong>{currentModel || "No model selected"}</strong>
     </div>
-    <div class:running={running} class="sidebar-status">{running ? "Running" : status}</div>
+    {#if status.length > 0 && running}
+      <div class:running={running} class:ready={!running} class="sidebar-status">{status}</div>
+    {/if}
   </div>
 
   <div class="sidebar-footer">

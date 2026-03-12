@@ -36,7 +36,7 @@
     personality: "pragmatic",
     model: "",
   };
-  let message = "привет, как дела?";
+  let message = "";
   let turnCounter = 1;
   let runtimeActivities: RuntimeActivity[] = [];
   let liveStreamText = "";
@@ -44,12 +44,15 @@
   let showSettings = false;
   let showEvents = false;
   let showApprovals = false;
+  let sidebarOpen = true;
   let running = false;
+  let stopRequested = false;
 
   $: providerSummary = transportLabel(providerDraft);
   $: threads = buildThreadList(state);
   $: approvals = deriveApprovals(runtimeActivities);
   $: drawerOpen = showEvents || showApprovals;
+  $: composerDisabled = state.runtime === null || message.trim().length === 0;
 
   onMount(() => {
     const unsubscribe = subscribeRuntimeActivity((activity) => {
@@ -101,6 +104,7 @@
       const saved = await saveDraftProviderConfig(runtime, state, providerDraft);
       state = saved.state;
       providerDraft = saved.providerDraft;
+      showSettings = false;
     } catch (error) {
       console.error("[webui] ui:save-config:failed", error);
       fail(`Failed to save provider config: ${formatError(error)}`);
@@ -114,6 +118,10 @@
       const refreshed = await refreshAccountAndModelsFromDraft(runtime, state, providerDraft);
       state = refreshed.state;
       providerDraft = refreshed.providerDraft;
+      const activeElement = document.activeElement;
+      if (activeElement instanceof HTMLSelectElement) {
+        activeElement.blur();
+      }
     } catch (error) {
       console.error("[webui] ui:refresh-account-and-models:failed", error);
       fail(`Failed to refresh account and models: ${formatError(error)}`);
@@ -141,6 +149,7 @@
 
     try {
       running = true;
+      stopRequested = false;
       liveStreamText = "";
       console.info("[webui] ui:send", {
         message: message.trim(),
@@ -168,6 +177,15 @@
     } catch (error) {
       running = false;
       activeRequestId = null;
+      if (stopRequested || isCancellationError(error)) {
+        stopRequested = false;
+        state = {
+          ...state,
+          status: "Turn cancelled.",
+          isError: false,
+        };
+        return;
+      }
       console.error("[webui] ui:send:failed", error);
       fail(`Turn failed: ${formatError(error)}`);
     }
@@ -181,6 +199,7 @@
     }
     try {
       console.info("[webui] ui:stop", { activeRequestId });
+      stopRequested = true;
       await runtime.cancelModelTurn(activeRequestId);
       running = false;
       activeRequestId = null;
@@ -228,6 +247,20 @@
     };
   }
 
+  function isCancellationError(error: unknown): boolean {
+    if (error !== null && typeof error === "object") {
+      const maybeRecord = error as { code?: unknown; message?: unknown };
+      if (maybeRecord.code === "cancelled") {
+        return true;
+      }
+      if (typeof maybeRecord.message === "string") {
+        const messageText = maybeRecord.message.toLowerCase();
+        return messageText.includes("cancelled") || messageText.includes("canceled");
+      }
+    }
+    return false;
+  }
+
   function buildThreadList(currentState: DemoState): ThreadSummary[] {
     const firstUserMessage = currentState.transcript.find((entry) => entry.role === "user")?.text;
     return [
@@ -256,9 +289,39 @@
         status: "observed",
       }));
   }
+
+  function toggleEvents() {
+    const nextOpen = !showEvents;
+    showEvents = nextOpen;
+    if (nextOpen) {
+      showApprovals = false;
+    }
+  }
+
+  function toggleApprovals() {
+    const nextOpen = !showApprovals;
+    showApprovals = nextOpen;
+    if (nextOpen) {
+      showEvents = false;
+    }
+  }
+
+  function handleSelectModel(event: CustomEvent<{ model: string }>) {
+    providerDraft = {
+      ...providerDraft,
+      model: event.detail.model,
+    };
+  }
+
+  function handleSelectReasoning(event: CustomEvent<{ value: string }>) {
+    providerDraft = {
+      ...providerDraft,
+      modelReasoningEffort: event.detail.value,
+    };
+  }
 </script>
 
-<AppShell {drawerOpen}>
+<AppShell {drawerOpen} {sidebarOpen}>
   <Sidebar
     slot="sidebar"
     {threads}
@@ -266,26 +329,24 @@
     providerSummary={providerSummary}
     status={state.status}
     {running}
-    on:newthread={handleResetThread}
-    on:settings={() => (showSettings = true)}
-    on:events={() => {
-      showEvents = true;
-      showApprovals = false;
+    on:newthread={async () => {
+      await handleResetThread();
     }}
-    on:approvals={() => {
-      showApprovals = true;
-      showEvents = false;
+    on:settings={() => {
+      showSettings = true;
     }}
+    on:events={toggleEvents}
+    on:approvals={toggleApprovals}
+    on:selectthread={() => {}}
   />
 
   <div slot="main" class="main-column">
     <ThreadHeader
-      currentModel={providerDraft.model}
+      {sidebarOpen}
+      on:togglesidebar={() => (sidebarOpen = !sidebarOpen)}
+      on:newthread={handleResetThread}
       on:settings={() => (showSettings = true)}
-      on:events={() => {
-        showEvents = true;
-        showApprovals = false;
-      }}
+      on:events={toggleEvents}
     />
 
     <main class="chat-stage">
@@ -293,13 +354,24 @@
         transcript={state.transcript}
         liveStreamText={liveStreamText}
         status={state.status}
-        isError={state.isError}
         {running}
       />
     </main>
 
     <div class="composer-stage">
-      <MessageComposer bind:message disabled={state.runtime === null} {running} on:send={handleSend} on:stop={handleStop} />
+      <MessageComposer
+        bind:message
+        currentModel={providerDraft.model}
+        currentReasoning={providerDraft.modelReasoningEffort}
+        disabled={composerDisabled}
+        models={state.models}
+        {running}
+        on:send={handleSend}
+        on:stop={handleStop}
+        on:settings={() => (showSettings = true)}
+        on:selectmodel={handleSelectModel}
+        on:selectreasoning={handleSelectReasoning}
+      />
     </div>
   </div>
 
@@ -313,7 +385,6 @@
   bind:draft={providerDraft}
   disabled={state.runtime === null}
   open={showSettings}
-  models={state.models}
   on:close={() => (showSettings = false)}
   on:save={handleSaveConfig}
   on:refreshaccount={handleRefreshAccountAndModels}

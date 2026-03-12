@@ -4,19 +4,24 @@
   const dispatch = createEventDispatcher<{
     settings: void;
     events: void;
+    togglesidebar: void;
+    newthread: void;
   }>();
-  export let currentModel = "";
+
+  export let sidebarOpen = false;
 </script>
 
 <header class="thread-header">
-  <div class="nav-left"></div>
-
-  <div class="nav-center">
-    <button class="model-pill" on:click={() => dispatch("settings")}>
-      <span class="model-pill-label">{currentModel || "Select model"}</span>
-      <span class="model-pill-caret">v</span>
+  <div class="nav-left">
+    <button class="nav-icon-button" on:click={() => dispatch("togglesidebar")} aria-label="Toggle sidebar">
+      ≡
     </button>
+    {#if !sidebarOpen}
+      <button class="header-action-button" on:click={() => dispatch("newthread")}>New Chat</button>
+    {/if}
   </div>
+
+  <div class="nav-center"></div>
 
   <div class="nav-right">
     <button class="nav-icon-button" on:click={() => dispatch("events")} aria-label="Events">=</button>

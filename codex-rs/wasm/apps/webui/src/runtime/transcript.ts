@@ -19,7 +19,7 @@ export function snapshotToTranscript(snapshot: SessionSnapshot): TranscriptEntry
         .filter((entry: unknown) => entry !== null && typeof entry === "object" && entry.type === "text")
         .map((entry: any) => entry.text ?? "")
         .join("\n");
-      transcript.push({ role: "user", text });
+      appendTranscriptEntry(transcript, { role: "user", text });
       continue;
     }
     if (
@@ -38,28 +38,46 @@ export function snapshotToTranscript(snapshot: SessionSnapshot): TranscriptEntry
       if (assistantText !== null) {
         if (pendingAssistant.length > 0) {
           if (pendingAssistant === assistantText) {
-            transcript.push({ role: "assistant", text: assistantText });
+            appendTranscriptEntry(transcript, { role: "assistant", text: assistantText });
             pendingAssistant = "";
             continue;
           }
-          transcript.push({ role: "assistant", text: pendingAssistant });
+          appendTranscriptEntry(transcript, { role: "assistant", text: pendingAssistant });
           pendingAssistant = "";
         }
-        transcript.push({ role: "assistant", text: assistantText });
+        appendTranscriptEntry(transcript, { role: "assistant", text: assistantText });
       }
       continue;
     }
     if (item.type === "modelCompleted" && pendingAssistant.length > 0) {
-      transcript.push({ role: "assistant", text: pendingAssistant });
+      appendTranscriptEntry(transcript, { role: "assistant", text: pendingAssistant });
       pendingAssistant = "";
     }
   }
 
   if (pendingAssistant.length > 0) {
-    transcript.push({ role: "assistant", text: pendingAssistant });
+    appendTranscriptEntry(transcript, { role: "assistant", text: pendingAssistant });
   }
 
   return transcript;
+}
+
+function appendTranscriptEntry(transcript: TranscriptEntry[], nextEntry: TranscriptEntry) {
+  const normalizedText = nextEntry.text.trim();
+  if (normalizedText.length === 0) {
+    return;
+  }
+
+  const lastEntry = transcript[transcript.length - 1];
+  if (lastEntry?.role === "assistant" && nextEntry.role === "assistant") {
+    lastEntry.text = `${lastEntry.text}\n\n${normalizedText}`;
+    return;
+  }
+
+  transcript.push({
+    ...nextEntry,
+    text: normalizedText,
+  });
 }
 
 export function assistantTextFromResponseItem(item: Record<string, unknown>): string | null {
