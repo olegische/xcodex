@@ -58,7 +58,7 @@ interface BrowserRuntimeHost {
 
 ```json
 {
-  "requestId": "browser-demo-turn-1",
+  "requestId": "browser-chat-demo-turn-1",
   "payload": {
     "codexInstructions": {
       "userInstructions": {
@@ -70,7 +70,7 @@ interface BrowserRuntimeHost {
         "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nFollow the repo rules.\n</INSTRUCTIONS>"
       ]
     },
-    "goal": "Update the greeting string for the browser demo and return an apply_patch block.",
+    "goal": "Update the greeting string for the browser chat demo and return an apply_patch block.",
     "workspace": {
       "files": [
         {
@@ -115,18 +115,18 @@ The host returns an ordered list of model events:
 [
   {
     "type": "started",
-    "requestId": "browser-demo-turn-1"
+    "requestId": "browser-chat-demo-turn-1"
   },
   {
     "type": "delta",
-    "requestId": "browser-demo-turn-1",
+    "requestId": "browser-chat-demo-turn-1",
     "payload": {
       "outputTextDelta": "I found the Rust entrypoint..."
     }
   },
   {
     "type": "completed",
-    "requestId": "browser-demo-turn-1"
+    "requestId": "browser-chat-demo-turn-1"
   }
 ]
 ```
@@ -143,9 +143,9 @@ For model text, browser clients should expect `modelDelta` events in this shape:
 {
   "event": "modelDelta",
   "payload": {
-    "threadId": "browser-demo-thread",
-    "turnId": "browser-demo-turn-1",
-    "requestId": "browser-demo-turn-1",
+    "threadId": "browser-chat-demo-thread",
+    "turnId": "browser-chat-demo-turn-1",
+    "requestId": "browser-chat-demo-turn-1",
     "payload": {
       "outputTextDelta": "I found the Rust entrypoint..."
     }

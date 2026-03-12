@@ -9,12 +9,18 @@ XROUTER_PKG_ROOT="${SCRIPT_DIR}/xrouter-browser-pkg"
 PUBLIC_XROUTER_PKG_ROOT="${SCRIPT_DIR}/public/xrouter-browser"
 XROUTER_TARGET_DIR="${SCRIPT_DIR}/.cargo-target/xrouter-browser"
 BUILD_ID="$(date -u +%Y%m%d%H%M%S)"
+DEFAULT_XROUTER_BROWSER_TARBALL="https://github.com/olegische/xrouter/releases/download/xrouter-browser-main/xrouter-browser-main.tar.gz"
 OUT_DIR="${PKG_ROOT}/${BUILD_ID}"
 PUBLIC_OUT_DIR="${PUBLIC_PKG_ROOT}/${BUILD_ID}"
 XROUTER_OUT_DIR="${XROUTER_PKG_ROOT}/${BUILD_ID}"
 PUBLIC_XROUTER_OUT_DIR="${PUBLIC_XROUTER_PKG_ROOT}/${BUILD_ID}"
 PUBLIC_CURRENT_OUT_DIR="${PUBLIC_PKG_ROOT}/current"
 PUBLIC_XROUTER_CURRENT_OUT_DIR="${PUBLIC_XROUTER_PKG_ROOT}/current"
+XROUTER_BROWSER_TARBALL_SOURCE="${XROUTER_BROWSER_TARBALL:-}"
+
+if [[ -z "${XROUTER_BROWSER_TARBALL_SOURCE}" && -z "${XROUTER_BROWSER_DIR:-}" ]]; then
+  XROUTER_BROWSER_TARBALL_SOURCE="${DEFAULT_XROUTER_BROWSER_TARBALL}"
+fi
 
 mkdir -p "${OUT_DIR}"
 mkdir -p "${PUBLIC_OUT_DIR}"
@@ -44,15 +50,15 @@ EOF
 
 cp "${PKG_ROOT}/manifest.json" "${PUBLIC_PKG_ROOT}/manifest.json"
 
-if [[ -n "${XROUTER_BROWSER_TARBALL:-}" ]]; then
+if [[ -n "${XROUTER_BROWSER_TARBALL_SOURCE}" ]]; then
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "${TMP_DIR}"' EXIT
 
-  if [[ "${XROUTER_BROWSER_TARBALL}" =~ ^https?:// ]]; then
-    curl -L "${XROUTER_BROWSER_TARBALL}" -o "${TMP_DIR}/xrouter-browser.tar.gz"
+  if [[ "${XROUTER_BROWSER_TARBALL_SOURCE}" =~ ^https?:// ]]; then
+    curl -L "${XROUTER_BROWSER_TARBALL_SOURCE}" -o "${TMP_DIR}/xrouter-browser.tar.gz"
     TARBALL_PATH="${TMP_DIR}/xrouter-browser.tar.gz"
   else
-    TARBALL_PATH="$(cd "$(dirname "${XROUTER_BROWSER_TARBALL}")" && pwd)/$(basename "${XROUTER_BROWSER_TARBALL}")"
+    TARBALL_PATH="$(cd "$(dirname "${XROUTER_BROWSER_TARBALL_SOURCE}")" && pwd)/$(basename "${XROUTER_BROWSER_TARBALL_SOURCE}")"
   fi
 
   tar -xzf "${TARBALL_PATH}" -C "${TMP_DIR}"
@@ -111,9 +117,9 @@ echo "Built browser chat demo package:"
 echo "  manifest: ${PKG_ROOT}/manifest.json"
 echo "  output:   ${OUT_DIR}"
 echo "  public:   ${PUBLIC_OUT_DIR}"
-if [[ -n "${XROUTER_BROWSER_TARBALL:-}" ]]; then
+if [[ -n "${XROUTER_BROWSER_TARBALL_SOURCE}" ]]; then
   echo "Used prebuilt xrouter-browser bundle:"
-  echo "  source:   ${XROUTER_BROWSER_TARBALL}"
+  echo "  source:   ${XROUTER_BROWSER_TARBALL_SOURCE}"
   echo "  manifest: ${XROUTER_PKG_ROOT}/manifest.json"
   echo "  output:   ${XROUTER_OUT_DIR}"
   echo "  public:   ${PUBLIC_XROUTER_OUT_DIR}"
@@ -123,5 +129,5 @@ elif [[ -n "${XROUTER_BROWSER_DIR:-}" ]]; then
   echo "  output:   ${XROUTER_OUT_DIR}"
   echo "  public:   ${PUBLIC_XROUTER_OUT_DIR}"
 else
-  echo "Skipped xrouter-browser bundle (set XROUTER_BROWSER_TARBALL or XROUTER_BROWSER_DIR to enable router mode)."
+  echo "Skipped xrouter-browser bundle."
 fi

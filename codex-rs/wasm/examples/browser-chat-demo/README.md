@@ -51,6 +51,14 @@ Embedded `xrouter-browser` semantics:
    ./build-demo.sh
    ```
 
+   By default, `build-demo.sh` downloads the published `xrouter-browser` browser bundle release tarball.
+
+   Default path:
+
+   ```bash
+   ./build-demo.sh
+   ```
+
    Recommended `xrouter-browser` path: use the prebuilt browser bundle tarball.
 
    Local tarball:
@@ -153,6 +161,8 @@ Direct browser -> raw provider wiring is treated as a compatibility fallback, no
 - it also writes `public/pkg/manifest.json`
 - it also writes `public/xrouter-browser/manifest.json`
 - the Svelte app reads that manifest at runtime, so browser reloads pick up the latest build without manual edits in frontend source
+- if neither `XROUTER_BROWSER_TARBALL` nor `XROUTER_BROWSER_DIR` is set, `build-demo.sh` defaults to:
+  `https://github.com/olegische/xrouter/releases/download/xrouter-browser-main/xrouter-browser-main.tar.gz`
 - `XROUTER_BROWSER_TARBALL` takes precedence over `XROUTER_BROWSER_DIR`
 - the tarball must unpack into a browser bundle containing `xrouter_browser.js` and `xrouter_browser_bg.wasm`
 - if multiple wasm modules share one page, keep `wasm-bindgen`, `wasm-bindgen-futures`, `js-sys`, and `web-sys` aligned across them
