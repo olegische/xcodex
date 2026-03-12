@@ -10,6 +10,7 @@ use crate::host::HostSessionStore;
 use crate::host::ModelRequest;
 use crate::host::ModelTransportEvent;
 use crate::host::SessionSnapshot;
+use crate::instructions::with_default_base_instructions;
 use crate::tool_loop::browser_builtin_tool_specs;
 use crate::tool_runtime::CollaborationMode;
 use crate::tool_runtime::WasmToolRuntime;
@@ -269,10 +270,11 @@ impl<'a> BrowserRuntime<'a> {
                 turn_id: request.turn_id.clone(),
             }),
         ];
+        let model_payload = with_default_base_instructions(request.model_payload);
         let model_payload = if let Some(snapshot) = instruction_snapshot.as_ref() {
-            snapshot.append_to_model_payload(request.model_payload)
+            snapshot.append_to_model_payload(model_payload)
         } else {
-            request.model_payload
+            model_payload
         };
 
         let mut response_input_items = initial_response_input_items(&request.input);
@@ -553,6 +555,7 @@ mod tests {
     use crate::host::UpdatePlanRequest;
     use crate::host::WriteFileRequest;
     use crate::host::WriteFileResponse;
+    use crate::instructions::DEFAULT_BASE_INSTRUCTIONS;
     use crate::instructions::InstructionSnapshot;
     use crate::instructions::SkillInstructions;
     use crate::instructions::UserInstructions;
@@ -919,6 +922,7 @@ mod tests {
             vec![ModelRequest {
                 request_id: "turn-1".to_string(),
                 payload: json!({
+                    "baseInstructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
                     "input": [],
                     "responseInputItems": [
                         { "type": "text", "text": "Inspect src/lib.rs" },
@@ -1060,6 +1064,7 @@ mod tests {
         assert_eq!(
             requests[0].payload,
             json!({
+                "baseInstructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
                 "input": [],
                 "tools": expected_tools.clone(),
                 "responseInputItems": [
@@ -1070,6 +1075,7 @@ mod tests {
         assert_eq!(
             requests[1].payload,
             json!({
+                "baseInstructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
                 "input": [],
                 "tools": expected_tools,
                 "responseInputItems": [

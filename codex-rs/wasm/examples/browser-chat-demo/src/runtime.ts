@@ -185,18 +185,13 @@ export async function hydrateState(runtime: BrowserRuntime): Promise<Partial<Dem
   const authState = normalizeHostValue(await runtime.loadAuthState()) as AuthState | null;
   const codexConfig = await loadStoredCodexConfig();
   const demoInstructions = await loadStoredDemoInstructions();
-  const thread = await runtime
-    .resumeThread({
-      threadId: THREAD_ID,
-    })
-    .then(normalizeHostValue)
-    .catch(() => null);
+  await deleteStoredSession(THREAD_ID);
 
   return {
     authState,
     codexConfig,
     demoInstructions,
-    transcript: thread === null ? [] : snapshotToTranscript(thread.value),
+    transcript: [],
     runtime,
   };
 }

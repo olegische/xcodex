@@ -4,6 +4,8 @@ use serde_json::Map;
 use serde_json::Value;
 
 pub const USER_INSTRUCTIONS_PREFIX: &str = "# AGENTS.md instructions for ";
+pub const DEFAULT_BASE_INSTRUCTIONS: &str =
+    include_str!("../prompt_with_apply_patch_instructions.md");
 const INSTRUCTIONS_OPEN_TAG: &str = "<INSTRUCTIONS>";
 const INSTRUCTIONS_CLOSE_TAG: &str = "</INSTRUCTIONS>";
 const SKILL_OPEN_TAG: &str = "<skill>";
@@ -93,6 +95,28 @@ impl InstructionSnapshot {
     }
 }
 
+pub fn with_default_base_instructions(payload: Value) -> Value {
+    let mut object = match payload {
+        Value::Object(map) => map,
+        value => return value,
+    };
+
+    let should_insert = match object.get("baseInstructions") {
+        Some(Value::String(text)) => text.trim().is_empty(),
+        Some(_) => true,
+        None => true,
+    };
+
+    if should_insert {
+        object.insert(
+            "baseInstructions".to_string(),
+            Value::String(DEFAULT_BASE_INSTRUCTIONS.trim().to_string()),
+        );
+    }
+
+    Value::Object(object)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,6 +203,31 @@ mod tests {
                         "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nfollow repo rules\n</INSTRUCTIONS>",
                     ],
                 },
+            })
+        );
+    }
+
+    #[test]
+    fn injects_default_base_instructions_when_missing() {
+        assert_eq!(
+            with_default_base_instructions(json!({ "model": "demo" })),
+            json!({
+                "model": "demo",
+                "baseInstructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
+            })
+        );
+    }
+
+    #[test]
+    fn preserves_explicit_base_instructions() {
+        assert_eq!(
+            with_default_base_instructions(json!({
+                "model": "demo",
+                "baseInstructions": "custom rules",
+            })),
+            json!({
+                "model": "demo",
+                "baseInstructions": "custom rules",
             })
         );
     }

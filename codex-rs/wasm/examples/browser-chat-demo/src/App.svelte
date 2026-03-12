@@ -93,13 +93,54 @@
   let liveActivities: RuntimeActivity[] = [];
   let liveStreamText = "";
   let workspaceFiles: WorkspaceDebugFile[] = [];
+  const REDACTED = "[redacted]";
 
   function debugInfo(message: string, payload?: unknown) {
-    console.info(`[browser-chat-demo] ${message}`, payload ?? "");
+    console.info(`[browser-chat-demo] ${message}`, sanitizeDebugPayload(payload) ?? "");
   }
 
   function debugError(message: string, error: unknown) {
     console.error(`[browser-chat-demo] ${message}`, error);
+  }
+
+  function sanitizeDebugPayload(payload: unknown): unknown {
+    if (payload === null || payload === undefined) {
+      return payload;
+    }
+    if (Array.isArray(payload)) {
+      return payload.map(sanitizeDebugPayload);
+    }
+    if (typeof payload !== "object") {
+      return payload;
+    }
+
+    return Object.fromEntries(
+      Object.entries(payload).map(([key, value]) => {
+        if (key === "env" && value !== null && typeof value === "object" && !Array.isArray(value)) {
+          return [
+            key,
+            Object.fromEntries(
+              Object.entries(value).map(([envKey, envValue]) => [
+                envKey,
+                typeof envValue === "string" && envValue.length > 0 ? REDACTED : envValue,
+              ]),
+            ),
+          ];
+        }
+
+        if (/(api[-_]?key|token|secret)/i.test(key)) {
+          if (value === null) {
+            return [key, null];
+          }
+          if (typeof value === "string") {
+            return [key, value.length > 0 ? REDACTED : value];
+          }
+          return [key, REDACTED];
+        }
+
+        return [key, sanitizeDebugPayload(value)];
+      }),
+    );
   }
 
   onMount(async () => {
