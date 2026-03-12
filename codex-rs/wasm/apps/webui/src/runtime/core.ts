@@ -143,14 +143,19 @@ export async function runChatTurn(
     await runtime.runTurn({
       threadId: THREAD_ID,
       turnId,
-      input: [{ type: "text", text: message }],
+      input: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: message }],
+        },
+      ],
       modelPayload: {
         mode: "chat",
         model: codexConfig.model.trim(),
         authState,
         account,
         baseInstructions: demoInstructions.baseInstructions,
-        userMessage: message,
       },
     }),
   ) as RuntimeDispatch;

@@ -2,7 +2,7 @@ import { emitRuntimeActivity, registerActiveModelRequest, unregisterActiveModelR
 import { loadXrouterRuntime } from "./assets";
 import { assistantTextFromResponseItem, isCompletedEvent, isOutputItemDoneEvent } from "./transcript";
 import { activeProviderApiKey, createHostError, getActiveProvider, isAbortError, modelIdToDisplayName, normalizeDiscoveredModels, normalizeHostValue } from "./utils";
-import type { CodexCompatibleConfig, HostToolSpec, JsonValue, ModelPreset, XrouterBrowserClient } from "./types";
+import type { CodexCompatibleConfig, JsonValue, ModelPreset, XrouterBrowserClient } from "./types";
 
 export async function discoverProviderModels(
   codexConfig: CodexCompatibleConfig,
@@ -54,12 +54,8 @@ export async function discoverRouterModels(
 export async function runResponsesApiTurn(params: {
   requestId: string;
   baseUrl: string;
-  model: string;
   apiKey: string;
-  instructionsText: string;
-  userMessage: string;
-  responseInputItems: JsonValue[] | null;
-  toolSpecs: HostToolSpec[];
+  requestBody: Record<string, unknown>;
 }): Promise<JsonValue> {
   const abortController = new AbortController();
   let cancelled = false;
@@ -73,19 +69,12 @@ export async function runResponsesApiTurn(params: {
     isCancelled: () => cancelled,
   });
 
-  const tools = toResponsesApiTools(params.toolSpecs);
   const response = await sendJsonRequestWithFallback({
     urls: candidateApiUrls(params.baseUrl, "responses"),
     method: "POST",
     apiKey: params.apiKey,
     signal: abortController.signal,
-    body: {
-      model: params.model,
-      instructions: params.instructionsText.length === 0 ? undefined : params.instructionsText,
-      input: params.responseInputItems ?? params.userMessage,
-      tools: tools.length === 0 ? undefined : tools,
-      stream: true,
-    },
+    body: params.requestBody,
     fallbackMessage: "responses request failed",
   }).catch((error) => {
     unregisterActiveModelRequest(params.requestId);
@@ -167,11 +156,7 @@ export async function runResponsesApiTurn(params: {
 export async function runXrouterTurn(params: {
   requestId: string;
   codexConfig: CodexCompatibleConfig;
-  model: string;
-  instructionsText: string;
-  userMessage: string;
-  responseInputItems: JsonValue[] | null;
-  toolSpecs: HostToolSpec[];
+  requestBody: Record<string, unknown>;
 }): Promise<JsonValue> {
   const client = await createXrouterClient(params.codexConfig);
   let cancelled = false;
@@ -187,16 +172,8 @@ export async function runXrouterTurn(params: {
 
   const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
   let streamError: JsonValue | null = null;
-  const responsesRequest = {
-    model: params.model,
-    input: buildXrouterResponsesInput(params.instructionsText, params.userMessage, params.responseInputItems),
-    stream: true,
-    tools: params.toolSpecs.length === 0 ? undefined : toResponsesApiTools(params.toolSpecs),
-    tool_choice: params.toolSpecs.length === 0 ? undefined : "auto",
-  };
-
   try {
-    await client.runResponsesStream(params.requestId, responsesRequest, (event: unknown) => {
+    await client.runResponsesStream(params.requestId, params.requestBody, (event: unknown) => {
       if (cancelled) {
         return;
       }
@@ -317,112 +294,6 @@ async function createXrouterClient(codexConfig: CodexCompatibleConfig): Promise<
   );
 }
 
-function buildXrouterResponsesInput(
-  instructionsText: string,
-  userMessage: string,
-  responseInputItems: JsonValue[] | null,
-): JsonValue {
-  if (responseInputItems === null) {
-    return composeXrouterInput(instructionsText, userMessage);
-  }
-  const normalizedItems = responseInputItems
-    .map((item) => mapCodexResponseInputItemToXrouterInputItem(item))
-    .filter((item): item is JsonValue => item !== null);
-  if (instructionsText.trim().length === 0) {
-    return normalizedItems;
-  }
-  return [{ type: "message", role: "system", content: instructionsText }, ...normalizedItems];
-}
-
-function mapCodexResponseInputItemToXrouterInputItem(item: JsonValue): JsonValue | null {
-  if (item === null || typeof item !== "object" || Array.isArray(item)) {
-    return null;
-  }
-  const record = item as Record<string, unknown>;
-  if (record.type === "message") {
-    const role = typeof record.role === "string" ? record.role : "user";
-    const text = extractMessageTextForXrouter(record);
-    if (text === null) {
-      return null;
-    }
-    return { type: "message", role, content: text };
-  }
-  if (record.type === "function_call") {
-    const callId =
-      typeof record.call_id === "string" ? record.call_id : typeof record.id === "string" ? record.id : null;
-    if (callId === null || typeof record.name !== "string") {
-      return null;
-    }
-    return {
-      type: "function_call",
-      call_id: callId,
-      name: record.name,
-      arguments:
-        typeof record.arguments === "string"
-          ? record.arguments
-          : record.arguments !== undefined
-            ? JSON.stringify(record.arguments)
-            : "{}",
-    };
-  }
-  if (record.type === "function_call_output") {
-    const callId = typeof record.call_id === "string" ? record.call_id : null;
-    if (callId === null) {
-      return null;
-    }
-    const outputText = extractFunctionCallOutputText(record);
-    if (outputText === null) {
-      return null;
-    }
-    return { type: "function_call_output", call_id: callId, output: outputText };
-  }
-  return null;
-}
-
-function extractMessageTextForXrouter(item: Record<string, unknown>): string | null {
-  const content = Array.isArray(item.content) ? (item.content as JsonValue[]) : null;
-  if (content === null) {
-    return null;
-  }
-  const text = content
-    .map((entry) => {
-      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-        return "";
-      }
-      const part = entry as Record<string, unknown>;
-      return typeof part.text === "string" ? part.text : "";
-    })
-    .join("");
-  return text.trim().length === 0 ? null : text;
-}
-
-function extractFunctionCallOutputText(item: Record<string, unknown>): string | null {
-  if (!("output" in item)) {
-    return null;
-  }
-  const raw = item.output;
-  if (typeof raw === "string") {
-    return raw;
-  }
-  if (Array.isArray(raw)) {
-    return JSON.stringify(raw);
-  }
-  if (raw !== null && typeof raw === "object") {
-    const output = raw as Record<string, unknown>;
-    if (typeof output.output === "string") {
-      return output.output;
-    }
-    if (typeof output.body === "string") {
-      return output.body;
-    }
-    if ("body" in output && output.body !== undefined) {
-      return JSON.stringify(output.body);
-    }
-    return JSON.stringify(output);
-  }
-  return raw === undefined ? null : JSON.stringify(raw);
-}
-
 function mapXrouterOutputItemToCodexResponseItem(item: JsonValue): JsonValue | null {
   if (item === null || typeof item !== "object" || Array.isArray(item)) {
     return null;
@@ -456,25 +327,6 @@ function mapXrouterOutputItemToCodexResponseItem(item: JsonValue): JsonValue | n
     };
   }
   return null;
-}
-
-function composeXrouterInput(instructionsText: string, userMessage: string): string {
-  if (instructionsText.length === 0) {
-    return userMessage;
-  }
-  if (userMessage.length === 0) {
-    return instructionsText;
-  }
-  return `${instructionsText}\n\n--- user ---\n\n${userMessage}`;
-}
-
-function toResponsesApiTools(toolSpecs: HostToolSpec[]): JsonValue[] {
-  return toolSpecs.map((tool) => ({
-    type: "function",
-    name: tool.name,
-    description: tool.description,
-    parameters: tool.inputSchema,
-  }));
 }
 
 function readSseData(segment: string): string | null {

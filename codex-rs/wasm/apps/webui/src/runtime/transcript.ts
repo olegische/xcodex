@@ -16,8 +16,26 @@ export function snapshotToTranscript(snapshot: SessionSnapshot): TranscriptEntry
     }
     if (item.type === "userInput" && Array.isArray(item.input)) {
       const text = item.input
-        .filter((entry: unknown) => entry !== null && typeof entry === "object" && entry.type === "text")
-        .map((entry: any) => entry.text ?? "")
+        .flatMap((entry: unknown) => {
+          if (entry === null || typeof entry !== "object") {
+            return [];
+          }
+          if ("type" in entry && entry.type === "text") {
+            return [typeof (entry as any).text === "string" ? (entry as any).text : ""];
+          }
+          if ("type" in entry && entry.type === "message" && Array.isArray((entry as any).content)) {
+            return (entry as any).content
+              .filter(
+                (part: unknown) =>
+                  part !== null &&
+                  typeof part === "object" &&
+                  !Array.isArray(part) &&
+                  ((part as any).type === "input_text" || (part as any).type === "text"),
+              )
+              .map((part: any) => (typeof part.text === "string" ? part.text : ""));
+          }
+          return [];
+        })
         .join("\n");
       appendTranscriptEntry(transcript, { role: "user", text });
       continue;

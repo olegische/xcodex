@@ -19,6 +19,7 @@ use codex_protocol::models::ResponseItem;
 use futures::StreamExt;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Map;
 use serde_json::Value;
 
 const MAX_TOOL_ITERATIONS_PER_TURN: usize = 12;
@@ -404,8 +405,7 @@ impl<'a> BrowserRuntime<'a> {
                 let error = HostError {
                     code: HostErrorCode::Conflict,
                     message: format!(
-                        "model exceeded max tool iterations for turn: {}",
-                        MAX_TOOL_ITERATIONS_PER_TURN
+                        "model exceeded max tool iterations for turn: {MAX_TOOL_ITERATIONS_PER_TURN}"
                     ),
                     retryable: false,
                     data: None,
@@ -454,7 +454,7 @@ fn with_runtime_payload(
     response_input_items: Vec<Value>,
     tool_specs: Vec<crate::host::HostToolSpec>,
 ) -> HostResult<Value> {
-    let mut payload = match payload {
+    let payload = match payload {
         Value::Object(map) => map,
         other => {
             return Err(HostError {
@@ -465,20 +465,92 @@ fn with_runtime_payload(
             });
         }
     };
-    payload.insert(
-        "responseInputItems".to_string(),
-        Value::Array(response_input_items),
-    );
-    payload.insert(
-        "tools".to_string(),
-        serde_json::to_value(tool_specs).map_err(|error| HostError {
-            code: HostErrorCode::Internal,
-            message: format!("failed to serialize tool specs: {error}"),
-            retryable: false,
-            data: None,
-        })?,
-    );
-    Ok(Value::Object(payload))
+    let transport_tools = transport_tools_from_host_specs(&tool_specs);
+    let serialized_response_input_items = Value::Array(response_input_items.clone());
+    let transport_payload =
+        build_transport_payload(&payload, response_input_items, transport_tools)?;
+    Ok(Value::Object(Map::from_iter([
+        (
+            "responseInputItems".to_string(),
+            serialized_response_input_items,
+        ),
+        ("transportPayload".to_string(), transport_payload),
+    ])))
+}
+
+fn build_transport_payload(
+    payload: &Map<String, Value>,
+    response_input_items: Vec<Value>,
+    tools: Value,
+) -> HostResult<Value> {
+    let model = payload.get("model").cloned().ok_or_else(|| HostError {
+        code: HostErrorCode::Internal,
+        message: "browser runtime expected model payload to include `model`".to_string(),
+        retryable: false,
+        data: None,
+    })?;
+    let base_instructions = payload
+        .get("baseInstructions")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToOwned::to_owned);
+    let contextual_messages = extract_contextual_user_messages(payload);
+    let instructions = std::iter::once(base_instructions.as_deref())
+        .flatten()
+        .chain(contextual_messages.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    Ok(Value::Object(Map::from_iter([
+        ("model".to_string(), model),
+        (
+            "instructions".to_string(),
+            if instructions.is_empty() {
+                Value::Null
+            } else {
+                Value::String(instructions)
+            },
+        ),
+        ("input".to_string(), Value::Array(response_input_items)),
+        ("tools".to_string(), tools),
+        ("tool_choice".to_string(), Value::String("auto".to_string())),
+        ("stream".to_string(), Value::Bool(true)),
+    ])))
+}
+
+fn extract_contextual_user_messages(payload: &Map<String, Value>) -> Vec<String> {
+    let codex_instructions = payload.get("codexInstructions").and_then(Value::as_object);
+    let contextual_messages = codex_instructions
+        .and_then(|value| value.get("contextualUserMessages"))
+        .and_then(Value::as_array);
+    contextual_messages
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn transport_tools_from_host_specs(tool_specs: &[crate::host::HostToolSpec]) -> Value {
+    Value::Array(
+        tool_specs
+            .iter()
+            .map(|tool| {
+                Value::Object(Map::from_iter([
+                    ("type".to_string(), Value::String("function".to_string())),
+                    ("name".to_string(), Value::String(tool.name.clone())),
+                    (
+                        "description".to_string(),
+                        Value::String(tool.description.clone()),
+                    ),
+                    ("parameters".to_string(), tool.input_schema.clone()),
+                ]))
+            })
+            .collect(),
+    )
 }
 
 fn serialize_response_item(item: &ResponseItem) -> HostResult<Value> {
@@ -811,13 +883,19 @@ mod tests {
             .run_turn(RunTurnRequest {
                 thread_id: "thread-1".to_string(),
                 turn_id: "turn-1".to_string(),
-                input: json!([{ "type": "text", "text": "Inspect src/lib.rs" }]),
-                model_payload: json!({ "input": [] }),
+                input: json!([{
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        { "type": "input_text", "text": "Inspect src/lib.rs" },
+                    ],
+                }]),
+                model_payload: json!({ "model": "demo", "input": [] }),
             })
             .await
             .expect("turn should succeed");
-        let expected_tools =
-            serde_json::to_value(browser_builtin_tool_specs()).expect("tool specs serialize");
+        let expected_transport_tools =
+            transport_tools_from_host_specs(&browser_builtin_tool_specs());
 
         assert_eq!(
             result.value,
@@ -829,7 +907,13 @@ mod tests {
                     json!({
                         "type": "userInput",
                         "turnId": "turn-1",
-                        "input": [{ "type": "text", "text": "Inspect src/lib.rs" }],
+                        "input": [{
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                { "type": "input_text", "text": "Inspect src/lib.rs" },
+                            ],
+                        }],
                     }),
                     json!({
                         "type": "modelDelta",
@@ -922,29 +1006,36 @@ mod tests {
             vec![ModelRequest {
                 request_id: "turn-1".to_string(),
                 payload: json!({
-                    "baseInstructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
-                    "input": [],
                     "responseInputItems": [
-                        { "type": "text", "text": "Inspect src/lib.rs" },
-                    ],
-                    "codexInstructions": {
-                        "userInstructions": {
-                            "directory": "/repo",
-                            "text": "follow repo rules",
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                { "type": "input_text", "text": "Inspect src/lib.rs" },
+                            ],
                         },
-                        "skills": [
-                            {
-                                "name": "demo-skill",
-                                "path": "skills/demo/SKILL.md",
-                                "contents": "body",
-                            }
-                        ],
-                        "contextualUserMessages": [
+                    ],
+                    "transportPayload": {
+                        "model": "demo".to_string(),
+                        "instructions": ([
+                            DEFAULT_BASE_INSTRUCTIONS.trim(),
                             "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nfollow repo rules\n</INSTRUCTIONS>",
                             "<skill>\n<name>demo-skill</name>\n<path>skills/demo/SKILL.md</path>\nbody\n</skill>",
+                        ]
+                        .join("\n\n")),
+                        "input": [
+                            {
+                                "type": "message",
+                                "role": "user",
+                                "content": [
+                                    { "type": "input_text", "text": "Inspect src/lib.rs" },
+                                ],
+                            },
                         ],
+                        "tools": expected_transport_tools,
+                        "tool_choice": "auto",
+                        "stream": true,
                     },
-                    "tools": expected_tools,
                 }),
             }]
         );
@@ -1023,8 +1114,14 @@ mod tests {
             .run_turn(RunTurnRequest {
                 thread_id: "thread-1".to_string(),
                 turn_id: "turn-1".to_string(),
-                input: json!([{ "type": "text", "text": "Read the file" }]),
-                model_payload: json!({ "input": [] }),
+                input: json!([{
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        { "type": "input_text", "text": "Read the file" },
+                    ],
+                }]),
+                model_payload: json!({ "model": "demo", "input": [] }),
             })
             .await
             .expect("turn should succeed");
@@ -1033,7 +1130,6 @@ mod tests {
             output: FunctionCallOutputPayload {
                 body: FunctionCallOutputBody::Text("L1: fn answer() {\nL2:     42".to_string()),
                 success: Some(true),
-                ..Default::default()
             },
         })
         .expect("tool output serializes");
@@ -1050,8 +1146,8 @@ mod tests {
             call_id: "call-1".to_string(),
         })
         .expect("function call serializes");
-        let expected_tools =
-            serde_json::to_value(browser_builtin_tool_specs()).expect("tool specs serialize");
+        let expected_transport_tools =
+            transport_tools_from_host_specs(&browser_builtin_tool_specs());
 
         let requests = model_transport
             .requests
@@ -1064,29 +1160,74 @@ mod tests {
         assert_eq!(
             requests[0].payload,
             json!({
-                "baseInstructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
-                "input": [],
-                "tools": expected_tools.clone(),
+                "transportPayload": {
+                    "model": "demo".to_string(),
+                    "instructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                { "type": "input_text", "text": "Read the file" },
+                            ],
+                        },
+                    ],
+                    "tools": expected_transport_tools,
+                    "tool_choice": "auto",
+                    "stream": true,
+                },
                 "responseInputItems": [
-                    { "type": "text", "text": "Read the file" },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            { "type": "input_text", "text": "Read the file" },
+                        ],
+                    },
                 ],
             })
         );
         assert_eq!(
             requests[1].payload,
             json!({
-                "baseInstructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
-                "input": [],
-                "tools": expected_tools,
+                "transportPayload": {
+                    "model": "demo".to_string(),
+                    "instructions": DEFAULT_BASE_INSTRUCTIONS.trim(),
+                    "input": [
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [
+                                { "type": "input_text", "text": "Read the file" },
+                            ],
+                        },
+                        {
+                            "type": "function_call",
+                            "name": "read_file",
+                            "arguments": "{\"file_path\":\"/workspace/src/lib.rs\",\"limit\":2,\"offset\":1}",
+                            "call_id": "call-1",
+                        },
+                        expected_tool_output,
+                    ],
+                    "tools": expected_transport_tools,
+                    "tool_choice": "auto",
+                    "stream": true,
+                },
                 "responseInputItems": [
-                    { "type": "text", "text": "Read the file" },
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            { "type": "input_text", "text": "Read the file" },
+                        ],
+                    },
                     {
                         "type": "function_call",
                         "name": "read_file",
                         "arguments": "{\"file_path\":\"/workspace/src/lib.rs\",\"limit\":2,\"offset\":1}",
                         "call_id": "call-1",
                     },
-                    expected_tool_output.clone(),
+                    expected_tool_output,
                 ],
             })
         );
@@ -1097,13 +1238,19 @@ mod tests {
                 json!({
                     "type": "userInput",
                     "turnId": "turn-1",
-                    "input": [{ "type": "text", "text": "Read the file" }],
+                    "input": [{
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            { "type": "input_text", "text": "Read the file" },
+                        ],
+                    }],
                 }),
                 json!({
                     "type": "modelOutputItem",
                     "turnId": "turn-1",
                     "requestId": "turn-1",
-                    "item": expected_function_call.clone(),
+                    "item": expected_function_call,
                 }),
                 json!({
                     "type": "toolOutputItem",

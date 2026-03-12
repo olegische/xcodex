@@ -3,7 +3,7 @@ import { loadStoredAuthState, loadStoredCodexConfig, loadStoredInstructionSnapsh
 import { applyWorkspacePatch, listWorkspaceDir, readWorkspaceFile, searchWorkspace, writeWorkspaceFile } from "./workspace";
 import { activeProviderApiKey, createHostError, getActiveProvider, normalizeHostValue } from "./utils";
 import { discoverProviderModels, discoverRouterModels, runResponsesApiTurn, runXrouterTurn } from "./transports";
-import type { BrowserRuntimeHost, HostToolSpec, JsonValue } from "./types";
+import type { BrowserRuntimeHost, JsonValue } from "./types";
 import { clearStoredAuthState } from "./storage";
 
 export function createBrowserRuntimeHost(): BrowserRuntimeHost {
@@ -112,13 +112,9 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
         throw createHostError("permissionDenied", "webui requires provider config before starting a model turn");
       }
 
-      const selectedModel = typeof payload.model === "string" ? payload.model : "unknown-model";
-      const baseInstructions = typeof payload.baseInstructions === "string" ? payload.baseInstructions.trim() : "";
-      const userMessage = typeof payload.userMessage === "string" ? payload.userMessage : "";
+      const transportRequest = extractTransportRequest(payload);
+      const selectedModel = typeof transportRequest.model === "string" ? transportRequest.model : "unknown-model";
       const responseInputItems = Array.isArray(payload.responseInputItems) ? (payload.responseInputItems as JsonValue[]) : null;
-      const toolSpecs = Array.isArray(payload.tools) ? (payload.tools as HostToolSpec[]) : [];
-      const instructionMessages = extractContextualInstructionMessages(payload);
-      const instructionsText = [baseInstructions, ...instructionMessages].filter(Boolean).join("\n\n");
 
       emitRuntimeActivity({ type: "turnStart", requestId, model: selectedModel });
       if (responseInputItems !== null) {
@@ -142,21 +138,13 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
         ? runXrouterTurn({
             requestId,
             codexConfig,
-            model: selectedModel,
-            instructionsText,
-            userMessage,
-            responseInputItems,
-            toolSpecs,
+            requestBody: transportRequest,
           })
         : runResponsesApiTurn({
             requestId,
             baseUrl: provider.baseUrl,
-            model: selectedModel,
             apiKey,
-            instructionsText,
-            userMessage,
-            responseInputItems,
-            toolSpecs,
+            requestBody: transportRequest,
           });
     },
     async cancelModelTurn(requestId) {
@@ -168,16 +156,13 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
   };
 }
 
-function extractContextualInstructionMessages(payload: Record<string, unknown>): string[] {
-  const codexInstructions =
-    payload.codexInstructions !== null && typeof payload.codexInstructions === "object"
-      ? (payload.codexInstructions as Record<string, unknown>)
+function extractTransportRequest(payload: Record<string, unknown>): Record<string, unknown> {
+  const transportPayload =
+    payload.transportPayload !== null && typeof payload.transportPayload === "object" && !Array.isArray(payload.transportPayload)
+      ? (payload.transportPayload as Record<string, unknown>)
       : null;
-  const contextualUserMessages = codexInstructions?.contextualUserMessages;
-  if (!Array.isArray(contextualUserMessages)) {
-    return [];
+  if (transportPayload === null) {
+    throw createHostError("invalidInput", "startModelTurn expected payload.transportPayload");
   }
-  return contextualUserMessages.filter(
-    (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
-  );
+  return transportPayload;
 }
