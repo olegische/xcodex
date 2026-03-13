@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: build-web-runtime.sh --app <apps/webui|examples/browser-chat-demo>
+Usage: build-web-runtime.sh --app <apps/webui|examples/browser-chat-demo|examples/webui-runtime-profiles>
 
 Builds codex-wasm-core and prepares browser runtime assets for the selected app.
 
