@@ -1,6 +1,7 @@
 import { buildMetrics, buildUiRenderPlan } from "../ui/renderer";
-import { buildThreadList, deriveApprovals } from "./utils";
+import { buildThreadList } from "./utils";
 import { transportLabel, type DemoState, type ProviderDraft, type RuntimeActivity } from "../runtime";
+import type { PendingApproval } from "../types";
 import type { UiSystemDocument } from "../ui/types";
 import type { PlanStepItem, RuntimeStatusSummary, SessionStatusItem, WorkspaceFileSummary } from "../types";
 
@@ -9,12 +10,12 @@ export function createWorkbenchModel(input: {
   providerDraft: ProviderDraft;
   uiSystem: UiSystemDocument;
   runtimeActivities: RuntimeActivity[];
+  approvals: PendingApproval[];
   running: boolean;
   composerMessage: string;
   workspaceFiles: WorkspaceFileSummary[];
 }) {
   const renderPlan = buildUiRenderPlan(input.uiSystem);
-  const approvals = deriveApprovals(input.runtimeActivities);
   const toolActivities = input.runtimeActivities.filter(
     (activity) => activity.type === "toolCall" || activity.type === "toolOutput",
   );
@@ -29,7 +30,7 @@ export function createWorkbenchModel(input: {
     sidebar: renderPlan.profile.sidebarSide,
     transcript: `${input.state.transcript.length}`,
     events: `${input.runtimeActivities.length}`,
-    approvals: `${approvals.length}`,
+    approvals: `${input.approvals.length}`,
     tools: `${toolActivities.length}`,
     workspace: `${input.workspaceFiles.length}`,
     model: input.providerDraft.model || "none",
@@ -38,10 +39,10 @@ export function createWorkbenchModel(input: {
   return {
     providerSummary: transportLabel(input.providerDraft),
     threads: buildThreadList(input.state.transcript),
-    approvals,
+    approvals: input.approvals,
     composerDisabled: input.state.runtime === null || input.composerMessage.trim().length === 0 || input.running,
     routerStatus: buildRouterStatus(input.state, input.runtimeActivities, input.running),
-    codexStatus: buildCodexStatus(input.state, input.runtimeActivities, input.running, approvals.length),
+    codexStatus: buildCodexStatus(input.state, input.runtimeActivities, input.running, input.approvals.length),
     latestPlanExplanation: latestPlanUpdate?.explanation ?? null,
     planSteps:
       latestPlanUpdate?.plan.map((step) => ({

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { afterUpdate, onMount } from "svelte";
   import Transcript from "../Transcript.svelte";
   import type { RuntimeActivity, TranscriptEntry } from "../../runtime";
 
@@ -8,6 +9,34 @@
   export let running = false;
   export let runtimeActivities: RuntimeActivity[] = [];
   export let flat = false;
+
+  const BOTTOM_THRESHOLD = 48;
+
+  let scrollContainer: HTMLDivElement | null = null;
+  let showScrollToBottom = false;
+
+  function updateScrollState(): void {
+    if (!scrollContainer) {
+      showScrollToBottom = false;
+      return;
+    }
+
+    const distanceToBottom =
+      scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+    showScrollToBottom =
+      scrollContainer.scrollHeight > scrollContainer.clientHeight &&
+      distanceToBottom > BOTTOM_THRESHOLD;
+  }
+
+  function scrollTranscriptToBottom(): void {
+    if (!scrollContainer) {
+      return;
+    }
+    scrollContainer.scrollTo({
+      top: scrollContainer.scrollHeight,
+      behavior: "smooth",
+    });
+  }
 
   function currentTurnActivities(activities: RuntimeActivity[]): RuntimeActivity[] {
     for (let index = activities.length - 1; index >= 0; index -= 1) {
@@ -53,10 +82,40 @@
 
   $: liveToolTranscript = liveToolEntries(runtimeActivities);
 
+  onMount(() => {
+    updateScrollState();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateScrollState();
+    });
+
+    if (scrollContainer) {
+      resizeObserver.observe(scrollContainer);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  });
+
+  afterUpdate(() => {
+    updateScrollState();
+  });
 </script>
 
 <section class:transcript-flat={flat} class="transcript-widget-shell widget-surface">
-  <div class="transcript-scroll">
+  <div bind:this={scrollContainer} class="transcript-scroll" on:scroll={updateScrollState}>
     <Transcript {transcript} toolEntries={liveToolTranscript} {liveStreamText} {status} {running} />
   </div>
+
+  {#if showScrollToBottom}
+    <button
+      type="button"
+      class="transcript-scroll-to-bottom"
+      aria-label="Scroll transcript to bottom"
+      on:click={scrollTranscriptToBottom}
+    >
+      ↓
+    </button>
+  {/if}
 </section>

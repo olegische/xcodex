@@ -3,6 +3,7 @@
   import RuntimeModalsContainer from "./lib/RuntimeModalsContainer.svelte";
   import RuntimeWorkbenchContainer from "./lib/RuntimeWorkbenchContainer.svelte";
   import { bootStore } from "./stores/boot";
+  import { collaborationStore } from "./stores/collaboration";
   import { composerStore } from "./stores/composer";
   import { inspectorStore } from "./stores/inspector";
   import { runtimeSessionStore } from "./stores/runtime-session";
@@ -35,11 +36,13 @@
   $: runtimeUiState = $runtimeUiStore;
   $: workspaceBrowserState = $workspaceBrowserStore;
   $: composerState = $composerStore;
+  $: collaborationState = $collaborationStore;
   $: workbenchModel = createWorkbenchModel({
     state,
     providerDraft,
     uiSystem,
     runtimeActivities: runtimeUiState.activities,
+    approvals: collaborationState.pendingApprovals,
     running: runtimeUiState.running,
     composerMessage: composerState.message,
     workspaceFiles: workspaceBrowserState.files,

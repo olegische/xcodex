@@ -99,6 +99,31 @@ export type RuntimeEvent = {
   payload: JsonValue;
 };
 
+export type RequestUserInputOption = {
+  label: string;
+  description: string;
+};
+
+export type RequestUserInputQuestion = {
+  header: string;
+  id: string;
+  question: string;
+  options: RequestUserInputOption[];
+};
+
+export type RequestUserInputRequest = {
+  questions: RequestUserInputQuestion[];
+};
+
+export type RequestUserInputAnswer = {
+  id: string;
+  value: JsonValue;
+};
+
+export type RequestUserInputResponse = {
+  answers: RequestUserInputAnswer[];
+};
+
 export type TranscriptEntry = {
   role: "user" | "assistant" | "tool";
   text: string;

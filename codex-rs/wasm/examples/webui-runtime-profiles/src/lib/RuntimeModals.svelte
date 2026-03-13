@@ -1,14 +1,19 @@
 <script lang="ts">
+  import CollaborationModal from "./CollaborationModal.svelte";
   import ProviderSettingsModal from "./ProviderSettingsModal.svelte";
   import UiProfilesModal from "./UiProfilesModal.svelte";
   import type { ProviderDraft } from "../runtime";
+  import type { CollaborationRequest } from "../stores/collaboration";
   import type { UiProfile, UiProfilesDocument } from "../ui/profiles";
   import type { InspectorState } from "../stores/inspector";
 
   export let disabled = false;
   export let inspectorState: InspectorState;
+  export let collaborationRequest: CollaborationRequest | null = null;
   export let draft: ProviderDraft;
   export let profiles: UiProfilesDocument;
+  export let onCancelCollaboration: () => void;
+  export let onSubmitCollaboration: (event: CustomEvent<Array<{ id: string; value: string }>>) => void;
   export let onCloseSettings: () => void;
   export let onCloseProfiles: () => void;
   export let onSaveConfig: (event: CustomEvent<ProviderDraft>) => void;
@@ -39,4 +44,10 @@
   on:saveprofile={onSaveProfile}
   on:activateprofile={onActivateProfile}
   on:deleteprofile={onDeleteProfile}
+/>
+
+<CollaborationModal
+  request={collaborationRequest}
+  on:cancel={onCancelCollaboration}
+  on:submit={onSubmitCollaboration}
 />

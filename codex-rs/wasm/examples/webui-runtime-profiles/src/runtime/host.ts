@@ -5,6 +5,7 @@ import { activeProviderApiKey, createHostError, getActiveProvider, normalizeHost
 import { discoverProviderModels, discoverRouterModels, runResponsesApiTurn, runXrouterTurn } from "./transports";
 import type { BrowserRuntimeHost, JsonValue } from "./types";
 import { clearStoredAuthState } from "./storage";
+import { collaborationStore } from "../stores/collaboration";
 
 export function createBrowserRuntimeHost(): BrowserRuntimeHost {
   return {
@@ -103,12 +104,26 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
       if (questions === null) {
         throw createHostError("invalidInput", "requestUserInput expected questions");
       }
-      return {
-        answers: questions.map((question) => ({
+      return collaborationStore.requestUserInput({
+        questions: questions.map((question) => ({
+          header: typeof question.header === "string" ? question.header : "Input",
           id: typeof question.id === "string" ? question.id : "answer",
-          value: window.prompt(typeof question.question === "string" ? question.question : "Provide input") ?? "",
+          question:
+            typeof question.question === "string" ? question.question : "Provide the requested input.",
+          options: Array.isArray(question.options)
+            ? question.options.flatMap((option) => {
+                if (option === null || typeof option !== "object" || Array.isArray(option)) {
+                  return [];
+                }
+                const record = option as Record<string, unknown>;
+                if (typeof record.label !== "string" || typeof record.description !== "string") {
+                  return [];
+                }
+                return [{ label: record.label, description: record.description }];
+              })
+            : [],
         })),
-      };
+      });
     },
     async startModelTurn(request) {
       const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;

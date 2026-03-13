@@ -8,6 +8,7 @@ use codex_protocol::request_user_input::RequestUserInputArgs;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use crate::function_tool::FunctionCallError;
@@ -410,6 +411,7 @@ impl<'a> WasmToolRuntime<'a> {
                 ));
             }
         };
+        request_apply_patch_approval(self, &patch).await?;
 
         let response = self
             .fs
@@ -669,6 +671,101 @@ fn request_user_input_unavailable_message(
             mode.display_name()
         ))
     }
+}
+
+async fn request_apply_patch_approval(
+    runtime: &WasmToolRuntime<'_>,
+    patch: &str,
+) -> Result<(), FunctionCallError> {
+    let response = runtime
+        .collaboration
+        .request_user_input(RequestUserInputRequest {
+            questions: vec![RequestUserInputQuestion {
+                header: "Apply patch".to_string(),
+                id: "approval_decision".to_string(),
+                question: build_apply_patch_approval_question(patch),
+                options: vec![
+                    RequestUserInputOption {
+                        label: "Approve".to_string(),
+                        description: "Apply this patch to the workspace.".to_string(),
+                    },
+                    RequestUserInputOption {
+                        label: "Reject".to_string(),
+                        description: "Block the patch and let Codex adjust the plan.".to_string(),
+                    },
+                ],
+            }],
+        })
+        .await
+        .map_err(host_error_to_function_call_error)?;
+
+    if apply_patch_approval_was_granted(&response) {
+        Ok(())
+    } else {
+        Err(FunctionCallError::RespondToModel(
+            "Patch was rejected by the user.".to_string(),
+        ))
+    }
+}
+
+fn build_apply_patch_approval_question(patch: &str) -> String {
+    let changed_paths = collect_apply_patch_paths(patch);
+    let mut lines = vec!["Codex wants to apply a patch to the workspace.".to_string()];
+    if changed_paths.is_empty() {
+        lines.push("No file paths could be inferred from the patch text.".to_string());
+    } else {
+        lines.push("Files:".to_string());
+        for path in changed_paths.iter().take(6) {
+            lines.push(format!("- {path}"));
+        }
+        if changed_paths.len() > 6 {
+            lines.push(format!("- and {} more", changed_paths.len() - 6));
+        }
+    }
+    lines.push("Approve or reject this patch.".to_string());
+    lines.join("\n")
+}
+
+fn collect_apply_patch_paths(patch: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut seen = HashSet::new();
+
+    for line in patch.lines() {
+        let candidate = line
+            .strip_prefix("*** Update File: ")
+            .or_else(|| line.strip_prefix("*** Add File: "))
+            .or_else(|| line.strip_prefix("*** Delete File: "))
+            .map(str::trim)
+            .map(str::to_string)
+            .or_else(|| {
+                line.strip_prefix("+++ ")
+                    .map(str::trim)
+                    .filter(|path| *path != "/dev/null")
+                    .map(|path| {
+                        path.strip_prefix("b/")
+                            .or_else(|| path.strip_prefix("a/"))
+                            .unwrap_or(path)
+                            .to_string()
+                    })
+            });
+
+        if let Some(path) = candidate
+            && seen.insert(path.clone())
+        {
+            paths.push(path);
+        }
+    }
+
+    paths
+}
+
+fn apply_patch_approval_was_granted(response: &RequestUserInputResponse) -> bool {
+    response.answers.iter().any(|answer| {
+        answer.id == "approval_decision"
+            && request_user_input_answer_values(answer.value.clone())
+                .iter()
+                .any(|value| value.eq_ignore_ascii_case("approve"))
+    })
 }
 
 fn request_user_input_response_to_protocol(
@@ -1059,7 +1156,9 @@ mod tests {
         }
     }
 
-    struct MockCollaboration;
+    struct MockCollaboration {
+        approval_value: &'static str,
+    }
 
     #[async_trait::async_trait(?Send)]
     impl HostCollaboration for MockCollaboration {
@@ -1073,15 +1172,17 @@ mod tests {
         ) -> HostResult<RequestUserInputResponse> {
             Ok(RequestUserInputResponse {
                 answers: vec![RequestUserInputAnswer {
-                    id: "choice".to_string(),
-                    value: Value::String("yes".to_string()),
+                    id: "approval_decision".to_string(),
+                    value: Value::String(self.approval_value.to_string()),
                 }],
             })
         }
     }
 
     fn runtime() -> WasmToolRuntime<'static> {
-        static COLLABORATION: MockCollaboration = MockCollaboration;
+        static COLLABORATION: MockCollaboration = MockCollaboration {
+            approval_value: "Approve",
+        };
         static FS: std::sync::LazyLock<MockFs> = std::sync::LazyLock::new(|| MockFs {
             files: std::collections::HashMap::from([
                 (
@@ -1093,6 +1194,16 @@ mod tests {
                     "fn main() {}\n".to_string(),
                 ),
             ]),
+        });
+        WasmToolRuntime::new(&*FS, &COLLABORATION, CollaborationMode::Default, false)
+    }
+
+    fn rejected_runtime() -> WasmToolRuntime<'static> {
+        static COLLABORATION: MockCollaboration = MockCollaboration {
+            approval_value: "Reject",
+        };
+        static FS: std::sync::LazyLock<MockFs> = std::sync::LazyLock::new(|| MockFs {
+            files: std::collections::HashMap::new(),
         });
         WasmToolRuntime::new(&*FS, &COLLABORATION, CollaborationMode::Default, false)
     }
@@ -1147,6 +1258,37 @@ mod tests {
         assert!(result.needs_follow_up);
         assert!(result.tool_output.is_some());
         assert!(result.recorded_response_item.is_some());
+    }
+
+    #[tokio::test]
+    async fn apply_patch_rejection_returns_model_error() {
+        let response = rejected_runtime()
+            .dispatch_tool_call(
+                ToolCall {
+                    tool_name: "apply_patch".to_string(),
+                    call_id: "call-1".to_string(),
+                    payload: ToolPayload::Function {
+                        arguments: serde_json::json!({
+                            "input": "*** Begin Patch\n*** Add File: /workspace/new.txt\n+hello\n*** End Patch\n"
+                        })
+                        .to_string(),
+                    },
+                },
+                ToolCallSource::Direct,
+            )
+            .await
+            .expect("dispatch succeeds");
+
+        match response {
+            ResponseInputItem::FunctionCallOutput { output, .. } => {
+                assert_eq!(
+                    output.body,
+                    FunctionCallOutputBody::Text("Patch was rejected by the user.".to_string())
+                );
+                assert_eq!(output.success, Some(false));
+            }
+            other => panic!("expected function output, got {other:?}"),
+        }
     }
 
     #[tokio::test]

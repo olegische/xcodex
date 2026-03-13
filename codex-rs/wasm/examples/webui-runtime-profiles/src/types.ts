@@ -9,7 +9,7 @@ export type PendingApproval = {
   id: string;
   title: string;
   detail: string;
-  status: "observed";
+  status: "pending" | "observed";
 };
 
 export type WorkspaceFileSummary = {

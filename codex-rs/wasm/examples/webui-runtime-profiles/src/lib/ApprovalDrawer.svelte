@@ -21,8 +21,7 @@
     <div class="drawer-content">
       {#if approvals.length === 0}
         <p class="drawer-empty">
-          No approval-gated actions have been surfaced yet. The drawer is wired into the shell so
-          the next step is connecting real runtime approval requests.
+          No approval requests are waiting right now.
         </p>
       {/if}
 

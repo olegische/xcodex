@@ -1,5 +1,6 @@
 <script lang="ts">
   import RuntimeModals from "./RuntimeModals.svelte";
+  import { collaborationStore } from "../stores/collaboration";
   import { inspectorStore } from "../stores/inspector";
   import type { ProviderDraft } from "../runtime";
   import type { UiProfile, UiProfilesDocument } from "../ui/profiles";
@@ -16,6 +17,7 @@
   export let onDeleteProfile: () => void;
 
   $: inspectorState = $inspectorStore;
+  $: collaborationState = $collaborationStore;
   $: settingsDraft = { ...draft };
 
   function closeSettings() {
@@ -25,17 +27,33 @@
   function closeProfiles() {
     inspectorStore.closeProfiles();
   }
+
+  function cancelCollaboration() {
+    collaborationStore.cancelCurrentRequest();
+  }
+
+  function submitCollaboration(event: CustomEvent<Array<{ id: string; value: string }>>) {
+    collaborationStore.submitCurrentAnswer(
+      event.detail.map((answer) => ({
+        id: answer.id,
+        value: answer.value,
+      })),
+    );
+  }
 </script>
 
 <RuntimeModals
+  collaborationRequest={collaborationState.currentRequest}
   {disabled}
   {inspectorState}
   profiles={profiles}
   draft={settingsDraft}
+  onCancelCollaboration={cancelCollaboration}
   onCloseProfiles={closeProfiles}
   onCloseSettings={closeSettings}
   onSaveConfig={onSaveConfig}
   onRefreshAccountAndModels={onRefreshAccountAndModels}
+  onSubmitCollaboration={submitCollaboration}
   {onClearAuth}
   {onCreateProfile}
   {onSaveProfile}

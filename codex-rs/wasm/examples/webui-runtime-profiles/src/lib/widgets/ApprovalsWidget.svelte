@@ -10,7 +10,7 @@
   <div class="eyebrow">{title}</div>
   <div class="drawer-content">
     {#if approvals.length === 0}
-      <p class="drawer-empty">No approval-gated actions surfaced yet.</p>
+      <p class="drawer-empty">No approval requests are waiting right now.</p>
     {/if}
     {#each approvals as approval}
       <div class="event-card">
