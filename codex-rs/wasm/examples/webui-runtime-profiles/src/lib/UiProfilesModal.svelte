@@ -104,10 +104,7 @@
 
           <label>
             <span>Theme</span>
-            <select bind:value={draft.theme}>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
+            <input bind:value={draft.theme} />
           </label>
 
           <label>

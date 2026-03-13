@@ -26,6 +26,7 @@ export function buildUiRenderPlan(document: UiSystemDocument): UiRenderPlan {
     profile,
     sidebarSide: profile.sidebarSide,
     headerVisible: document.layout.showHeader,
+    chatPlacement: document.layout.chatPlacement,
     inspectorMode: document.layout.inspectorMode,
     defaultInspectorTab: document.layout.defaultInspectorTab,
     areas,

@@ -1,0 +1,9 @@
+/Users/olegromanchuk/Projects/browser-codex/codex-rs/wasm/examples/webui-runtime-profiles/.cargo-target/xrouter-browser/wasm32-unknown-unknown/release/deps/once_cell-d713bf5fac474b94.d: /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/lib.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/imp_std.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/race.rs
+
+/Users/olegromanchuk/Projects/browser-codex/codex-rs/wasm/examples/webui-runtime-profiles/.cargo-target/xrouter-browser/wasm32-unknown-unknown/release/deps/libonce_cell-d713bf5fac474b94.rlib: /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/lib.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/imp_std.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/race.rs
+
+/Users/olegromanchuk/Projects/browser-codex/codex-rs/wasm/examples/webui-runtime-profiles/.cargo-target/xrouter-browser/wasm32-unknown-unknown/release/deps/libonce_cell-d713bf5fac474b94.rmeta: /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/lib.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/imp_std.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/race.rs
+
+/Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/lib.rs:
+/Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/imp_std.rs:
+/Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/once_cell-1.21.3/src/race.rs:

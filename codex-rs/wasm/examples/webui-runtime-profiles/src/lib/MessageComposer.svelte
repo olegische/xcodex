@@ -1,27 +1,24 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { onMount, tick } from "svelte";
   import { createEventDispatcher } from "svelte";
-  import type { ModelPreset } from "../runtime";
+  import { composerLabelState, composerStore } from "../stores/composer";
 
   const dispatch = createEventDispatcher<{
     send: void;
     stop: void;
     settings: void;
-    selectmodel: { model: string };
-    selectreasoning: { value: string };
   }>();
 
-  export let message = "";
   export let disabled = false;
   export let running = false;
-  export let models: ModelPreset[] = [];
-  export let currentModel = "";
-  export let currentReasoning = "medium";
 
   let textareaElement: HTMLTextAreaElement | null = null;
+  let modelTriggerElement: HTMLButtonElement | null = null;
+  let reasoningTriggerElement: HTMLButtonElement | null = null;
   let modelMenuOpen = false;
   let reasoningMenuOpen = false;
-  let selectedModelId = "";
+  let modelMenuStyle = "";
+  let reasoningMenuStyle = "";
 
   const MAX_ROWS = 10;
   const LINE_HEIGHT_PX = 32;
@@ -31,8 +28,9 @@
     { value: "high", label: "High" },
   ];
 
-  $: void syncTextareaHeight(message);
-  $: syncSelectedModel(currentModel, models);
+  $: composerState = $composerStore;
+  $: labelState = $composerLabelState;
+  $: void syncTextareaHeight(composerState.message);
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -62,6 +60,7 @@
     modelMenuOpen = !modelMenuOpen;
     if (modelMenuOpen) {
       reasoningMenuOpen = false;
+      updateMenuPositions();
     }
   }
 
@@ -70,27 +69,33 @@
     reasoningMenuOpen = !reasoningMenuOpen;
     if (reasoningMenuOpen) {
       modelMenuOpen = false;
+      updateMenuPositions();
     }
   }
 
   function selectModel(model: string) {
-    selectedModelId = model;
-    dispatch("selectmodel", { model });
+    composerStore.setSelectedModel(model);
     modelMenuOpen = false;
   }
 
   function selectReasoning(value: string) {
-    dispatch("selectreasoning", { value });
+    composerStore.setSelectedReasoning(value);
     reasoningMenuOpen = false;
   }
 
-  function currentModelLabel(): string {
-    const activeModelId = selectedModelId.trim();
-    return models.find((model) => model.id === activeModelId)?.displayName || activeModelId || "Select model";
-  }
+  onMount(() => {
+    const handleWindowLayoutChange = () => updateMenuPositions();
+    window.addEventListener("resize", handleWindowLayoutChange);
+    window.addEventListener("scroll", handleWindowLayoutChange, true);
+    void focusComposer();
+    return () => {
+      window.removeEventListener("resize", handleWindowLayoutChange);
+      window.removeEventListener("scroll", handleWindowLayoutChange, true);
+    };
+  });
 
-  function currentReasoningLabel(): string {
-    return reasoningOptions.find((option) => option.value === currentReasoning)?.label || currentReasoning;
+  $: if (modelMenuOpen || reasoningMenuOpen) {
+    void tick().then(updateMenuPositions);
   }
 
   async function syncTextareaHeight(_: string) {
@@ -106,16 +111,32 @@
     textareaElement.style.overflowY = textareaElement.scrollHeight > maxHeight ? "auto" : "hidden";
   }
 
-  function syncSelectedModel(nextCurrentModel: string, nextModels: ModelPreset[]) {
-    const trimmedCurrentModel = nextCurrentModel.trim();
-    if (trimmedCurrentModel.length > 0 && trimmedCurrentModel !== selectedModelId) {
-      selectedModelId = trimmedCurrentModel;
+  async function focusComposer() {
+    await tick();
+    if (disabled || textareaElement === null) {
       return;
     }
-
-    if (trimmedCurrentModel.length === 0 && nextModels.length > 0 && !nextModels.some((model) => model.id === selectedModelId)) {
-      selectedModelId = nextModels.find((model) => model.isDefault)?.id ?? nextModels[0]?.id ?? "";
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && activeElement !== document.body && activeElement !== textareaElement) {
+      return;
     }
+    textareaElement.focus();
+  }
+
+  function updateMenuPositions() {
+    modelMenuStyle = computeMenuStyle(modelTriggerElement);
+    reasoningMenuStyle = computeMenuStyle(reasoningTriggerElement);
+  }
+
+  function computeMenuStyle(trigger: HTMLButtonElement | null): string {
+    if (trigger === null) {
+      return "";
+    }
+    const rect = trigger.getBoundingClientRect();
+    const minWidth = Math.max(rect.width, 220);
+    const left = Math.max(16, Math.min(rect.left, window.innerWidth - minWidth - 16));
+    const top = Math.max(16, rect.top - 10);
+    return `position: fixed; left: ${left}px; top: ${top}px; min-width: ${minWidth}px; transform: translateY(-100%);`;
   }
 </script>
 
@@ -124,11 +145,12 @@
 <div class="composer-shell">
   <div class="composer">
     <textarea
-      bind:value={message}
+      value={composerState.message}
       bind:this={textareaElement}
       class="composer-input"
       placeholder="Ask for follow-up changes"
       rows="1"
+      on:input={(event) => composerStore.setMessage((event.currentTarget as HTMLTextAreaElement).value)}
       on:keydown={handleKeydown}
     ></textarea>
 
@@ -137,27 +159,33 @@
         <button class="icon-pill" aria-label="Open settings" on:click={() => dispatch("settings")}>+</button>
 
         <div class="composer-menu-shell">
-          <button class="composer-menu-trigger" on:click={toggleModelMenu} aria-haspopup="menu" aria-expanded={modelMenuOpen}>
-            <span class="composer-menu-label">{currentModelLabel()}</span>
+          <button
+            bind:this={modelTriggerElement}
+            class="composer-menu-trigger"
+            on:click={toggleModelMenu}
+            aria-haspopup="menu"
+            aria-expanded={modelMenuOpen}
+          >
+            <span class="composer-menu-label">{labelState.modelLabel}</span>
             <span class="composer-menu-caret" aria-hidden="true"></span>
           </button>
 
           {#if modelMenuOpen}
-            <div class="composer-menu" role="menu">
-              <div class="composer-menu-title">{currentModelLabel()}</div>
-              {#if models.length === 0}
+            <div class="composer-menu" style={modelMenuStyle} role="menu">
+              <div class="composer-menu-title">{labelState.modelLabel}</div>
+              {#if composerState.models.length === 0}
                 <div class="composer-menu-empty">No models loaded</div>
               {:else}
-                {#each models as model}
+                {#each composerState.models as model}
                   <button
-                    class:active={model.id === selectedModelId}
+                    class:active={model.id === composerState.selectedModelId}
                     class="composer-menu-item"
                     role="menuitemradio"
-                    aria-checked={model.id === selectedModelId}
+                    aria-checked={model.id === composerState.selectedModelId}
                     on:click={() => selectModel(model.id)}
                   >
                     <span>{model.displayName || model.id}</span>
-                    {#if model.id === selectedModelId}
+                    {#if model.id === composerState.selectedModelId}
                       <span class="composer-menu-check">✓</span>
                     {/if}
                   </button>
@@ -169,28 +197,29 @@
 
         <div class="composer-menu-shell">
           <button
+            bind:this={reasoningTriggerElement}
             class="composer-menu-trigger"
             on:click={toggleReasoningMenu}
             aria-haspopup="menu"
             aria-expanded={reasoningMenuOpen}
           >
-            <span class="composer-menu-label">{currentReasoningLabel()}</span>
+            <span class="composer-menu-label">{labelState.reasoningLabel}</span>
             <span class="composer-menu-caret" aria-hidden="true"></span>
           </button>
 
           {#if reasoningMenuOpen}
-            <div class="composer-menu" role="menu">
+            <div class="composer-menu" style={reasoningMenuStyle} role="menu">
               <div class="composer-menu-title">Select reasoning</div>
               {#each reasoningOptions as option}
                 <button
-                  class:active={option.value === currentReasoning}
+                  class:active={option.value === composerState.selectedReasoning}
                   class="composer-menu-item"
                   role="menuitemradio"
-                  aria-checked={option.value === currentReasoning}
+                  aria-checked={option.value === composerState.selectedReasoning}
                   on:click={() => selectReasoning(option.value)}
                 >
                   <span>{option.label}</span>
-                  {#if option.value === currentReasoning}
+                  {#if option.value === composerState.selectedReasoning}
                     <span class="composer-menu-check">✓</span>
                   {/if}
                 </button>

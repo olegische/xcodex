@@ -52,7 +52,18 @@ export function snapshotToTranscript(snapshot: SessionSnapshot): TranscriptEntry
       continue;
     }
     if (item.type === "modelOutputItem" && "item" in item && item.item !== null && typeof item.item === "object") {
-      const assistantText = assistantTextFromResponseItem(item.item as Record<string, unknown>);
+      const responseItem = item.item as Record<string, unknown>;
+      const toolText = toolTextFromResponseItem(responseItem);
+      if (toolText !== null) {
+        if (pendingAssistant.length > 0) {
+          appendTranscriptEntry(transcript, { role: "assistant", text: pendingAssistant });
+          pendingAssistant = "";
+        }
+        appendTranscriptEntry(transcript, { role: "tool", text: toolText });
+        continue;
+      }
+
+      const assistantText = assistantTextFromResponseItem(responseItem);
       if (assistantText !== null) {
         if (pendingAssistant.length > 0) {
           if (pendingAssistant === assistantText) {
@@ -87,7 +98,7 @@ function appendTranscriptEntry(transcript: TranscriptEntry[], nextEntry: Transcr
   }
 
   const lastEntry = transcript[transcript.length - 1];
-  if (lastEntry?.role === "assistant" && nextEntry.role === "assistant") {
+  if (lastEntry?.role === "tool" && nextEntry.role === "tool") {
     lastEntry.text = `${lastEntry.text}\n\n${normalizedText}`;
     return;
   }
@@ -110,6 +121,13 @@ export function assistantTextFromResponseItem(item: Record<string, unknown>): st
     .map((entry) => (typeof entry.text === "string" ? entry.text : ""))
     .join("");
   return text.trim().length === 0 ? null : text;
+}
+
+function toolTextFromResponseItem(item: Record<string, unknown>): string | null {
+  if (item.type !== "function_call" || typeof item.name !== "string") {
+    return null;
+  }
+  return `Using ${item.name}`;
 }
 
 export function buildOutputFromDispatch(dispatch: RuntimeDispatch): string {

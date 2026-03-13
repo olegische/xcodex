@@ -100,7 +100,7 @@ export type RuntimeEvent = {
 };
 
 export type TranscriptEntry = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   text: string;
 };
 
@@ -109,6 +109,7 @@ export type RuntimeActivity =
   | { type: "delta"; requestId: string; text: string }
   | { type: "toolCall"; requestId: string; callId: string | null; toolName: string | null; arguments: JsonValue }
   | { type: "toolOutput"; requestId: string; callId: string | null; output: JsonValue }
+  | { type: "planUpdate"; explanation: string | null; plan: Array<{ step: string; status: string }> }
   | { type: "assistantMessage"; requestId: string; content: JsonValue }
   | { type: "completed"; requestId: string; finishReason: string | null }
   | { type: "error"; requestId: string; message: string };

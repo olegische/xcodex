@@ -4,9 +4,9 @@
 
   const dispatch = createEventDispatcher<{
     close: void;
-    save: void;
-    refreshaccount: void;
-    refreshmodels: void;
+    save: ProviderDraft;
+    refreshaccount: ProviderDraft;
+    refreshmodels: ProviderDraft;
     clearauth: void;
   }>();
 
@@ -51,7 +51,7 @@
         <button class="button ghost" type="button" on:click={closeModal}>Close</button>
       </div>
 
-      <form class="settings-form" on:submit|preventDefault={() => dispatch("save")}>
+      <form class="settings-form" on:submit|preventDefault={() => dispatch("save", draft)}>
       <div class="settings-grid">
         <label>
           <span>Transport</span>
@@ -105,10 +105,10 @@
       </div>
 
       <div class="modal-actions">
-        <button class="button ghost" type="button" disabled={disabled} on:click={() => dispatch("refreshaccount")}>
+        <button class="button ghost" type="button" disabled={disabled} on:click={() => dispatch("refreshaccount", draft)}>
           Refresh Account
         </button>
-        <button class="button ghost" type="button" disabled={disabled} on:click={() => dispatch("refreshmodels")}>
+        <button class="button ghost" type="button" disabled={disabled} on:click={() => dispatch("refreshmodels", draft)}>
           Refresh Models
         </button>
         <button class="button ghost" type="button" disabled={disabled} on:click={() => dispatch("clearauth")}>

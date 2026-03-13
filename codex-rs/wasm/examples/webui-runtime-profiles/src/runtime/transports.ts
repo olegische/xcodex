@@ -157,6 +157,7 @@ export async function runXrouterTurn(params: {
   requestId: string;
   codexConfig: CodexCompatibleConfig;
   requestBody: Record<string, unknown>;
+  responseInputItems: JsonValue[] | null;
 }): Promise<JsonValue> {
   const client = await createXrouterClient(params.codexConfig);
   let cancelled = false;
@@ -172,8 +173,9 @@ export async function runXrouterTurn(params: {
 
   const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
   let streamError: JsonValue | null = null;
+  const normalizedRequestBody = buildXrouterTransportRequest(params.requestBody, params.responseInputItems);
   try {
-    await client.runResponsesStream(params.requestId, params.requestBody, (event: unknown) => {
+    await client.runResponsesStream(params.requestId, normalizedRequestBody, (event: unknown) => {
       if (cancelled) {
         return;
       }
@@ -292,6 +294,157 @@ async function createXrouterClient(codexConfig: CodexCompatibleConfig): Promise<
     provider.baseUrl.length === 0 ? null : provider.baseUrl,
     activeProviderApiKey(codexConfig).length === 0 ? null : activeProviderApiKey(codexConfig),
   );
+}
+
+function buildXrouterTransportRequest(
+  requestBody: Record<string, unknown>,
+  responseInputItems: JsonValue[] | null,
+): Record<string, unknown> {
+  const tools = Array.isArray(requestBody.tools) ? (requestBody.tools as JsonValue[]) : undefined;
+  const toolChoice = typeof requestBody.tool_choice === "string" ? requestBody.tool_choice : undefined;
+  const stream = requestBody.stream !== false;
+  const instructionsText = typeof requestBody.instructions === "string" ? requestBody.instructions : "";
+
+  return {
+    model: requestBody.model,
+    input: buildXrouterResponsesInput(instructionsText, responseInputItems),
+    stream,
+    ...(tools === undefined ? {} : { tools }),
+    ...(toolChoice === undefined ? {} : { tool_choice: toolChoice }),
+  };
+}
+
+function buildXrouterResponsesInput(
+  instructionsText: string,
+  responseInputItems: JsonValue[] | null,
+): JsonValue {
+  const normalizedItems =
+    responseInputItems === null
+      ? []
+      : responseInputItems
+          .map(mapCodexResponseInputItemToXrouterInputItem)
+          .filter((item): item is JsonValue => item !== null);
+
+  if (instructionsText.trim().length === 0) {
+    return normalizedItems;
+  }
+
+  return [
+    {
+      type: "message",
+      role: "system",
+      content: instructionsText,
+    },
+    ...normalizedItems,
+  ];
+}
+
+function mapCodexResponseInputItemToXrouterInputItem(item: JsonValue): JsonValue | null {
+  if (item === null || typeof item !== "object" || Array.isArray(item)) {
+    return null;
+  }
+
+  const record = item as Record<string, unknown>;
+  if (record.type === "message") {
+    const role = typeof record.role === "string" ? record.role : "user";
+    const text = extractMessageTextForXrouter(record);
+    if (text === null) {
+      return null;
+    }
+    return {
+      type: "message",
+      role,
+      content: text,
+    };
+  }
+
+  if (record.type === "function_call") {
+    const callId =
+      typeof record.call_id === "string"
+        ? record.call_id
+        : typeof record.id === "string"
+          ? record.id
+          : null;
+    if (callId === null || typeof record.name !== "string") {
+      return null;
+    }
+    return {
+      type: "function_call",
+      call_id: callId,
+      name: record.name,
+      arguments:
+        typeof record.arguments === "string"
+          ? record.arguments
+          : record.arguments !== undefined
+            ? JSON.stringify(record.arguments)
+            : "{}",
+    };
+  }
+
+  if (record.type === "function_call_output") {
+    const callId = typeof record.call_id === "string" ? record.call_id : null;
+    if (callId === null) {
+      return null;
+    }
+    const outputText = extractFunctionCallOutputText(record);
+    if (outputText === null) {
+      return null;
+    }
+    return {
+      type: "function_call_output",
+      call_id: callId,
+      output: outputText,
+    };
+  }
+
+  return null;
+}
+
+function extractMessageTextForXrouter(item: Record<string, unknown>): string | null {
+  const content = Array.isArray(item.content) ? (item.content as JsonValue[]) : null;
+  if (content === null) {
+    return null;
+  }
+
+  const text = content
+    .map((entry) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        return "";
+      }
+      const part = entry as Record<string, unknown>;
+      return typeof part.text === "string" ? part.text : "";
+    })
+    .join("");
+
+  return text.trim().length === 0 ? null : text;
+}
+
+function extractFunctionCallOutputText(item: Record<string, unknown>): string | null {
+  if (!("output" in item)) {
+    return null;
+  }
+
+  const raw = item.output;
+  if (typeof raw === "string") {
+    return raw;
+  }
+  if (Array.isArray(raw)) {
+    return JSON.stringify(raw);
+  }
+  if (raw !== null && typeof raw === "object") {
+    const output = raw as Record<string, unknown>;
+    if (typeof output.output === "string") {
+      return output.output;
+    }
+    if (typeof output.body === "string") {
+      return output.body;
+    }
+    if ("body" in output && output.body !== undefined) {
+      return JSON.stringify(output.body);
+    }
+    return JSON.stringify(output);
+  }
+  return raw === undefined ? null : JSON.stringify(raw);
 }
 
 function mapXrouterOutputItemToCodexResponseItem(item: JsonValue): JsonValue | null {

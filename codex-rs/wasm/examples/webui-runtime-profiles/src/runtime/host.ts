@@ -74,7 +74,27 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
     search: searchWorkspace,
     writeFile: writeWorkspaceFile,
     applyPatch: applyWorkspacePatch,
-    async updatePlan() {},
+    async updatePlan(request) {
+      const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;
+      const explanation = typeof normalizedRequest.explanation === "string" ? normalizedRequest.explanation : null;
+      const plan = Array.isArray(normalizedRequest.plan)
+        ? normalizedRequest.plan.flatMap((entry) => {
+            if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+              return [];
+            }
+            const record = entry as Record<string, unknown>;
+            if (typeof record.step !== "string" || typeof record.status !== "string") {
+              return [];
+            }
+            return [{ step: record.step, status: record.status }];
+          })
+        : [];
+      emitRuntimeActivity({
+        type: "planUpdate",
+        explanation,
+        plan,
+      });
+    },
     async requestUserInput(request) {
       const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;
       const questions = Array.isArray(normalizedRequest.questions)
@@ -139,6 +159,7 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
             requestId,
             codexConfig,
             requestBody: transportRequest,
+            responseInputItems,
           })
         : runResponsesApiTurn({
             requestId,

@@ -2,6 +2,7 @@
   import type { TranscriptEntry } from "../runtime";
 
   export let transcript: TranscriptEntry[] = [];
+  export let toolEntries: TranscriptEntry[] = [];
   export let liveStreamText = "";
   export let status = "";
   export let running = false;
@@ -32,9 +33,28 @@
   {/if}
 
   {#each transcript as entry}
-    <article class:user={entry.role === "user"} class="message-row">
+    <article
+      class:user={entry.role === "user"}
+      class:tool={entry.role === "tool"}
+      class="message-row"
+    >
       <div class="message-body">
-        <div class="message-role">{entry.role === "user" ? "You" : "XCodex"}</div>
+        <div class="message-role">
+          {entry.role === "user" ? "You" : entry.role === "tool" ? "Tool" : "XCodex"}
+        </div>
+        <div class="message-text">
+          {#each paragraphs(entry.text) as paragraph}
+            <p>{paragraph}</p>
+          {/each}
+        </div>
+      </div>
+    </article>
+  {/each}
+
+  {#each toolEntries as entry}
+    <article class:tool={true} class="message-row">
+      <div class="message-body">
+        <div class="message-role">Tool</div>
         <div class="message-text">
           {#each paragraphs(entry.text) as paragraph}
             <p>{paragraph}</p>

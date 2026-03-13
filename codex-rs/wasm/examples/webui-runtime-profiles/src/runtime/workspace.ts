@@ -127,6 +127,7 @@ export async function writeWorkspaceFile(request: JsonValue): Promise<JsonValue>
   const workspace = await loadStoredWorkspaceSnapshot();
   const path = normalizeWorkspaceFilePath(normalizedRequest.path);
   const content = normalizedRequest.content;
+  validateWorkspaceFileContent(path, content);
   workspace.files = upsertWorkspaceFile(workspace.files, { path, content });
   await saveStoredWorkspaceSnapshot(workspace);
   return {
@@ -171,6 +172,7 @@ export async function applyWorkspacePatch(request: JsonValue): Promise<JsonValue
     const originalFile = workspace.files.find((file) => file.path === operation.path);
     const currentContent = originalFile?.content ?? "";
     const nextContent = applyUpdateHunksToContent(currentContent, operation.hunks);
+    validateWorkspaceFileContent(operation.path, nextContent);
     workspace.files = upsertWorkspaceFile(workspace.files, {
       path: operation.path,
       content: nextContent,
@@ -181,6 +183,24 @@ export async function applyWorkspacePatch(request: JsonValue): Promise<JsonValue
   await saveStoredWorkspaceSnapshot(workspace);
   debugWorkspaceSnapshot("workspace.after-apply-patch", workspace);
   return { filesChanged };
+}
+
+function validateWorkspaceFileContent(path: string, content: string): void {
+  if (!path.startsWith("/workspace/ui/") || !path.endsWith(".json")) {
+    return;
+  }
+  try {
+    JSON.parse(content);
+  } catch (error) {
+    throw createHostError("invalidInput", `workspace JSON is invalid for ${path}: ${formatWorkspaceValidationError(error)}`);
+  }
+}
+
+function formatWorkspaceValidationError(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message;
+  }
+  return "invalid JSON";
 }
 
 function applyUpdateHunksToContent(content: string, hunks: WorkspacePatchHunk[]): string {
@@ -207,6 +227,9 @@ function applyUpdateHunksToContent(content: string, hunks: WorkspacePatchHunk[])
 
 function parseWorkspacePatch(patch: string): WorkspacePatchOperation[] {
   const lines = patch.replace(/\r\n/g, "\n").split("\n");
+  if (lines[0]?.startsWith("--- ")) {
+    return parseUnifiedWorkspacePatch(lines);
+  }
   if (lines[0] !== "*** Begin Patch") {
     throw createHostError("invalidInput", "workspace patch parser expected `*** Begin Patch`");
   }
@@ -276,4 +299,94 @@ function parseWorkspacePatch(patch: string): WorkspacePatchOperation[] {
   }
 
   throw createHostError("invalidInput", "workspace patch parser expected `*** End Patch`");
+}
+
+function parseUnifiedWorkspacePatch(lines: string[]): WorkspacePatchOperation[] {
+  const operations: WorkspacePatchOperation[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const oldHeader = lines[index];
+    if (oldHeader.trim().length === 0) {
+      index += 1;
+      continue;
+    }
+    if (!oldHeader.startsWith("--- ")) {
+      throw createHostError("invalidInput", `workspace patch parser found an unsupported unified diff header: ${oldHeader}`);
+    }
+    const newHeader = lines[index + 1];
+    if (newHeader === undefined || !newHeader.startsWith("+++ ")) {
+      throw createHostError("invalidInput", "workspace patch parser expected `+++` after unified diff `---` header");
+    }
+
+    const oldPath = parseUnifiedDiffPath(oldHeader.slice(4).trim());
+    const newPath = parseUnifiedDiffPath(newHeader.slice(4).trim());
+    index += 2;
+
+    const hunks: WorkspacePatchHunk[] = [];
+    while (index < lines.length) {
+      const line = lines[index];
+      if (line.startsWith("--- ")) {
+        break;
+      }
+      if (line.startsWith("@@")) {
+        index += 1;
+        const oldLines: string[] = [];
+        const newLines: string[] = [];
+        while (index < lines.length) {
+          const hunkLine = lines[index];
+          if (hunkLine.startsWith("@@") || hunkLine.startsWith("--- ")) {
+            break;
+          }
+          if (hunkLine === "\\ No newline at end of file") {
+            index += 1;
+            continue;
+          }
+          if (hunkLine.startsWith("-")) {
+            oldLines.push(hunkLine.slice(1));
+          } else if (hunkLine.startsWith("+")) {
+            newLines.push(hunkLine.slice(1));
+          } else if (hunkLine.startsWith(" ")) {
+            oldLines.push(hunkLine.slice(1));
+            newLines.push(hunkLine.slice(1));
+          } else {
+            throw createHostError("invalidInput", "workspace patch parser found an unsupported unified diff hunk line");
+          }
+          index += 1;
+        }
+        hunks.push({ oldText: oldLines.join("\n"), newText: newLines.join("\n") });
+        continue;
+      }
+      index += 1;
+    }
+
+    if (oldPath === null && newPath === null) {
+      throw createHostError("invalidInput", "workspace patch parser expected a real file path in unified diff headers");
+    }
+    if (oldPath === null) {
+      operations.push({
+        type: "add",
+        path: newPath ?? "",
+        content: hunks.map((hunk) => hunk.newText).join(""),
+      });
+      continue;
+    }
+    if (newPath === null) {
+      operations.push({ type: "delete", path: oldPath });
+      continue;
+    }
+    operations.push({ type: "update", path: newPath, hunks });
+  }
+
+  return operations;
+}
+
+function parseUnifiedDiffPath(rawPath: string): string | null {
+  const [candidate] = rawPath.split("\t");
+  if (candidate === "/dev/null") {
+    return null;
+  }
+  const normalizedCandidate =
+    candidate.startsWith("a/") || candidate.startsWith("b/") ? candidate.slice(2) : candidate;
+  return normalizeWorkspaceFilePath(normalizedCandidate);
 }

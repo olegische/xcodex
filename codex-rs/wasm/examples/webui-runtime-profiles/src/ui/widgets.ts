@@ -6,8 +6,14 @@ export const UI_WIDGETS_PATH = "/workspace/ui/widgets.json";
 export const UI_WIDGETS_GUIDE_PATH = "/workspace/ui/widgets.README.md";
 
 export const DEFAULT_UI_WIDGETS: UiWidgetsDocument = {
+  sessionStatus: {
+    dense: false,
+  },
+  planStatus: {
+    showExplanation: true,
+  },
   metrics: {
-    items: ["profile", "theme", "sidebar", "transcript", "events", "approvals"],
+    items: ["view", "dashboard", "profile", "theme", "sidebar", "transcript", "events", "approvals", "tools", "workspace"],
   },
   transcript: {
     variant: "bubble",
@@ -16,8 +22,21 @@ export const DEFAULT_UI_WIDGETS: UiWidgetsDocument = {
     placeholder: "Ask for follow-up changes",
     position: "bottom",
   },
+  shell: {
+    sidebarPrimaryAction: "new_thread",
+    sidebarFooterActions: ["profiles", "settings"],
+    headerLeadingActions: ["toggle_sidebar", "new_thread"],
+    headerTrailingActions: ["profiles", "settings"],
+  },
   runtimeEvents: {
     compact: false,
+  },
+  toolActivity: {
+    compact: true,
+  },
+  workspaceFiles: {
+    maxItems: 8,
+    showPreview: true,
   },
   approvals: {
     compact: false,
@@ -55,11 +74,20 @@ function buildWidgetsGuide(): string {
     `Edit \`${UI_WIDGETS_PATH}\` to configure widget variants and defaults.`,
     "",
     "Current sections:",
+    "- `sessionStatus.dense`",
+    "- `planStatus.showExplanation`",
     "- `metrics.items`",
     "- `transcript.variant`",
     "- `composer.placeholder`",
     "- `composer.position`",
+    "- `shell.sidebarPrimaryAction`",
+    "- `shell.sidebarFooterActions`",
+    "- `shell.headerLeadingActions`",
+    "- `shell.headerTrailingActions`",
     "- `runtimeEvents.compact`",
+    "- `toolActivity.compact`",
+    "- `workspaceFiles.maxItems`",
+    "- `workspaceFiles.showPreview`",
     "- `approvals.compact`",
     "",
   ].join("\n");

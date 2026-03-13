@@ -30,7 +30,16 @@ export const DEFAULT_UI_PROFILES: UiProfilesDocument = {
 export async function ensureUiProfilesDocument(): Promise<UiProfilesDocument> {
   const content = await ensureWorkspaceDocument(UI_PROFILES_PATH, serializeProfilesDocument(DEFAULT_UI_PROFILES));
   await ensureWorkspaceDocument(UI_PROFILES_GUIDE_PATH, buildProfilesGuide());
-  return parseProfilesDocument(content);
+  const parsed = parseProfilesDocument(content);
+  if (!parsed.ok) {
+    await repairInvalidUiJsonDocument(
+      UI_PROFILES_PATH,
+      `${UI_PROFILES_PATH}.invalid.bak`,
+      content,
+      serializeProfilesDocument(DEFAULT_UI_PROFILES),
+    );
+  }
+  return parsed.document;
 }
 
 export function subscribeUiProfiles(listener: (document: UiProfilesDocument) => void): () => void {
@@ -91,11 +100,18 @@ export async function saveUiProfilesDocument(document: UiProfilesDocument): Prom
   await saveStoredWorkspaceSnapshot(workspace);
 }
 
-function parseProfilesDocument(content: string): UiProfilesDocument {
+function parseProfilesDocument(content: string): { document: UiProfilesDocument; ok: boolean } {
   try {
-    return normalizeProfilesDocument(JSON.parse(content) as unknown, DEFAULT_UI_PROFILES);
-  } catch {
-    return structuredClone(DEFAULT_UI_PROFILES);
+    return {
+      document: normalizeProfilesDocument(JSON.parse(content) as unknown, DEFAULT_UI_PROFILES),
+      ok: true,
+    };
+  } catch (error) {
+    console.warn("[webui] ui.profiles:parse-failed", error, content);
+    return {
+      document: structuredClone(DEFAULT_UI_PROFILES),
+      ok: false,
+    };
   }
 }
 
@@ -118,4 +134,22 @@ function buildProfilesGuide(): string {
     "- `tokens`: optional overrides on top of the active theme from `tokens.json`",
     "",
   ].join("\n");
+}
+
+async function repairInvalidUiJsonDocument(
+  path: string,
+  backupPath: string,
+  invalidContent: string,
+  repairedContent: string,
+): Promise<void> {
+  const workspace = await loadStoredWorkspaceSnapshot();
+  workspace.files = upsertWorkspaceFile(workspace.files, {
+    path: backupPath,
+    content: invalidContent,
+  });
+  workspace.files = upsertWorkspaceFile(workspace.files, {
+    path,
+    content: repairedContent,
+  });
+  await saveStoredWorkspaceSnapshot(workspace);
 }

@@ -1,5 +1,10 @@
 # Rust/codex-rs
 
+This repository is a fork of the OpenAI Codex CLI.
+
+Unless the user explicitly asks otherwise, treat `codex-rs/wasm/*` as the primary work surface in this fork.
+Use the rest of `codex-rs/*` mainly as upstream reference, reuse, or sync material, and keep non-WASM changes minimal.
+
 In the codex-rs folder where the rust code lives:
 
 - Crate names are prefixed with `codex-`. For example, the `core` folder's crate is named `codex-core`

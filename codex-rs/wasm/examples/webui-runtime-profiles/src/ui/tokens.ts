@@ -1,4 +1,5 @@
 import { ensureWorkspaceDocument, subscribeWorkspaceDocument } from "./workspace";
+import { loadStoredWorkspaceSnapshot, saveStoredWorkspaceSnapshot, upsertWorkspaceFile } from "../runtime/storage";
 import { normalizeTokensDocument } from "./validators";
 import type { UiTheme, UiTokenMap, UiTokensDocument } from "./types";
 
@@ -8,23 +9,23 @@ export const UI_TOKENS_GUIDE_PATH = "/workspace/ui/tokens.README.md";
 export const DEFAULT_UI_TOKENS: UiTokensDocument = {
   themes: {
     dark: {
-      bg: "#1f2024",
-      sidebar: "#2a2c31",
-      surface: "#303239",
-      surfaceMuted: "#373a42",
-      surfaceElevated: "#2b2f38",
-      surfaceInput: "#232730",
-      surfaceCard: "#313640",
-      border: "#474b55",
+      bg: "#201f1d",
+      sidebar: "#292826",
+      surface: "#312f2d",
+      surfaceMuted: "#393633",
+      surfaceElevated: "#2b2927",
+      surfaceInput: "#252321",
+      surfaceCard: "#35322f",
+      border: "#4c4843",
       text: "#e4e7ed",
-      textMuted: "#a0a6b1",
-      accent: "#6f8cff",
-      accentContrast: "#f8faff",
+      textMuted: "#aaa39a",
+      accent: "#b89d6a",
+      accentContrast: "#1e1a14",
       success: "#78c27d",
       error: "#f08080",
-      hover: "#353a45",
-      badgeBg: "#2f3440",
-      badgeDot: "#7f8796",
+      hover: "#3a3632",
+      badgeBg: "#34302c",
+      badgeDot: "#90877a",
       successText: "#c8f0cb",
       successBg: "rgba(120, 194, 125, 0.12)",
       successBorder: "rgba(120, 194, 125, 0.28)",
@@ -32,10 +33,10 @@ export const DEFAULT_UI_TOKENS: UiTokensDocument = {
       warningBg: "rgba(245, 158, 11, 0.12)",
       warningBorder: "rgba(245, 158, 11, 0.28)",
       warningDot: "#f59e0b",
-      messageUserBg: "#323845",
-      composerFade: "linear-gradient(180deg, rgba(35, 37, 43, 0), rgba(35, 37, 43, 0.96) 32%)",
-      overlay: "rgba(17, 24, 39, 0.32)",
-      drawerBg: "rgba(43, 47, 56, 0.98)",
+      messageUserBg: "#3a3632",
+      composerFade: "linear-gradient(180deg, rgba(37, 35, 33, 0), rgba(37, 35, 33, 0.96) 32%)",
+      overlay: "rgba(18, 17, 15, 0.32)",
+      drawerBg: "rgba(43, 40, 37, 0.98)",
       shadow: "none",
     },
     light: {
@@ -75,7 +76,11 @@ export const DEFAULT_UI_TOKENS: UiTokensDocument = {
 export async function ensureUiTokensDocument(): Promise<UiTokensDocument> {
   const content = await ensureWorkspaceDocument(UI_TOKENS_PATH, serializeTokensDocument(DEFAULT_UI_TOKENS));
   await ensureWorkspaceDocument(UI_TOKENS_GUIDE_PATH, buildTokensGuide());
-  return parseTokensDocument(content);
+  const parsed = parseTokensDocument(content);
+  if (!parsed.ok) {
+    await repairInvalidUiJsonDocument(UI_TOKENS_PATH, `${UI_TOKENS_PATH}.invalid.bak`, content, serializeTokensDocument(DEFAULT_UI_TOKENS));
+  }
+  return parsed.document;
 }
 
 export function subscribeUiTokens(listener: (document: UiTokensDocument) => void): () => void {
@@ -94,11 +99,18 @@ export function applyThemeTokens(theme: UiTheme, tokens: UiTokenMap): void {
   }
 }
 
-function parseTokensDocument(content: string): UiTokensDocument {
+function parseTokensDocument(content: string): { document: UiTokensDocument; ok: boolean } {
   try {
-    return normalizeTokensDocument(JSON.parse(content) as unknown, DEFAULT_UI_TOKENS);
-  } catch {
-    return structuredClone(DEFAULT_UI_TOKENS);
+    return {
+      document: normalizeTokensDocument(JSON.parse(content) as unknown, DEFAULT_UI_TOKENS),
+      ok: true,
+    };
+  } catch (error) {
+    console.warn("[webui] ui.tokens:parse-failed", error, content);
+    return {
+      document: structuredClone(DEFAULT_UI_TOKENS),
+      ok: false,
+    };
   }
 }
 
@@ -117,7 +129,7 @@ function buildTokensGuide(): string {
     "```json",
     "{",
     '  "themes": {',
-    '    "dark": { "accent": "#6f8cff" },',
+    '    "dark": { "accent": "#b89d6a" },',
     '    "light": { "accent": "#1d7f63" }',
     "  }",
     "}",
@@ -130,4 +142,22 @@ function buildTokensGuide(): string {
 
 function camelToKebab(value: string): string {
   return value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+async function repairInvalidUiJsonDocument(
+  path: string,
+  backupPath: string,
+  invalidContent: string,
+  repairedContent: string,
+): Promise<void> {
+  const workspace = await loadStoredWorkspaceSnapshot();
+  workspace.files = upsertWorkspaceFile(workspace.files, {
+    path: backupPath,
+    content: invalidContent,
+  });
+  workspace.files = upsertWorkspaceFile(workspace.files, {
+    path,
+    content: repairedContent,
+  });
+  await saveStoredWorkspaceSnapshot(workspace);
 }
