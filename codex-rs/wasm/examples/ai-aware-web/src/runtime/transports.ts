@@ -466,7 +466,7 @@ function normalizeToolSearchOutputToolsForXrouter(tools: unknown): JsonValue[] {
             if (typeof childRecord.name !== "string") {
               return [];
             }
-            const qualifiedName = `${namespace}${childRecord.name}`;
+            const qualifiedName = qualifyDiscoveredToolName(namespace, childRecord.name);
             return [
               {
                 ...childRecord,
@@ -480,6 +480,16 @@ function normalizeToolSearchOutputToolsForXrouter(tools: unknown): JsonValue[] {
 
     return [record as JsonValue];
   });
+}
+
+function qualifyDiscoveredToolName(namespace: string, toolName: string): string {
+  if (namespace === "browser") {
+    return toolName.startsWith("browser__") ? toolName : `browser__${toolName}`;
+  }
+  if (namespace.startsWith("mcp__")) {
+    return toolName.startsWith(namespace) ? toolName : `${namespace}${toolName}`;
+  }
+  return `${namespace}${toolName}`;
 }
 
 function normalizeTransportToolForXrouter(tool: JsonValue): JsonValue | null {

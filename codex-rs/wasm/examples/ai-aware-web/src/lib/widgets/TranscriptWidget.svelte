@@ -14,6 +14,9 @@
   let scrollContainer: HTMLDivElement | null = null;
   let showScrollToBottom = false;
   let lastAnchoredUserEntry = "";
+  let shouldFollowTranscript = true;
+  let previousTranscriptSignature = "";
+  let previousLiveStreamText = "";
 
   function updateScrollState(): void {
     if (!scrollContainer) {
@@ -23,18 +26,19 @@
 
     const distanceToBottom =
       scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+    shouldFollowTranscript = distanceToBottom <= BOTTOM_THRESHOLD;
     showScrollToBottom =
       scrollContainer.scrollHeight > scrollContainer.clientHeight &&
       distanceToBottom > BOTTOM_THRESHOLD;
   }
 
-  function scrollTranscriptToBottom(): void {
+  function scrollTranscriptToBottom(behavior: ScrollBehavior = "auto"): void {
     if (!scrollContainer) {
       return;
     }
     scrollContainer.scrollTo({
       top: scrollContainer.scrollHeight,
-      behavior: "smooth",
+      behavior,
     });
   }
 
@@ -74,10 +78,18 @@
     const lastEntry = transcript[transcript.length - 1];
     const nextUserAnchor =
       lastEntry?.role === "user" ? `${transcript.length - 1}:${lastEntry.text}` : "";
+    const transcriptSignature = `${transcript.length}:${lastEntry?.role ?? ""}:${lastEntry?.text ?? ""}`;
+    const transcriptChanged = transcriptSignature !== previousTranscriptSignature;
+    const liveStreamChanged = liveStreamText !== previousLiveStreamText;
     if (nextUserAnchor.length > 0 && nextUserAnchor !== lastAnchoredUserEntry) {
       lastAnchoredUserEntry = nextUserAnchor;
+      shouldFollowTranscript = true;
       scrollTranscriptToEntryTop(transcript.length - 1);
+    } else if ((transcriptChanged || liveStreamChanged) && shouldFollowTranscript) {
+      scrollTranscriptToBottom();
     }
+    previousTranscriptSignature = transcriptSignature;
+    previousLiveStreamText = liveStreamText;
     updateScrollState();
   });
 </script>
@@ -92,7 +104,7 @@
       type="button"
       class="transcript-scroll-to-bottom"
       aria-label="Scroll transcript to bottom"
-      on:click={scrollTranscriptToBottom}
+      on:click={() => scrollTranscriptToBottom("smooth")}
     >
       <svg aria-hidden="true" viewBox="0 0 20 20" class="transcript-scroll-icon">
         <path

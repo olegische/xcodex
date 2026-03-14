@@ -25,7 +25,7 @@ export type RemoteMcpToolSpec = {
 export type RemoteMcpServerState = {
   serverName: string;
   serverUrl: string;
-  authStatus: "connected" | "login_required" | "authorizing" | "error";
+  authStatus: "connected" | "login_required" | "authorizing" | "error" | "unsupported";
   toolCount: number;
   tools: RemoteMcpToolSpec[];
   lastError: string | null;
@@ -76,6 +76,7 @@ type RemoteMcpStoredServer = {
   pendingLogin: OAuthPendingLogin | null;
   tools: RemoteMcpToolSpec[];
   lastError: string | null;
+  browserSupported: boolean;
 };
 
 export interface RemoteMcpStateStore {
@@ -187,9 +188,18 @@ export class RemoteMcpController {
     redirectUri: string;
   }): Promise<RemoteMcpLoginStart> {
     let state = await this.loadState(params.serverName);
-    state = await this.ensureOAuthMetadata(state);
-    ensurePkceS256Supported(state);
-    state = await this.ensureClientRegistration(state, params.redirectUri);
+    try {
+      state = await this.ensureOAuthMetadata(state);
+      ensurePkceS256Supported(state);
+      state = await this.ensureClientRegistration(state, params.redirectUri);
+    } catch (error) {
+      if (isBrowserUnsupportedOAuthError(error)) {
+        state.browserSupported = false;
+        state.lastError = "Requires host-mediated OAuth and cannot be connected from browser-only mode.";
+        await this.stateStore.save(state);
+      }
+      throw error;
+    }
 
     if (state.authorizationEndpoint === null || state.clientId === null) {
       throw new Error(`MCP server ${params.serverName} does not expose a usable OAuth configuration`);
@@ -215,6 +225,7 @@ export class RemoteMcpController {
       codeVerifier,
       redirectUri: params.redirectUri,
     };
+    state.browserSupported = true;
     state.lastError = null;
     await this.stateStore.save(state);
 
@@ -273,7 +284,7 @@ export class RemoteMcpController {
     state.sessionId = null;
     state.protocolVersion = null;
     state.tools = [];
-    state.lastError = null;
+    state.lastError = state.browserSupported ? null : state.lastError;
     await this.stateStore.save(state);
   }
 
@@ -445,9 +456,11 @@ export class RemoteMcpController {
     const stored = await this.stateStore.load(serverName);
     if (stored !== null) {
       const normalizedTools = stored.tools.map((tool) => normalizeStoredToolSpec(stored.serverName, tool));
+      const browserSupported = stored.browserSupported ?? true;
       if (config === undefined) {
         return {
           ...stored,
+          browserSupported,
           tools: normalizedTools,
         };
       }
@@ -462,6 +475,7 @@ export class RemoteMcpController {
         clientUri: config.clientUri ?? stored.clientUri,
         clientId: config.oauthClientId ?? stored.clientId,
         clientMetadataUrl: config.oauthClientMetadataUrl ?? stored.clientMetadataUrl,
+        browserSupported,
         tools: normalizedTools,
       };
     }
@@ -490,6 +504,7 @@ export class RemoteMcpController {
       pendingLogin: null,
       tools: [],
       lastError: null,
+      browserSupported: true,
     };
     await this.stateStore.save(initialState);
     return initialState;
@@ -501,6 +516,8 @@ export class RemoteMcpController {
         ? "authorizing"
         : state.token !== null
           ? "connected"
+          : !state.browserSupported
+            ? "unsupported"
           : state.lastError !== null
             ? "error"
             : "login_required";
@@ -1096,6 +1113,19 @@ function ensurePkceS256Supported(state: RemoteMcpStoredServer): void {
 
 function resourceIndicator(state: RemoteMcpStoredServer): string {
   return state.oauthResource ?? state.serverUrl;
+}
+
+function isBrowserUnsupportedOAuthError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("networkerror when attempting to fetch resource") ||
+    message.includes("requires a pre-registered client_id") ||
+    message.includes("does not expose a client registration endpoint")
+  );
 }
 
 function dedupeStrings(values: string[]): string[] {

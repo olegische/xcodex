@@ -103,10 +103,17 @@ function createRemoteMcpStore() {
         await connectRemoteMcpServer(serverName);
         await syncServers();
       } catch (error) {
+        await syncServers();
+        const server = get({ subscribe }).servers.find((candidate) => candidate.serverName === serverName);
         update((state) => ({
           ...state,
           actionServer: null,
-          error: error instanceof Error ? error.message : `Failed to connect ${serverName}`,
+          error:
+            server?.authStatus === "unsupported"
+              ? null
+              : error instanceof Error
+                ? error.message
+                : `Failed to connect ${serverName}`,
         }));
       }
     },

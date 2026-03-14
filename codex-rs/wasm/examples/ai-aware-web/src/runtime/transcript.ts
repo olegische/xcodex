@@ -78,6 +78,17 @@ export function snapshotToTranscript(snapshot: SessionSnapshot): TranscriptEntry
       }
       continue;
     }
+    if (item.type === "toolOutputItem" && "item" in item && item.item !== null && typeof item.item === "object") {
+      const toolOutputText = toolOutputTextFromResponseItem(item.item as Record<string, unknown>);
+      if (toolOutputText !== null) {
+        if (pendingAssistant.length > 0) {
+          appendTranscriptEntry(transcript, { role: "assistant", text: pendingAssistant });
+          pendingAssistant = "";
+        }
+        appendTranscriptEntry(transcript, { role: "tool", text: toolOutputText });
+      }
+      continue;
+    }
     if (item.type === "modelCompleted" && pendingAssistant.length > 0) {
       appendTranscriptEntry(transcript, { role: "assistant", text: pendingAssistant });
       pendingAssistant = "";
@@ -128,6 +139,20 @@ function toolTextFromResponseItem(item: Record<string, unknown>): string | null 
     return null;
   }
   return `Using ${item.name}`;
+}
+
+function toolOutputTextFromResponseItem(item: Record<string, unknown>): string | null {
+  if (item.type !== "function_call_output") {
+    return null;
+  }
+  if (typeof item.output === "string") {
+    return item.output;
+  }
+  try {
+    return JSON.stringify(item.output ?? null, null, 2);
+  } catch {
+    return String(item.output ?? "");
+  }
 }
 
 export function buildOutputFromDispatch(dispatch: RuntimeDispatch): string {

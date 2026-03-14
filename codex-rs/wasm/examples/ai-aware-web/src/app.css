@@ -379,7 +379,6 @@ button {
 
 .widget-surface {
   min-width: 0;
-  align-self: start;
 }
 
 .widget-panel {
@@ -888,8 +887,8 @@ button {
 }
 
 .message-row {
-  display: grid;
-  justify-content: start;
+  display: flex;
+  justify-content: flex-start;
   width: 100%;
   min-width: 0;
 }
@@ -1335,6 +1334,11 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+}
+
+.mcp-server-list {
+  display: grid;
+  gap: 12px;
 }
 
 .mcp-tools-disclosure {

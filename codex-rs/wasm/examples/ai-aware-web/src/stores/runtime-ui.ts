@@ -99,6 +99,7 @@ function createRuntimeUiStore() {
         ...state,
         running: true,
         stopRequested: false,
+        transcriptEntries: [],
         liveStreamText: "",
       }));
     },
@@ -107,6 +108,7 @@ function createRuntimeUiStore() {
         ...state,
         running: false,
         activeRequestId: null,
+        transcriptEntries: [],
         liveStreamText: "",
         stopRequested: false,
         turnCounter: nextTurnCounter,

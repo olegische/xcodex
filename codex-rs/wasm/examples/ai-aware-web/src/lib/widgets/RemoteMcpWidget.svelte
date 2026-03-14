@@ -100,7 +100,7 @@
     </article>
   {/if}
 
-  <div class="card-grid">
+  <div class="mcp-server-list">
     {#if servers.length === 0}
       <article class="signal-card">
         <div class="card-topline">
@@ -143,16 +143,16 @@
           <div class="mcp-inline-error">{server.lastError}</div>
         {/if}
         <div class="mcp-server-actions">
-          {#if server.status !== "connected"}
-            <button class="button primary mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.connect(server.id)}>
-              {isBusy(server.id) ? "Authorizing..." : "Connect"}
-            </button>
-          {:else}
+          {#if server.status === "connected"}
             <button class="button secondary mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.refreshServer(server.id)}>
               {isBusy(server.id) ? "Refreshing..." : "Refresh tools"}
             </button>
             <button class="button ghost mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.disconnect(server.id)}>
               Disconnect
+            </button>
+          {:else if server.status !== "unsupported"}
+            <button class="button primary mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.connect(server.id)}>
+              {isBusy(server.id) ? "Authorizing..." : "Connect"}
             </button>
           {/if}
           <button class="button ghost mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.removeServer(server.id)}>
