@@ -34,7 +34,6 @@ use crate::models_manager::collaboration_mode_presets::CollaborationModesConfig;
 use crate::models_manager::manager::ModelsManager;
 use crate::models_manager::manager::RefreshStrategy;
 use crate::parse_command::parse_command;
-use crate::parse_turn_item;
 use crate::realtime_conversation::RealtimeConversationManager;
 use crate::realtime_conversation::handle_audio as handle_realtime_conversation_audio;
 use crate::realtime_conversation::handle_close as handle_realtime_conversation_close;
@@ -206,13 +205,11 @@ use review::spawn_review_thread;
 pub(crate) use run_turn::collect_explicit_app_ids_from_skill_items;
 pub(crate) use run_turn::filter_codex_apps_mcp_tools;
 pub(crate) use run_turn::filter_connectors_for_input;
-use run_turn::run_turn;
 use sampling::SamplingRequestResult;
 use sampling::built_tools;
-pub(super) use sampling::get_last_assistant_message_from_turn;
 use sampling::run_sampling_request;
 pub(crate) use session::Session;
-use session::SessionConfiguration;
+pub(crate) use session::SessionConfiguration;
 use session::SessionSettingsUpdate;
 pub(crate) use session::TurnContext;
 use session::TurnSkillsContext;
@@ -227,7 +224,7 @@ pub(crate) use submission_handlers as handlers;
 use types::CodexSpawnArgs;
 use types::CodexSpawnOk;
 use types::INITIAL_SUBMIT_ID;
-use types::PreviousTurnSettings;
+pub(crate) use types::PreviousTurnSettings;
 use types::SUBMISSION_CHANNEL_CAPACITY;
 use types::SessionLoopTermination;
 pub use types::SteerInputError;
@@ -586,7 +583,7 @@ impl Session {
             dynamic_tools: session_configuration.dynamic_tools.clone(),
             turn_metadata_state,
             turn_skills: TurnSkillsContext::new(skills_outcome),
-            turn_timing_state: Arc::new(TurnTimingState::default()),
+            turn_timing_state: Arc::new(TurnTimingState),
         }
     }
 
@@ -612,6 +609,11 @@ impl Session {
             session_configuration.collaboration_mode.model(),
             session_configuration.provider
         );
+        if config.features.enabled(Feature::ShellZshFork) && config.zsh_path.is_none() {
+            return Err(anyhow::anyhow!(
+                "zsh fork feature enabled, but `zsh_path` is not configured; set `zsh_path` in config.toml"
+            ));
+        }
         if !session_configuration.cwd.is_absolute() {
             return Err(anyhow::anyhow!(
                 "cwd is not absolute: {:?}",
@@ -690,7 +692,9 @@ impl Session {
             ) {
                 (0, 0)
             } else {
-                crate::message_history::history_metadata(&config).await
+                crate::message_history::history_metadata(&config)
+                    .await
+                    .unwrap_or((0, 0))
             }
         };
         let auth_manager_clone = Arc::clone(&auth_manager);
@@ -729,7 +733,7 @@ impl Session {
                 id: INITIAL_SUBMIT_ID.to_owned(),
                 msg: EventMsg::DeprecationNotice(DeprecationNoticeEvent {
                     summary: usage.summary.clone(),
-                    details: usage.details.clone(),
+                    details: Some(usage.details.clone()),
                 }),
             });
         }
@@ -765,7 +769,9 @@ impl Session {
         }
 
         let auth = auth.as_ref();
-        let auth_mode = auth.map(CodexAuth::auth_mode).map(TelemetryAuthMode::from);
+        let auth_mode = auth.map(CodexAuth::auth_mode).map(|mode| match mode {
+            crate::auth::AuthMode::ApiKey => TelemetryAuthMode::ApiKey,
+        });
         let account_id = auth.and_then(CodexAuth::get_account_id);
         let account_email = auth.and_then(CodexAuth::get_account_email);
         let originator = crate::default_client::originator().value;
@@ -874,7 +880,7 @@ impl Session {
         session_configuration.thread_name = thread_name.clone();
         let state = SessionState::new(session_configuration.clone());
         let managed_network_requirements_enabled = config.managed_network_requirements_enabled();
-        let network_approval = Arc::new(NetworkApprovalService::default());
+        let network_approval = Arc::new(NetworkApprovalService);
         // The managed proxy can call back into core for allowlist-miss decisions.
         let network_policy_decider_session = if managed_network_requirements_enabled {
             config
@@ -886,11 +892,9 @@ impl Session {
             None
         };
         let blocked_request_observer = if managed_network_requirements_enabled {
-            config
-                .permissions
-                .network
-                .as_ref()
-                .map(|_| build_blocked_request_observer(Arc::clone(&network_approval)))
+            config.permissions.network.as_ref().map(|_| {
+                build_blocked_request_observer(Arc::clone(&network_approval), Arc::new(()))
+            })
         } else {
             None
         };
@@ -925,7 +929,7 @@ impl Session {
         let hooks = Hooks::new(HooksConfig {
             legacy_notify_argv: config.notify.clone(),
             feature_enabled: config.features.enabled(Feature::CodexHooks),
-            config_layer_stack: Some(config.config_layer_stack.clone()),
+            config_layer_stack: None,
             shell_program: Some(hook_shell_program),
             shell_args: hook_shell_argv,
         });
@@ -968,7 +972,7 @@ impl Session {
             auth_manager: Arc::clone(&auth_manager),
             session_telemetry,
             models_manager: Arc::clone(&models_manager),
-            tool_approvals: Mutex::new(ApprovalStore::default()),
+            tool_approvals: Mutex::new(ApprovalStore),
             execve_session_approvals: RwLock::new(HashMap::new()),
             skills_manager,
             plugins_manager: Arc::clone(&plugins_manager),
@@ -1140,12 +1144,6 @@ impl Session {
 use crate::memories::prompts::build_memory_tool_developer_instructions;
 #[cfg(test)]
 pub(crate) use tests::make_session_and_context;
-#[cfg(test)]
-pub(crate) use tests::make_session_and_context_with_dynamic_tools_and_rx;
-#[cfg(test)]
-pub(crate) use tests::make_session_and_context_with_rx;
-#[cfg(test)]
-pub(crate) use tests::make_session_configuration_for_tests;
 
 #[cfg(test)]
 #[path = "codex_tests.rs"]

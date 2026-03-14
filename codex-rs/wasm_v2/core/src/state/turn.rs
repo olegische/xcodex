@@ -1,32 +1,225 @@
-use codex_protocol::models::ResponseInputItem;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::sync::Notify;
+use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::AbortOnDropHandle;
 
-/// Turn-scoped state for the mirrored WASM runtime.
-#[derive(Default)]
-pub struct ActiveTurn {
-    pending_input: Vec<ResponseInputItem>,
+use codex_protocol::dynamic_tools::DynamicToolResponse;
+use codex_protocol::models::PermissionProfile;
+use codex_protocol::models::ResponseInputItem;
+use codex_protocol::request_permissions::RequestPermissionsResponse;
+use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_rmcp_client::ElicitationResponse;
+use rmcp::model::RequestId;
+
+use crate::codex::TurnContext;
+use crate::protocol::ReviewDecision;
+use crate::protocol::TokenUsage;
+use crate::tasks::SessionTask;
+
+pub(crate) struct ActiveTurn {
+    pub(crate) tasks: BTreeMap<String, RunningTask>,
+    pub(crate) turn_state: Arc<Mutex<TurnState>>,
+}
+
+impl Default for ActiveTurn {
+    fn default() -> Self {
+        Self {
+            tasks: BTreeMap::new(),
+            turn_state: Arc::new(Mutex::new(TurnState::default())),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskKind {
     Regular,
+    Review,
+    Compact,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RunningTask {
-    pub sub_id: String,
-    pub kind: TaskKind,
+pub(crate) struct RunningTask {
+    pub(crate) done: Arc<Notify>,
+    pub(crate) kind: TaskKind,
+    pub(crate) task: Arc<dyn SessionTask>,
+    pub(crate) cancellation_token: CancellationToken,
+    pub(crate) handle: Arc<AbortOnDropHandle<()>>,
+    pub(crate) turn_context: Arc<TurnContext>,
+    pub(crate) _timer: Option<codex_otel::Timer>,
 }
 
 impl ActiveTurn {
-    pub fn push_pending_input(&mut self, input: ResponseInputItem) {
+    pub(crate) fn add_task(&mut self, task: RunningTask) {
+        let sub_id = task.turn_context.sub_id.clone();
+        self.tasks.insert(sub_id, task);
+    }
+
+    pub(crate) fn remove_task(&mut self, sub_id: &str) -> bool {
+        self.tasks.remove(sub_id);
+        self.tasks.is_empty()
+    }
+
+    pub(crate) fn drain_tasks(&mut self) -> Vec<RunningTask> {
+        std::mem::take(&mut self.tasks).into_values().collect()
+    }
+
+    pub(crate) async fn clear_pending(&self) {
+        let mut state = self.turn_state.lock().await;
+        state.clear_pending();
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct TurnState {
+    pending_approvals: HashMap<String, oneshot::Sender<ReviewDecision>>,
+    pending_request_permissions: HashMap<String, oneshot::Sender<RequestPermissionsResponse>>,
+    pending_user_input: HashMap<String, oneshot::Sender<RequestUserInputResponse>>,
+    pending_elicitations: HashMap<(String, RequestId), oneshot::Sender<ElicitationResponse>>,
+    pending_dynamic_tools: HashMap<String, oneshot::Sender<DynamicToolResponse>>,
+    pending_input: Vec<ResponseInputItem>,
+    granted_permissions: Option<PermissionProfile>,
+    pub(crate) tool_calls: u64,
+    pub(crate) token_usage_at_turn_start: TokenUsage,
+}
+
+impl TurnState {
+    pub(crate) fn insert_pending_approval(
+        &mut self,
+        key: String,
+        tx: oneshot::Sender<ReviewDecision>,
+    ) -> Option<oneshot::Sender<ReviewDecision>> {
+        self.pending_approvals.insert(key, tx)
+    }
+
+    pub(crate) fn remove_pending_approval(
+        &mut self,
+        key: &str,
+    ) -> Option<oneshot::Sender<ReviewDecision>> {
+        self.pending_approvals.remove(key)
+    }
+
+    pub(crate) fn clear_pending(&mut self) {
+        self.pending_approvals.clear();
+        self.pending_request_permissions.clear();
+        self.pending_user_input.clear();
+        self.pending_elicitations.clear();
+        self.pending_dynamic_tools.clear();
+        self.pending_input.clear();
+    }
+
+    pub(crate) fn insert_pending_request_permissions(
+        &mut self,
+        key: String,
+        tx: oneshot::Sender<RequestPermissionsResponse>,
+    ) -> Option<oneshot::Sender<RequestPermissionsResponse>> {
+        self.pending_request_permissions.insert(key, tx)
+    }
+
+    pub(crate) fn remove_pending_request_permissions(
+        &mut self,
+        key: &str,
+    ) -> Option<oneshot::Sender<RequestPermissionsResponse>> {
+        self.pending_request_permissions.remove(key)
+    }
+
+    pub(crate) fn insert_pending_user_input(
+        &mut self,
+        key: String,
+        tx: oneshot::Sender<RequestUserInputResponse>,
+    ) -> Option<oneshot::Sender<RequestUserInputResponse>> {
+        self.pending_user_input.insert(key, tx)
+    }
+
+    pub(crate) fn remove_pending_user_input(
+        &mut self,
+        key: &str,
+    ) -> Option<oneshot::Sender<RequestUserInputResponse>> {
+        self.pending_user_input.remove(key)
+    }
+
+    pub(crate) fn insert_pending_elicitation(
+        &mut self,
+        server_name: String,
+        request_id: RequestId,
+        tx: oneshot::Sender<ElicitationResponse>,
+    ) -> Option<oneshot::Sender<ElicitationResponse>> {
+        self.pending_elicitations
+            .insert((server_name, request_id), tx)
+    }
+
+    pub(crate) fn remove_pending_elicitation(
+        &mut self,
+        server_name: &str,
+        request_id: &RequestId,
+    ) -> Option<oneshot::Sender<ElicitationResponse>> {
+        self.pending_elicitations
+            .remove(&(server_name.to_string(), request_id.clone()))
+    }
+
+    pub(crate) fn insert_pending_dynamic_tool(
+        &mut self,
+        key: String,
+        tx: oneshot::Sender<DynamicToolResponse>,
+    ) -> Option<oneshot::Sender<DynamicToolResponse>> {
+        self.pending_dynamic_tools.insert(key, tx)
+    }
+
+    pub(crate) fn remove_pending_dynamic_tool(
+        &mut self,
+        key: &str,
+    ) -> Option<oneshot::Sender<DynamicToolResponse>> {
+        self.pending_dynamic_tools.remove(key)
+    }
+
+    pub(crate) fn push_pending_input(&mut self, input: ResponseInputItem) {
         self.pending_input.push(input);
     }
 
-    pub fn take_pending_input(&mut self) -> Vec<ResponseInputItem> {
-        std::mem::take(&mut self.pending_input)
+    pub(crate) fn take_pending_input(&mut self) -> Vec<ResponseInputItem> {
+        if self.pending_input.is_empty() {
+            Vec::with_capacity(0)
+        } else {
+            let mut ret = Vec::new();
+            std::mem::swap(&mut ret, &mut self.pending_input);
+            ret
+        }
     }
 
-    pub fn has_pending_input(&self) -> bool {
+    pub(crate) fn has_pending_input(&self) -> bool {
         !self.pending_input.is_empty()
+    }
+
+    pub(crate) fn record_granted_permissions(&mut self, permissions: PermissionProfile) {
+        self.granted_permissions =
+            merge_permission_profiles(self.granted_permissions.as_ref(), Some(&permissions));
+    }
+
+    pub(crate) fn granted_permissions(&self) -> Option<PermissionProfile> {
+        self.granted_permissions.clone()
+    }
+}
+
+fn merge_permission_profiles(
+    base: Option<&PermissionProfile>,
+    permissions: Option<&PermissionProfile>,
+) -> Option<PermissionProfile> {
+    match (base, permissions) {
+        (Some(base), Some(permissions)) => Some(PermissionProfile {
+            network: permissions.network.clone().or_else(|| base.network.clone()),
+            file_system: permissions
+                .file_system
+                .clone()
+                .or_else(|| base.file_system.clone()),
+            macos: permissions.macos.clone().or_else(|| base.macos.clone()),
+        })
+        .filter(|permissions| !permissions.is_empty()),
+        (Some(base), None) => Some(base.clone()).filter(|permissions| !permissions.is_empty()),
+        (None, Some(permissions)) => {
+            Some(permissions.clone()).filter(|permissions| !permissions.is_empty())
+        }
+        (None, None) => None,
     }
 }

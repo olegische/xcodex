@@ -250,7 +250,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
             toml::Value::Table(Default::default()),
         )],
         ConfigRequirements::default(),
-        ConfigRequirementsToml::default(),
+        ConfigRequirementsToml,
     )
     .expect("config layer stack");
 
@@ -301,7 +301,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         session_source: SessionSource::SubAgent(SubAgentSource::Other(
             GUARDIAN_SUBAGENT_NAME.to_string(),
         )),
-        agent_control: AgentControl::default(),
+        agent_control: AgentControl,
         dynamic_tools: Vec::new(),
         persist_extended_history: false,
         metrics_service_name: None,

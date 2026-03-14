@@ -304,22 +304,17 @@ pub async fn get_history_entry_request(
     let sess_clone = Arc::clone(sess);
 
     tokio::spawn(async move {
-        let entry_opt = tokio::task::spawn_blocking(move || {
-            crate::message_history::lookup(log_id, offset, &config)
-        })
-        .await
-        .unwrap_or(None);
+        let entries = crate::message_history::lookup(&log_id.to_string(), offset as i64, &config)
+            .await
+            .unwrap_or_default();
+        let entry_opt = entries.into_iter().next();
 
         let event = Event {
             id: sub_id,
             msg: EventMsg::GetHistoryEntryResponse(crate::protocol::GetHistoryEntryResponseEvent {
                 offset,
                 log_id,
-                entry: entry_opt.map(|e| codex_protocol::message_history::HistoryEntry {
-                    conversation_id: e.session_id,
-                    ts: e.ts,
-                    text: e.text,
-                }),
+                entry: entry_opt,
             }),
         };
 
@@ -505,7 +500,7 @@ pub async fn compact(sess: &Arc<Session>, sub_id: String) {
 pub async fn drop_memories(sess: &Arc<Session>, config: &Arc<Config>, sub_id: String) {
     let mut errors = Vec::new();
 
-    if let Some(state_db) = sess.services.state_db.as_deref() {
+    if let Some(state_db) = sess.services.state_db.as_ref() {
         if let Err(err) = state_db.clear_memory_data().await {
             errors.push(format!("failed clearing memory rows from state db: {err}"));
         }

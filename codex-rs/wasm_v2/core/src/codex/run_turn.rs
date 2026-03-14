@@ -97,7 +97,7 @@ pub(crate) async fn run_turn(
         resolve_skill_dependencies_for_turn(&sess, &turn_context, &env_var_dependencies).await;
     }
 
-    maybe_prompt_and_install_mcp_dependencies(
+    let _ = maybe_prompt_and_install_mcp_dependencies(
         sess.as_ref(),
         turn_context.as_ref(),
         &cancellation_token,
@@ -270,7 +270,9 @@ pub(crate) async fn run_turn(
 
         if !pending_response_items.is_empty() {
             for response_item in pending_response_items {
-                if let Some(TurnItem::UserMessage(user_message)) = parse_turn_item(&response_item) {
+                if let Some(TurnItem::UserMessage(user_message)) =
+                    crate::parse_turn_item::parse_turn_item(&response_item)
+                {
                     // todo(aibrahim): move pending input to be UserInput only to keep TextElements. context: https://github.com/openai/codex/pull/10656#discussion_r2765522480
                     sess.record_user_prompt_and_emit_turn_item(
                         turn_context.as_ref(),
@@ -300,7 +302,7 @@ pub(crate) async fn run_turn(
 
         let sampling_request_input_messages = sampling_request_input
             .iter()
-            .filter_map(|item| match parse_turn_item(item) {
+            .filter_map(|item| match crate::parse_turn_item::parse_turn_item(item) {
                 Some(TurnItem::UserMessage(user_message)) => Some(user_message),
                 _ => None,
             })

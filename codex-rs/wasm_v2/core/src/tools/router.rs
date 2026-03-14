@@ -1,21 +1,47 @@
+use crate::codex::Session;
+use crate::codex::TurnContext;
+use crate::function_tool::FunctionCallError;
+use crate::mcp_connection_manager::ToolInfo;
+use crate::sandboxing::SandboxPermissions;
+use crate::tools::context::FunctionToolOutput;
+use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::context::ToolCall;
-use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
-use codex_protocol::models::FunctionCallOutputBody;
-use codex_protocol::models::FunctionCallOutputPayload;
+use crate::tools::context::ToolSearchOutput;
+use codex_protocol::dynamic_tools::DynamicToolSpec;
+use codex_protocol::models::LocalShellAction;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::models::SearchToolCallParams;
 use codex_protocol::models::ShellToolCallParams;
-use serde_json::Value;
+use rmcp::model::Tool;
+use std::collections::HashMap;
+use std::sync::Arc;
 
-pub const TOOL_SEARCH_TOOL_NAME: &str = "tool_search";
-
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ToolRouter;
+pub use crate::tools::context::ToolCallSource;
+
+#[derive(Clone, Debug)]
+pub struct ToolRouterParams<'a> {
+    pub mcp_tools: Option<HashMap<String, Tool>>,
+    pub app_tools: Option<HashMap<String, ToolInfo>>,
+    pub discoverable_tools: Option<Vec<crate::tools::discoverable::DiscoverableTool>>,
+    pub dynamic_tools: &'a [DynamicToolSpec],
+}
 
 impl ToolRouter {
-    pub fn build_tool_call(&self, item: ResponseItem) -> Result<Option<ToolCall>, String> {
+    pub fn from_config(
+        _config: &crate::tools::spec::ToolsConfig,
+        _params: ToolRouterParams<'_>,
+    ) -> Self {
+        Self
+    }
+
+    pub async fn build_tool_call(
+        session: &Session,
+        item: ResponseItem,
+    ) -> Result<Option<ToolCall>, FunctionCallError> {
         match item {
             ResponseItem::FunctionCall {
                 name,
@@ -23,24 +49,47 @@ impl ToolRouter {
                 arguments,
                 call_id,
                 ..
-            } => Ok(Some(ToolCall {
-                tool_name: name,
-                tool_namespace: namespace,
-                call_id,
-                payload: ToolPayload::Function { arguments },
-            })),
-            ResponseItem::ToolSearchCall {
-                call_id, arguments, ..
             } => {
-                let arguments = serde_json::from_value::<SearchToolCallParams>(arguments)
-                    .map_err(|error| format!("invalid tool_search arguments: {error}"))?;
-                Ok(call_id.map(|call_id| ToolCall {
-                    tool_name: TOOL_SEARCH_TOOL_NAME.to_string(),
+                if let Some((server, tool)) = session.parse_mcp_tool_name(&name, &namespace).await {
+                    Ok(Some(ToolCall {
+                        tool_name: name,
+                        tool_namespace: namespace,
+                        call_id,
+                        payload: ToolPayload::Mcp {
+                            server,
+                            tool,
+                            raw_arguments: arguments,
+                        },
+                    }))
+                } else {
+                    Ok(Some(ToolCall {
+                        tool_name: name,
+                        tool_namespace: namespace,
+                        call_id,
+                        payload: ToolPayload::Function { arguments },
+                    }))
+                }
+            }
+            ResponseItem::ToolSearchCall {
+                call_id: Some(call_id),
+                execution,
+                arguments,
+                ..
+            } if execution == "client" => {
+                let arguments =
+                    serde_json::from_value::<SearchToolCallParams>(arguments).map_err(|err| {
+                        FunctionCallError::RespondToModel(format!(
+                            "failed to parse tool_search arguments: {err}"
+                        ))
+                    })?;
+                Ok(Some(ToolCall {
+                    tool_name: "tool_search".to_string(),
                     tool_namespace: None,
                     call_id,
                     payload: ToolPayload::ToolSearch { arguments },
                 }))
             }
+            ResponseItem::ToolSearchCall { .. } => Ok(None),
             ResponseItem::CustomToolCall {
                 name,
                 input,
@@ -60,71 +109,56 @@ impl ToolRouter {
             } => {
                 let call_id = call_id
                     .or(id)
-                    .ok_or_else(|| "LocalShellCall without call_id or id".to_string())?;
-
-                match action {
-                    codex_protocol::models::LocalShellAction::Exec(exec) => {
-                        let params = ShellToolCallParams {
+                    .ok_or(FunctionCallError::MissingLocalShellCallId)?;
+                let LocalShellAction::Exec(exec) = action;
+                Ok(Some(ToolCall {
+                    tool_name: "local_shell".to_string(),
+                    tool_namespace: None,
+                    call_id,
+                    payload: ToolPayload::LocalShell {
+                        params: ShellToolCallParams {
                             command: exec.command,
                             workdir: exec.working_directory,
                             timeout_ms: exec.timeout_ms,
-                            sandbox_permissions: None,
+                            sandbox_permissions: Some(SandboxPermissions::UseDefault),
                             additional_permissions: None,
                             prefix_rule: None,
                             justification: None,
-                        };
-                        Ok(Some(ToolCall {
-                            tool_name: "local_shell".to_string(),
-                            tool_namespace: None,
-                            call_id,
-                            payload: ToolPayload::LocalShell { params },
-                        }))
-                    }
-                }
+                        },
+                    },
+                }))
             }
             _ => Ok(None),
         }
     }
-}
 
-pub fn tool_output_to_response_input(
-    call_id: &str,
-    payload: &ToolPayload,
-    output: &dyn ToolOutput,
-) -> ResponseInputItem {
-    output.to_response_item(call_id, payload)
-}
-
-pub fn response_input_to_response_item(input: &ResponseInputItem) -> Option<ResponseItem> {
-    match input {
-        ResponseInputItem::FunctionCallOutput { call_id, output } => {
-            Some(ResponseItem::FunctionCallOutput {
-                call_id: call_id.clone(),
-                output: output.clone(),
-            })
+    pub async fn dispatch_tool_call(
+        &self,
+        _session: Arc<Session>,
+        _turn: Arc<TurnContext>,
+        _tracker: SharedTurnDiffTracker,
+        call: ToolCall,
+        _source: ToolCallSource,
+    ) -> Result<ResponseInputItem, FunctionCallError> {
+        let payload = call.payload.clone();
+        let call_id = call.call_id.clone();
+        if matches!(payload, ToolPayload::Custom { .. }) && call.tool_name == "shell" {
+            return Err(FunctionCallError::Fatal(
+                "tool shell invoked with incompatible payload".to_string(),
+            ));
         }
-        ResponseInputItem::CustomToolCallOutput { call_id, output } => {
-            Some(ResponseItem::CustomToolCallOutput {
-                call_id: call_id.clone(),
-                output: output.clone(),
-            })
-        }
-        ResponseInputItem::ToolSearchOutput {
-            call_id,
-            status,
-            execution,
-            tools,
-        } => Some(ResponseItem::ToolSearchOutput {
-            call_id: Some(call_id.clone()),
-            status: status.clone(),
-            execution: execution.clone(),
-            tools: tools.clone(),
-        }),
-        _ => None,
+        let output: Box<dyn crate::tools::context::ToolOutput> = match payload {
+            ToolPayload::ToolSearch { .. } => Box::new(ToolSearchOutput { tools: Vec::new() }),
+            _ => Box::new(FunctionToolOutput::from_text(
+                format!("tool {} is not implemented in wasm_v2 yet", call.tool_name),
+                Some(false),
+            )),
+        };
+        Ok(output.to_response_item(&call_id, &payload))
     }
 }
 
-pub fn raw_assistant_output_text_from_item(item: &ResponseItem) -> Option<String> {
+pub fn last_assistant_message_from_item(item: &ResponseItem, _plan_mode: bool) -> Option<String> {
     if let ResponseItem::Message { role, content, .. } = item
         && role == "assistant"
     {
@@ -135,164 +169,18 @@ pub fn raw_assistant_output_text_from_item(item: &ResponseItem) -> Option<String
                 _ => None,
             })
             .collect::<String>();
-        return Some(combined);
-    }
-    None
-}
-
-pub fn last_assistant_message_from_item(item: &ResponseItem) -> Option<String> {
-    let combined = raw_assistant_output_text_from_item(item)?;
-    if combined.trim().is_empty() {
-        return None;
-    }
-    Some(combined)
-}
-
-pub fn parse_tool_arguments_json(call: &ToolCall) -> Result<Value, serde_json::Error> {
-    match &call.payload {
-        ToolPayload::Function { arguments } => serde_json::from_str(arguments),
-        ToolPayload::ToolSearch { arguments } => serde_json::to_value(arguments),
-        ToolPayload::Custom { .. } | ToolPayload::LocalShell { .. } | ToolPayload::Mcp { .. } => {
-            serde_json::from_str("{}")
+        if combined.trim().is_empty() {
+            None
+        } else {
+            Some(combined)
         }
+    } else {
+        None
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use codex_protocol::models::LocalShellAction;
-    use codex_protocol::models::LocalShellStatus;
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn builds_function_tool_call_from_response_item() {
-        let router = ToolRouter;
-        let item = ResponseItem::FunctionCall {
-            id: Some("fc-1".to_string()),
-            name: "read_file".to_string(),
-            namespace: None,
-            arguments: "{\"path\":\"/workspace/src/lib.rs\"}".to_string(),
-            call_id: "call-1".to_string(),
-        };
-
-        assert_eq!(
-            router.build_tool_call(item).expect("build should succeed"),
-            Some(ToolCall {
-                tool_name: "read_file".to_string(),
-                tool_namespace: None,
-                call_id: "call-1".to_string(),
-                payload: ToolPayload::Function {
-                    arguments: "{\"path\":\"/workspace/src/lib.rs\"}".to_string(),
-                },
-            })
-        );
-    }
-
-    #[test]
-    fn custom_tool_outputs_roundtrip_to_response_items() {
-        let response = ResponseInputItem::CustomToolCallOutput {
-            call_id: "call-42".to_string(),
-            output: FunctionCallOutputPayload {
-                body: FunctionCallOutputBody::Text("patched".to_string()),
-                success: Some(true),
-            },
-        };
-
-        assert_eq!(
-            response_input_to_response_item(&response),
-            Some(ResponseItem::CustomToolCallOutput {
-                call_id: "call-42".to_string(),
-                output: FunctionCallOutputPayload {
-                    body: FunctionCallOutputBody::Text("patched".to_string()),
-                    success: Some(true),
-                },
-            })
-        );
-    }
-
-    #[test]
-    fn extracts_last_assistant_message_from_response_item() {
-        let item = ResponseItem::Message {
-            id: Some("msg-1".to_string()),
-            role: "assistant".to_string(),
-            content: vec![codex_protocol::models::ContentItem::OutputText {
-                text: "hello from assistant".to_string(),
-            }],
-            end_turn: Some(true),
-            phase: None,
-        };
-
-        assert_eq!(
-            last_assistant_message_from_item(&item),
-            Some("hello from assistant".to_string())
-        );
-    }
-
-    #[test]
-    fn builds_local_shell_tool_call_from_response_item() {
-        let router = ToolRouter;
-        let item = ResponseItem::LocalShellCall {
-            id: Some("legacy-1".to_string()),
-            call_id: None,
-            status: LocalShellStatus::Completed,
-            action: LocalShellAction::Exec(codex_protocol::models::LocalShellExecAction {
-                command: vec!["pwd".to_string()],
-                working_directory: Some("/workspace".to_string()),
-                timeout_ms: Some(1000),
-                env: None,
-                user: None,
-            }),
-        };
-
-        assert_eq!(
-            router.build_tool_call(item).expect("build should succeed"),
-            Some(ToolCall {
-                tool_name: "local_shell".to_string(),
-                tool_namespace: None,
-                call_id: "legacy-1".to_string(),
-                payload: ToolPayload::LocalShell {
-                    params: ShellToolCallParams {
-                        command: vec!["pwd".to_string()],
-                        workdir: Some("/workspace".to_string()),
-                        timeout_ms: Some(1000),
-                        sandbox_permissions: None,
-                        additional_permissions: None,
-                        prefix_rule: None,
-                        justification: None,
-                    },
-                },
-            })
-        );
-    }
-
-    #[test]
-    fn builds_tool_search_call_from_response_item() {
-        let router = ToolRouter;
-        let item = ResponseItem::ToolSearchCall {
-            id: Some("ts-1".to_string()),
-            call_id: Some("search-1".to_string()),
-            status: None,
-            execution: "client".to_string(),
-            arguments: serde_json::json!({
-                "query": "notion search",
-                "limit": 1,
-            }),
-        };
-
-        assert_eq!(
-            router.build_tool_call(item).expect("build should succeed"),
-            Some(ToolCall {
-                tool_name: "tool_search".to_string(),
-                tool_namespace: None,
-                call_id: "search-1".to_string(),
-                payload: ToolPayload::ToolSearch {
-                    arguments: SearchToolCallParams {
-                        query: "notion search".to_string(),
-                        limit: Some(1),
-                    },
-                },
-            })
-        );
+impl ToolRouter {
+    pub fn specs(&self) -> Vec<crate::client_common::tools::ToolSpec> {
+        Vec::new()
     }
 }

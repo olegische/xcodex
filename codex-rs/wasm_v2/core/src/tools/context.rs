@@ -1,3 +1,7 @@
+use crate::client_common::tools::ToolSearchOutputTool;
+use crate::codex::Session;
+use crate::codex::TurnContext;
+use crate::turn_diff_tracker::TurnDiffTracker;
 use codex_protocol::mcp::CallToolResult;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::FunctionCallOutputContentItem;
@@ -5,8 +9,13 @@ use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::SearchToolCallParams;
 use codex_protocol::models::ShellToolCallParams;
+use codex_protocol::models::function_call_output_content_items_to_text;
 use serde_json::Value as JsonValue;
 use std::borrow::Cow;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+pub type SharedTurnDiffTracker = Arc<Mutex<TurnDiffTracker>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ToolCallSource {
@@ -15,17 +24,26 @@ pub enum ToolCallSource {
     CodeMode,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct ToolInvocation {
+    pub session: Arc<Session>,
+    pub turn: Arc<TurnContext>,
+    pub tracker: SharedTurnDiffTracker,
     pub call_id: String,
     pub tool_name: String,
     pub tool_namespace: Option<String>,
     pub payload: ToolPayload,
 }
 
-pub type ToolCall = ToolInvocation;
+#[derive(Clone, Debug)]
+pub struct ToolCall {
+    pub tool_name: String,
+    pub tool_namespace: Option<String>,
+    pub call_id: String,
+    pub payload: ToolPayload,
+}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum ToolPayload {
     Function {
         arguments: String,
@@ -60,22 +78,18 @@ impl ToolPayload {
 
 pub trait ToolOutput: Send {
     fn log_preview(&self) -> String;
-
     fn success_for_logging(&self) -> bool;
-
     fn to_response_item(&self, call_id: &str, payload: &ToolPayload) -> ResponseInputItem;
 
     fn code_mode_result(&self, payload: &ToolPayload) -> JsonValue {
-        response_input_to_json(self.to_response_item("", payload))
+        serde_json::to_value(self.to_response_item("", payload)).unwrap_or(JsonValue::Null)
     }
 }
 
 impl ToolOutput for CallToolResult {
     fn log_preview(&self) -> String {
-        self.as_function_call_output_payload()
-            .body
-            .to_text()
-            .unwrap_or_else(|| serde_json::to_string(self).unwrap_or_default())
+        let output = self.as_function_call_output_payload();
+        output.body.to_text().unwrap_or_else(|| output.to_string())
     }
 
     fn success_for_logging(&self) -> bool {
@@ -107,13 +121,7 @@ impl FunctionToolOutput {
 
 impl ToolOutput for FunctionToolOutput {
     fn log_preview(&self) -> String {
-        self.body
-            .iter()
-            .filter_map(|item| match item {
-                FunctionCallOutputContentItem::InputText { text } => Some(text.as_str()),
-                FunctionCallOutputContentItem::InputImage { .. } => None,
-            })
-            .collect::<String>()
+        function_call_output_content_items_to_text(&self.body).unwrap_or_default()
     }
 
     fn success_for_logging(&self) -> bool {
@@ -130,10 +138,7 @@ impl ToolOutput for FunctionToolOutput {
                 call_id: call_id.to_string(),
                 output,
             },
-            ToolPayload::Function { .. }
-            | ToolPayload::ToolSearch { .. }
-            | ToolPayload::LocalShell { .. }
-            | ToolPayload::Mcp { .. } => ResponseInputItem::FunctionCallOutput {
+            _ => ResponseInputItem::FunctionCallOutput {
                 call_id: call_id.to_string(),
                 output,
             },
@@ -141,14 +146,14 @@ impl ToolOutput for FunctionToolOutput {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct ToolSearchOutput {
-    pub tools: Vec<JsonValue>,
+    pub tools: Vec<ToolSearchOutputTool>,
 }
 
 impl ToolOutput for ToolSearchOutput {
     fn log_preview(&self) -> String {
-        JsonValue::Array(self.tools.clone()).to_string()
+        serde_json::to_string(&self.tools).unwrap_or_default()
     }
 
     fn success_for_logging(&self) -> bool {
@@ -160,11 +165,11 @@ impl ToolOutput for ToolSearchOutput {
             call_id: call_id.to_string(),
             status: "completed".to_string(),
             execution: "client".to_string(),
-            tools: self.tools.clone(),
+            tools: self
+                .tools
+                .iter()
+                .map(|tool| serde_json::to_value(tool).unwrap_or(JsonValue::Null))
+                .collect(),
         }
     }
-}
-
-pub fn response_input_to_json(response: ResponseInputItem) -> JsonValue {
-    serde_json::to_value(response).unwrap_or(JsonValue::Null)
 }

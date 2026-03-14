@@ -114,7 +114,7 @@ pub(super) async fn spawn_review_thread(
         truncation_policy: model_info.truncation_policy.into(),
         turn_metadata_state,
         turn_skills: TurnSkillsContext::new(parent_turn_context.turn_skills.outcome.clone()),
-        turn_timing_state: Arc::new(TurnTimingState::default()),
+        turn_timing_state: Arc::new(TurnTimingState),
     };
 
     let input: Vec<UserInput> = vec![UserInput::Text {

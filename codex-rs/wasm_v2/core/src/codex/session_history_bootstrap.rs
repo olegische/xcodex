@@ -1,7 +1,7 @@
 use super::*;
 
 impl Session {
-    async fn record_initial_history(&self, conversation_history: InitialHistory) {
+    pub(crate) async fn record_initial_history(&self, conversation_history: InitialHistory) {
         let turn_context = self.new_default_turn().await;
         let is_subagent = {
             let state = self.state.lock().await;
@@ -116,7 +116,7 @@ impl Session {
         })
     }
 
-    async fn previous_turn_settings(&self) -> Option<PreviousTurnSettings> {
+    pub(crate) async fn previous_turn_settings(&self) -> Option<PreviousTurnSettings> {
         let state = self.state.lock().await;
         state.previous_turn_settings()
     }
@@ -129,7 +129,7 @@ impl Session {
         state.set_previous_turn_settings(previous_turn_settings);
     }
 
-    fn maybe_refresh_shell_snapshot_for_cwd(
+    pub(crate) fn maybe_refresh_shell_snapshot_for_cwd(
         &self,
         previous_cwd: &Path,
         next_cwd: &Path,
@@ -161,7 +161,7 @@ impl Session {
         );
     }
 
-    async fn build_settings_update_items(
+    pub(crate) async fn build_settings_update_items(
         &self,
         reference_context_item: Option<&TurnContextItem>,
         current_context: &TurnContext,

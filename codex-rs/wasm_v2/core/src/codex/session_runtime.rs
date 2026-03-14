@@ -33,7 +33,7 @@ impl Session {
         }
     }
 
-    fn next_internal_sub_id(&self) -> String {
+    pub(crate) fn next_internal_sub_id(&self) -> String {
         let id = self
             .next_internal_sub_id
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -55,7 +55,7 @@ impl Session {
         .await;
     }
 
-    async fn maybe_warn_on_server_model_mismatch(
+    pub(crate) async fn maybe_warn_on_server_model_mismatch(
         self: &Arc<Self>,
         turn_context: &Arc<TurnContext>,
         server_model: String,
@@ -104,7 +104,7 @@ impl Session {
         self.features.clone()
     }
 
-    async fn maybe_start_ghost_snapshot(
+    pub(crate) async fn maybe_start_ghost_snapshot(
         self: &Arc<Self>,
         turn_context: Arc<TurnContext>,
         cancellation_token: CancellationToken,
@@ -146,7 +146,7 @@ impl Session {
             return Err(SteerInputError::NoActiveTurn(input));
         };
 
-        let Some((active_turn_id, _)) = active_turn.tasks.first() else {
+        let Some((active_turn_id, _)) = active_turn.tasks.first_key_value() else {
             return Err(SteerInputError::NoActiveTurn(input));
         };
 
@@ -221,7 +221,7 @@ impl Session {
         Arc::clone(&self.services.user_shell)
     }
 
-    fn show_raw_agent_reasoning(&self) -> bool {
+    pub(crate) fn show_raw_agent_reasoning(&self) -> bool {
         self.services.show_raw_agent_reasoning
     }
 }

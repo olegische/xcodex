@@ -579,10 +579,10 @@ async fn try_run_sampling_request(
 
     if should_emit_turn_diff {
         let unified_diff = {
-            let mut tracker = turn_diff_tracker.lock().await;
+            let tracker = turn_diff_tracker.lock().await;
             tracker.get_unified_diff()
         };
-        if let Ok(Some(unified_diff)) = unified_diff {
+        if let Some(unified_diff) = unified_diff {
             let msg = EventMsg::TurnDiff(TurnDiffEvent { unified_diff });
             sess.clone().send_event(&turn_context, msg).await;
         }
@@ -591,7 +591,7 @@ async fn try_run_sampling_request(
     outcome
 }
 
-pub(super) fn get_last_assistant_message_from_turn(responses: &[ResponseItem]) -> Option<String> {
+pub(crate) fn get_last_assistant_message_from_turn(responses: &[ResponseItem]) -> Option<String> {
     for item in responses.iter().rev() {
         if let Some(message) = last_assistant_message_from_item(item, false) {
             return Some(message);

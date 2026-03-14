@@ -143,16 +143,17 @@ impl Codex {
             match thread_id {
                 Some(thread_id) => {
                     let state_db_ctx = state_db::get_state_db(&config).await;
-                    state_db::get_dynamic_tools(state_db_ctx.as_deref(), thread_id, "codex_spawn")
+                    state_db::get_dynamic_tools(state_db_ctx.as_ref(), thread_id, "codex_spawn")
                         .await
                 }
-                None => None,
+                None => Vec::new(),
             }
         } else {
-            None
+            Vec::new()
         };
         let dynamic_tools = if dynamic_tools.is_empty() {
-            persisted_tools
+            Some(persisted_tools)
+                .filter(|tools| !tools.is_empty())
                 .or_else(|| conversation_history.get_dynamic_tools())
                 .unwrap_or_default()
         } else {

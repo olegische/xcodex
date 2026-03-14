@@ -5,19 +5,19 @@ use super::*;
 /// A session has at most 1 running task at a time, and can be interrupted by user input.
 pub(crate) struct Session {
     pub(crate) conversation_id: ThreadId,
-    tx_event: Sender<Event>,
-    agent_status: watch::Sender<AgentStatus>,
-    out_of_band_elicitation_paused: watch::Sender<bool>,
-    state: Mutex<SessionState>,
+    pub(crate) tx_event: Sender<Event>,
+    pub(crate) agent_status: watch::Sender<AgentStatus>,
+    pub(crate) out_of_band_elicitation_paused: watch::Sender<bool>,
+    pub(crate) state: Mutex<SessionState>,
     /// The set of enabled features should be invariant for the lifetime of the
     /// session.
-    features: ManagedFeatures,
-    pending_mcp_server_refresh_config: Mutex<Option<McpServerRefreshConfig>>,
+    pub(crate) features: ManagedFeatures,
+    pub(crate) pending_mcp_server_refresh_config: Mutex<Option<McpServerRefreshConfig>>,
     pub(crate) conversation: Arc<RealtimeConversationManager>,
     pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
     pub(crate) services: SessionServices,
-    js_repl: Arc<JsReplHandle>,
-    next_internal_sub_id: AtomicU64,
+    pub(crate) js_repl: Arc<JsReplHandle>,
+    pub(crate) next_internal_sub_id: AtomicU64,
 }
 
 #[derive(Clone, Debug)]
@@ -216,15 +216,11 @@ impl TurnContext {
     }
 
     fn turn_context_network_item(&self) -> Option<TurnContextNetworkItem> {
-        let network = self
-            .config
-            .config_layer_stack
-            .requirements()
-            .network
-            .as_ref()?;
+        let requirements = self.config.config_layer_stack.requirements();
+        let network = requirements.network.as_ref()?;
         Some(TurnContextNetworkItem {
-            allowed_domains: network.allowed_domains.clone().unwrap_or_default(),
-            denied_domains: network.denied_domains.clone().unwrap_or_default(),
+            allowed_domains: network.0.allowed_domains.clone().unwrap_or_default(),
+            denied_domains: network.0.denied_domains.clone().unwrap_or_default(),
         })
     }
 }
@@ -241,30 +237,30 @@ pub(super) fn local_time_context() -> (String, String) {
 
 #[derive(Clone)]
 pub(crate) struct SessionConfiguration {
-    provider: ModelProviderInfo,
-    collaboration_mode: CollaborationMode,
-    model_reasoning_summary: Option<ReasoningSummaryConfig>,
-    service_tier: Option<ServiceTier>,
-    developer_instructions: Option<String>,
-    user_instructions: Option<String>,
-    personality: Option<Personality>,
-    base_instructions: String,
-    compact_prompt: Option<String>,
-    approval_policy: Constrained<AskForApproval>,
-    sandbox_policy: Constrained<SandboxPolicy>,
-    file_system_sandbox_policy: FileSystemSandboxPolicy,
-    network_sandbox_policy: NetworkSandboxPolicy,
-    windows_sandbox_level: WindowsSandboxLevel,
-    cwd: PathBuf,
-    codex_home: PathBuf,
-    thread_name: Option<String>,
-    original_config_do_not_use: Arc<Config>,
-    metrics_service_name: Option<String>,
-    app_server_client_name: Option<String>,
-    session_source: SessionSource,
-    dynamic_tools: Vec<DynamicToolSpec>,
-    persist_extended_history: bool,
-    inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
+    pub(crate) provider: ModelProviderInfo,
+    pub(crate) collaboration_mode: CollaborationMode,
+    pub(crate) model_reasoning_summary: Option<ReasoningSummaryConfig>,
+    pub(crate) service_tier: Option<ServiceTier>,
+    pub(crate) developer_instructions: Option<String>,
+    pub(crate) user_instructions: Option<String>,
+    pub(crate) personality: Option<Personality>,
+    pub(crate) base_instructions: String,
+    pub(crate) compact_prompt: Option<String>,
+    pub(crate) approval_policy: Constrained<AskForApproval>,
+    pub(crate) sandbox_policy: Constrained<SandboxPolicy>,
+    pub(crate) file_system_sandbox_policy: FileSystemSandboxPolicy,
+    pub(crate) network_sandbox_policy: NetworkSandboxPolicy,
+    pub(crate) windows_sandbox_level: WindowsSandboxLevel,
+    pub(crate) cwd: PathBuf,
+    pub(crate) codex_home: PathBuf,
+    pub(crate) thread_name: Option<String>,
+    pub(crate) original_config_do_not_use: Arc<Config>,
+    pub(crate) metrics_service_name: Option<String>,
+    pub(crate) app_server_client_name: Option<String>,
+    pub(crate) session_source: SessionSource,
+    pub(crate) dynamic_tools: Vec<DynamicToolSpec>,
+    pub(crate) persist_extended_history: bool,
+    pub(crate) inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
 }
 
 impl SessionConfiguration {
@@ -272,7 +268,7 @@ impl SessionConfiguration {
         &self.codex_home
     }
 
-    fn thread_config_snapshot(&self) -> ThreadConfigSnapshot {
+    pub(crate) fn thread_config_snapshot(&self) -> ThreadConfigSnapshot {
         ThreadConfigSnapshot {
             model: self.collaboration_mode.model().to_string(),
             model_provider_id: self.original_config_do_not_use.model_provider_id.clone(),

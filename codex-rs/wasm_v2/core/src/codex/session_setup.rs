@@ -151,7 +151,8 @@ impl Session {
             self.services
                 .network_proxy
                 .as_ref()
-                .map(StartedNetworkProxy::proxy),
+                .map(StartedNetworkProxy::proxy)
+                .cloned(),
             sub_id,
             Arc::clone(&self.js_repl),
             skills_outcome,
@@ -205,7 +206,7 @@ impl Session {
         }
     }
 
-    async fn schedule_startup_prewarm(self: &Arc<Self>, base_instructions: String) {
+    pub(crate) async fn schedule_startup_prewarm(self: &Arc<Self>, base_instructions: String) {
         let sess = Arc::clone(self);
         let startup_regular_task: JoinHandle<CodexResult<RegularTask>> =
             tokio::spawn(
@@ -303,7 +304,7 @@ impl Session {
         let mut config = (*state.session_configuration.original_config_do_not_use).clone();
         config.config_layer_stack = config
             .config_layer_stack
-            .with_user_config(&config_toml_path, user_config);
+            .with_user_config(config_toml_path.as_path(), user_config);
         state.session_configuration.original_config_do_not_use = Arc::new(config);
         self.services.skills_manager.clear_cache();
         self.services.plugins_manager.clear_cache();

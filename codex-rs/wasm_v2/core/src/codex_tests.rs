@@ -1775,11 +1775,12 @@ fn init_test_tracing() {
 }
 
 async fn build_test_config(codex_home: &Path) -> Config {
-    ConfigBuilder::default()
+    (*ConfigBuilder::default()
         .codex_home(codex_home.to_path_buf())
         .build()
         .await
-        .expect("load default test config")
+        .expect("load default test config"))
+    .clone()
 }
 
 fn session_telemetry(
@@ -2024,7 +2025,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
         plugins_manager,
         mcp_manager,
         Arc::new(FileWatcher::noop()),
-        AgentControl::default(),
+        AgentControl,
     )
     .await;
 
@@ -2050,7 +2051,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         None,
         CollaborationModesConfig::default(),
     ));
-    let agent_control = AgentControl::default();
+    let agent_control = AgentControl;
     let exec_policy = ExecPolicyManager::default();
     let (agent_status_tx, _agent_status_rx) = watch::channel(AgentStatus::PendingInit);
     let model = ModelsManager::get_model_offline_for_tests(config.model.as_deref());
@@ -2113,7 +2114,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         Arc::clone(&plugins_manager),
         true,
     ));
-    let network_approval = Arc::new(NetworkApprovalService::default());
+    let network_approval = Arc::new(NetworkApprovalService);
 
     let file_watcher = Arc::new(FileWatcher::noop());
     let services = SessionServices {
@@ -2144,7 +2145,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         auth_manager: auth_manager.clone(),
         session_telemetry: session_telemetry.clone(),
         models_manager: Arc::clone(&models_manager),
-        tool_approvals: Mutex::new(ApprovalStore::default()),
+        tool_approvals: Mutex::new(ApprovalStore),
         execve_session_approvals: RwLock::new(HashMap::new()),
         skills_manager,
         plugins_manager,
@@ -2689,7 +2690,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         None,
         CollaborationModesConfig::default(),
     ));
-    let agent_control = AgentControl::default();
+    let agent_control = AgentControl;
     let exec_policy = ExecPolicyManager::default();
     let (agent_status_tx, _agent_status_rx) = watch::channel(AgentStatus::PendingInit);
     let model = ModelsManager::get_model_offline_for_tests(config.model.as_deref());
@@ -2752,7 +2753,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         Arc::clone(&plugins_manager),
         true,
     ));
-    let network_approval = Arc::new(NetworkApprovalService::default());
+    let network_approval = Arc::new(NetworkApprovalService);
 
     let file_watcher = Arc::new(FileWatcher::noop());
     let services = SessionServices {
@@ -2783,7 +2784,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         auth_manager: Arc::clone(&auth_manager),
         session_telemetry: session_telemetry.clone(),
         models_manager: Arc::clone(&models_manager),
-        tool_approvals: Mutex::new(ApprovalStore::default()),
+        tool_approvals: Mutex::new(ApprovalStore),
         execve_session_approvals: RwLock::new(HashMap::new()),
         skills_manager,
         plugins_manager,

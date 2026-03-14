@@ -1,5 +1,8 @@
+use codex_protocol::openai_models::ModelInfo;
 use serde_json::Value;
 use serde_json::json;
+
+pub type JsonSchema = Value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolSpec {
@@ -260,6 +263,48 @@ pub fn browser_builtin_tool_specs() -> Vec<ToolSpec> {
     .into_iter()
     .map(BrowserBuiltinTool::spec)
     .collect()
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ToolsConfig {
+    pub js_repl_tools_only: bool,
+    pub web_search_mode: Option<codex_protocol::config_types::WebSearchMode>,
+    pub web_search_config: Option<serde_json::Value>,
+    pub allow_login_shell: bool,
+    pub search_tool: bool,
+    pub tool_suggest: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct ToolsConfigParams<'a> {
+    pub model_info: &'a ModelInfo,
+    pub available_models: &'a [ModelInfo],
+    pub features: &'a crate::features::ManagedFeatures,
+    pub web_search_mode: Option<codex_protocol::config_types::WebSearchMode>,
+    pub session_source: codex_protocol::protocol::SessionSource,
+}
+
+impl ToolsConfig {
+    pub fn new(params: &ToolsConfigParams<'_>) -> Self {
+        Self {
+            web_search_mode: params.web_search_mode,
+            ..Self::default()
+        }
+    }
+
+    pub fn with_web_search_config(mut self, config: Option<serde_json::Value>) -> Self {
+        self.web_search_config = config;
+        self
+    }
+
+    pub fn with_allow_login_shell(mut self, allow: bool) -> Self {
+        self.allow_login_shell = allow;
+        self
+    }
+
+    pub fn with_agent_roles<T>(self, _agent_roles: T) -> Self {
+        self
+    }
 }
 
 #[cfg(test)]

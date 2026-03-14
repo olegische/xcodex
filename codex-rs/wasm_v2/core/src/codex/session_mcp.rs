@@ -145,7 +145,7 @@ impl Session {
         *manager = refreshed_manager;
     }
 
-    async fn refresh_mcp_servers_if_requested(&self, turn_context: &TurnContext) {
+    pub(crate) async fn refresh_mcp_servers_if_requested(&self, turn_context: &TurnContext) {
         let refresh_config = { self.pending_mcp_server_refresh_config.lock().await.take() };
         let Some(refresh_config) = refresh_config else {
             return;
@@ -197,7 +197,7 @@ impl Session {
             .clone()
     }
 
-    async fn cancel_mcp_startup(&self) {
+    pub(crate) async fn cancel_mcp_startup(&self) {
         self.services
             .mcp_startup_cancellation_token
             .lock()

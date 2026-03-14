@@ -8,7 +8,7 @@ pub(super) struct ProposedPlanItemState {
 }
 
 pub(super) struct PlanModeStreamState {
-    pending_agent_message_items: HashMap<String, TurnItem>,
+    pub(super) pending_agent_message_items: HashMap<String, TurnItem>,
     started_agent_message_items: HashSet<String>,
     leading_whitespace_by_item: HashMap<String, String>,
     plan_item_state: ProposedPlanItemState,
@@ -154,7 +154,7 @@ fn agent_message_text(item: &codex_protocol::items::AgentMessageItem) -> String 
         .collect()
 }
 
-pub(super) fn realtime_text_for_event(msg: &EventMsg) -> Option<String> {
+pub(crate) fn realtime_text_for_event(msg: &EventMsg) -> Option<String> {
     match msg {
         EventMsg::AgentMessage(event) => Some(event.message.clone()),
         EventMsg::ItemCompleted(event) => match &event.item {

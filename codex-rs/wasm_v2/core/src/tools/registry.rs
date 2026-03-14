@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::function_tool::FunctionCallError;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
@@ -24,12 +25,15 @@ pub trait ToolHandler: Send + Sync {
         )
     }
 
-    async fn handle(&self, invocation: ToolInvocation) -> Result<Self::Output, String>;
+    async fn handle(&self, invocation: ToolInvocation) -> Result<Self::Output, FunctionCallError>;
 }
 
 #[async_trait]
 pub(crate) trait AnyToolHandler: Send + Sync {
-    async fn handle_any(&self, invocation: ToolInvocation) -> Result<Box<dyn ToolOutput>, String>;
+    async fn handle_any(
+        &self,
+        invocation: ToolInvocation,
+    ) -> Result<Box<dyn ToolOutput>, FunctionCallError>;
 }
 
 #[async_trait]
@@ -37,7 +41,10 @@ impl<T> AnyToolHandler for T
 where
     T: ToolHandler,
 {
-    async fn handle_any(&self, invocation: ToolInvocation) -> Result<Box<dyn ToolOutput>, String> {
+    async fn handle_any(
+        &self,
+        invocation: ToolInvocation,
+    ) -> Result<Box<dyn ToolOutput>, FunctionCallError> {
         let output = self.handle(invocation).await?;
         Ok(Box::new(output))
     }
@@ -52,11 +59,10 @@ impl ToolRegistry {
     pub async fn dispatch(
         &self,
         invocation: ToolInvocation,
-    ) -> Result<Box<dyn ToolOutput>, String> {
-        let handler = self
-            .handlers
-            .get(&invocation.tool_name)
-            .ok_or_else(|| format!("unsupported tool: {}", invocation.tool_name))?;
+    ) -> Result<Box<dyn ToolOutput>, FunctionCallError> {
+        let handler = self.handlers.get(&invocation.tool_name).ok_or_else(|| {
+            FunctionCallError::RespondToModel(format!("unsupported tool: {}", invocation.tool_name))
+        })?;
         handler.handle_any(invocation).await
     }
 }

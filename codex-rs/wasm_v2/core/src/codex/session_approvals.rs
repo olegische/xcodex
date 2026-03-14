@@ -29,11 +29,11 @@ impl Session {
             .map(|task| Arc::clone(&task.turn_context))
     }
 
-    async fn active_turn_context_and_cancellation_token(
+    pub(crate) async fn active_turn_context_and_cancellation_token(
         &self,
     ) -> Option<(Arc<TurnContext>, CancellationToken)> {
         let active = self.active_turn.lock().await;
-        let (_, task) = active.as_ref()?.tasks.first()?;
+        let (_, task) = active.as_ref()?.tasks.first_key_value()?;
         Some((
             Arc::clone(&task.turn_context),
             task.cancellation_token.child_token(),
@@ -118,7 +118,7 @@ impl Session {
         Ok(())
     }
 
-    fn validated_network_policy_amendment_host(
+    pub(crate) fn validated_network_policy_amendment_host(
         amendment: &NetworkPolicyAmendment,
         network_approval_context: &NetworkApprovalContext,
     ) -> anyhow::Result<String> {
