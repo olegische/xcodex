@@ -125,6 +125,9 @@ type BrowserRuntimeHost = {
   applyPatch(request: JsonValue): Promise<JsonValue>;
   updatePlan(request: JsonValue): Promise<void>;
   requestUserInput(request: JsonValue): Promise<JsonValue>;
+  listTools(): Promise<HostToolSpec[]>;
+  invokeTool(request: JsonValue): Promise<JsonValue>;
+  cancelTool(callId: string): Promise<void>;
   startModelTurn(request: JsonValue): Promise<JsonValue>;
   cancelModelTurn(requestId: string): Promise<void>;
 };
@@ -1222,6 +1225,13 @@ function createBrowserRuntimeHost(): BrowserRuntimeHost {
       });
       return { answers };
     },
+    async listTools() {
+      return [];
+    },
+    async invokeTool() {
+      throw createHostError("unavailable", "host custom tools are not configured");
+    },
+    async cancelTool() {},
 
     async startModelTurn(request) {
       const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;

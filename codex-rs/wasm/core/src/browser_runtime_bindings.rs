@@ -19,6 +19,8 @@ mod wasm_exports {
     use crate::host::HostModelTransport;
     use crate::host::HostResult;
     use crate::host::HostSessionStore;
+    use crate::host::HostToolExecutor;
+    use crate::host::HostToolSpec;
     use crate::host::ListDirRequest;
     use crate::host::ListDirResponse;
     use crate::host::ModelEventStream;
@@ -33,6 +35,8 @@ mod wasm_exports {
     use crate::host::SearchRequest;
     use crate::host::SearchResponse;
     use crate::host::SessionSnapshot;
+    use crate::host::ToolInvokeRequest;
+    use crate::host::ToolInvokeResponse;
     use crate::host::UpdatePlanRequest;
     use crate::host::WriteFileRequest;
     use crate::host::WriteFileResponse;
@@ -146,6 +150,21 @@ mod wasm_exports {
             this: &BrowserRuntimeHost,
             request: JsValue,
         ) -> Result<JsValue, JsValue>;
+
+        #[wasm_bindgen(method, catch, js_name = listTools)]
+        async fn list_tools(this: &BrowserRuntimeHost) -> Result<JsValue, JsValue>;
+
+        #[wasm_bindgen(method, catch, js_name = invokeTool)]
+        async fn invoke_tool(
+            this: &BrowserRuntimeHost,
+            request: JsValue,
+        ) -> Result<JsValue, JsValue>;
+
+        #[wasm_bindgen(method, catch, js_name = cancelTool)]
+        async fn cancel_tool(
+            this: &BrowserRuntimeHost,
+            call_id: JsValue,
+        ) -> Result<JsValue, JsValue>;
     }
 
     #[wasm_bindgen(typescript_custom_section)]
@@ -170,6 +189,14 @@ export interface BrowserRuntimeHost {
   applyPatch(request: import("./protocol").JsonValue): Promise<import("./protocol").JsonValue>;
   updatePlan(request: import("./protocol").JsonValue): Promise<void>;
   requestUserInput(request: import("./protocol").JsonValue): Promise<import("./protocol").JsonValue>;
+  listTools(): Promise<Array<{
+    toolName: string;
+    toolNamespace: string | null;
+    description: string;
+    inputSchema: import("./protocol").JsonValue;
+  }>>;
+  invokeTool(request: import("./protocol").JsonValue): Promise<import("./protocol").JsonValue>;
+  cancelTool(callId: string): Promise<void>;
   startModelTurn(request: {
     requestId: string;
     payload: import("./protocol").JsonValue;
@@ -212,12 +239,14 @@ export interface BrowserRuntimeHost {
             let instructions = JsHostInstructionStore { host: &self.host };
             let model_transport = JsHostModelTransport { host: &self.host };
             let session_store = JsHostSessionStore { host: &self.host };
+            let tool_executor = JsHostToolExecutor { host: &self.host };
             let runtime = CoreBrowserRuntime::new(
                 &fs,
                 &collaboration,
                 &instructions,
                 &model_transport,
                 &session_store,
+                &tool_executor,
             )
             .with_collaboration_mode(CollaborationMode::Default);
             let dispatch = runtime
@@ -235,12 +264,14 @@ export interface BrowserRuntimeHost {
             let instructions = JsHostInstructionStore { host: &self.host };
             let model_transport = JsHostModelTransport { host: &self.host };
             let session_store = JsHostSessionStore { host: &self.host };
+            let tool_executor = JsHostToolExecutor { host: &self.host };
             let runtime = CoreBrowserRuntime::new(
                 &fs,
                 &collaboration,
                 &instructions,
                 &model_transport,
                 &session_store,
+                &tool_executor,
             )
             .with_collaboration_mode(CollaborationMode::Default);
             let dispatch = runtime
@@ -258,12 +289,14 @@ export interface BrowserRuntimeHost {
             let instructions = JsHostInstructionStore { host: &self.host };
             let model_transport = JsHostModelTransport { host: &self.host };
             let session_store = JsHostSessionStore { host: &self.host };
+            let tool_executor = JsHostToolExecutor { host: &self.host };
             let runtime = CoreBrowserRuntime::new(
                 &fs,
                 &collaboration,
                 &instructions,
                 &model_transport,
                 &session_store,
+                &tool_executor,
             )
             .with_collaboration_mode(CollaborationMode::Default);
             let dispatch = runtime
@@ -445,6 +478,43 @@ export interface BrowserRuntimeHost {
                 .await
                 .map_err(js_value_to_host_error)?;
             decode_js_value(value).map_err(js_value_decode_error)
+        }
+    }
+
+    struct JsHostToolExecutor<'a> {
+        host: &'a BrowserRuntimeHost,
+    }
+
+    unsafe impl Send for JsHostToolExecutor<'_> {}
+    unsafe impl Sync for JsHostToolExecutor<'_> {}
+
+    #[async_trait(?Send)]
+    impl<'a> HostToolExecutor for JsHostToolExecutor<'a> {
+        async fn list_tools(&self) -> HostResult<Vec<HostToolSpec>> {
+            let value = self
+                .host
+                .list_tools()
+                .await
+                .map_err(js_value_to_host_error)?;
+            decode_js_value(value).map_err(js_value_decode_error)
+        }
+
+        async fn invoke(&self, request: ToolInvokeRequest) -> HostResult<ToolInvokeResponse> {
+            let value = encode_js_value(&request).map_err(js_value_encode_error)?;
+            let value = self
+                .host
+                .invoke_tool(value)
+                .await
+                .map_err(js_value_to_host_error)?;
+            decode_js_value(value).map_err(js_value_decode_error)
+        }
+
+        async fn cancel(&self, call_id: String) -> HostResult<()> {
+            self.host
+                .cancel_tool(JsValue::from_str(&call_id))
+                .await
+                .map_err(js_value_to_host_error)?;
+            Ok(())
         }
     }
 

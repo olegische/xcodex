@@ -262,12 +262,16 @@ export type BrowserRuntimeHost = {
   applyPatch(request: JsonValue): Promise<JsonValue>;
   updatePlan(request: JsonValue): Promise<void>;
   requestUserInput(request: JsonValue): Promise<JsonValue>;
+  listTools(): Promise<HostToolSpec[]>;
+  invokeTool(request: JsonValue): Promise<JsonValue>;
+  cancelTool(callId: string): Promise<void>;
   startModelTurn(request: JsonValue): Promise<JsonValue>;
   cancelModelTurn(requestId: string): Promise<void>;
 };
 
 export type HostToolSpec = {
-  name: string;
+  toolName: string;
+  toolNamespace: string | null;
   description: string;
   inputSchema: JsonValue;
 };

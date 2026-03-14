@@ -24,6 +24,7 @@ workspace = true
 [dependencies]
 async-trait = { workspace = true }
 base64 = { workspace = true }
+bm25 = { workspace = true }
 codex-protocol = { workspace = true }
 codex-utils-string = { workspace = true }
 futures = { workspace = true }

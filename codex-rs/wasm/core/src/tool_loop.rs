@@ -26,7 +26,8 @@ impl BrowserBuiltinTool {
     pub fn spec(self) -> HostToolSpec {
         match self {
             Self::ReadFile => HostToolSpec {
-                name: self.name().to_string(),
+                tool_name: self.name().to_string(),
+                tool_namespace: None,
                 description: "Reads a local file with 1-indexed line numbers, supporting slice and indentation-aware block modes.".to_string(),
                 input_schema: json!({
                     "type": "object",
@@ -79,7 +80,8 @@ impl BrowserBuiltinTool {
                 }),
             },
             Self::ListDir => HostToolSpec {
-                name: self.name().to_string(),
+                tool_name: self.name().to_string(),
+                tool_namespace: None,
                 description: "Lists entries in a local directory with 1-indexed entry numbers and simple type labels.".to_string(),
                 input_schema: json!({
                     "type": "object",
@@ -106,7 +108,8 @@ impl BrowserBuiltinTool {
                 }),
             },
             Self::GrepFiles => HostToolSpec {
-                name: self.name().to_string(),
+                tool_name: self.name().to_string(),
+                tool_namespace: None,
                 description: "Finds files whose contents match the pattern and lists them by modification time.".to_string(),
                 input_schema: json!({
                     "type": "object",
@@ -133,7 +136,8 @@ impl BrowserBuiltinTool {
                 }),
             },
             Self::ApplyPatch => HostToolSpec {
-                name: self.name().to_string(),
+                tool_name: self.name().to_string(),
+                tool_namespace: None,
                 description: "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.".to_string(),
                 input_schema: json!({
                     "type": "object",
@@ -148,7 +152,8 @@ impl BrowserBuiltinTool {
                 }),
             },
             Self::UpdatePlan => HostToolSpec {
-                name: self.name().to_string(),
+                tool_name: self.name().to_string(),
+                tool_namespace: None,
                 description: "Updates the task plan.\nProvide an optional explanation and a list of plan items, each with a step and status.\nAt most one step can be in_progress at a time.\n".to_string(),
                 input_schema: json!({
                     "type": "object",
@@ -178,7 +183,8 @@ impl BrowserBuiltinTool {
                 }),
             },
             Self::RequestUserInput => HostToolSpec {
-                name: self.name().to_string(),
+                tool_name: self.name().to_string(),
+                tool_namespace: None,
                 description: "Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.".to_string(),
                 input_schema: json!({
                     "type": "object",
@@ -257,7 +263,7 @@ mod tests {
     fn builtin_tool_specs_match_fixed_browser_safe_tool_set() {
         let names = browser_builtin_tool_specs()
             .into_iter()
-            .map(|spec| spec.name)
+            .map(|spec| spec.tool_name)
             .collect::<Vec<_>>();
 
         assert_eq!(

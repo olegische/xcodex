@@ -17,6 +17,7 @@ use crate::host::HostCollaboration;
 use crate::host::HostError;
 use crate::host::HostErrorCode;
 use crate::host::HostFs;
+use crate::host::HostToolExecutor;
 use crate::host::ListDirRequest;
 use crate::host::PlanStep;
 use crate::host::ReadFileRequest;
@@ -25,6 +26,7 @@ use crate::host::RequestUserInputOption;
 use crate::host::RequestUserInputQuestion;
 use crate::host::RequestUserInputRequest;
 use crate::host::RequestUserInputResponse;
+use crate::host::ToolInvokeRequest;
 use crate::host::UpdatePlanRequest;
 use crate::response_tool_loop::ToolCall;
 use crate::response_tool_loop::ToolCallSource;
@@ -33,6 +35,9 @@ use crate::response_tool_loop::ToolPayload;
 use crate::response_tool_loop::build_tool_call;
 use crate::response_tool_loop::last_assistant_message_from_item;
 use crate::response_tool_loop::response_input_to_response_item;
+use crate::tool_search::DEFAULT_LIMIT as TOOL_SEARCH_DEFAULT_LIMIT;
+use crate::tool_search::ToolSearchArgs;
+use crate::tool_search::search_tools;
 use codex_utils_string::take_bytes_at_char_boundary;
 
 const DEFAULT_GREP_LIMIT: usize = 100;
@@ -65,6 +70,7 @@ impl CollaborationMode {
 pub struct WasmToolRuntime<'a> {
     fs: &'a dyn HostFs,
     collaboration: &'a dyn HostCollaboration,
+    tool_executor: &'a dyn HostToolExecutor,
     collaboration_mode: CollaborationMode,
     default_mode_request_user_input: bool,
 }
@@ -81,12 +87,14 @@ impl<'a> WasmToolRuntime<'a> {
     pub fn new(
         fs: &'a dyn HostFs,
         collaboration: &'a dyn HostCollaboration,
+        tool_executor: &'a dyn HostToolExecutor,
         collaboration_mode: CollaborationMode,
         default_mode_request_user_input: bool,
     ) -> Self {
         Self {
             fs,
             collaboration,
+            tool_executor,
             collaboration_mode,
             default_mode_request_user_input,
         }
@@ -135,6 +143,7 @@ impl<'a> WasmToolRuntime<'a> {
     ) -> Result<ResponseInputItem, FunctionCallError> {
         let ToolCall {
             tool_name,
+            tool_namespace,
             call_id,
             payload,
         } = call;
@@ -156,11 +165,18 @@ impl<'a> WasmToolRuntime<'a> {
             "list_dir" => self.handle_list_dir(payload.clone()).await,
             "grep_files" => self.handle_grep_files(payload.clone()).await,
             "apply_patch" => self.handle_apply_patch(payload.clone()).await,
+            "tool_search" => self.handle_tool_search(payload.clone()).await,
             "update_plan" => self.handle_update_plan(payload.clone()).await,
             "request_user_input" => self.handle_request_user_input(payload.clone()).await,
-            _ => Err(FunctionCallError::RespondToModel(format!(
-                "unsupported tool call: {tool_name}"
-            ))),
+            _ => {
+                self.handle_host_tool_call(
+                    payload.clone(),
+                    &call_id,
+                    &tool_name,
+                    tool_namespace.as_deref(),
+                )
+                .await
+            }
         };
 
         match output {
@@ -431,6 +447,99 @@ impl<'a> WasmToolRuntime<'a> {
             body: FunctionCallOutputBody::Text(body),
             success: Some(true),
         })
+    }
+
+    async fn handle_host_tool_call(
+        &self,
+        payload: ToolPayload,
+        call_id: &str,
+        tool_name: &str,
+        tool_namespace: Option<&str>,
+    ) -> Result<ToolOutput, FunctionCallError> {
+        let input = match payload {
+            ToolPayload::Function { arguments } => {
+                serde_json::from_str(&arguments).map_err(|err| {
+                    FunctionCallError::RespondToModel(format!(
+                        "failed to parse function arguments: {err}"
+                    ))
+                })?
+            }
+            ToolPayload::Custom { input } => Value::String(input),
+            ToolPayload::ToolSearch { .. } => {
+                return Err(FunctionCallError::RespondToModel(format!(
+                    "{tool_name} handler received unsupported payload"
+                )));
+            }
+            ToolPayload::LocalShell { .. } => {
+                return Err(FunctionCallError::RespondToModel(
+                    "local_shell is not implemented in codex-wasm-core".to_string(),
+                ));
+            }
+        };
+        let response = self
+            .tool_executor
+            .invoke(ToolInvokeRequest {
+                call_id: call_id.to_string(),
+                tool_name: tool_name.to_string(),
+                tool_namespace: tool_namespace.map(ToOwned::to_owned),
+                input,
+            })
+            .await
+            .map_err(host_error_to_function_call_error)?;
+        let success = !matches!(
+            response.output,
+            Value::Object(ref output)
+                if output.get("isError").and_then(Value::as_bool) == Some(true)
+        );
+
+        Ok(ToolOutput::Function {
+            body: FunctionCallOutputBody::Text(stringify_tool_output(response.output)),
+            success: Some(success),
+        })
+    }
+
+    async fn handle_tool_search(
+        &self,
+        payload: ToolPayload,
+    ) -> Result<ToolOutput, FunctionCallError> {
+        let (arguments, execution) = match payload {
+            ToolPayload::ToolSearch {
+                arguments,
+                execution,
+            } => (arguments, execution),
+            _ => {
+                return Err(FunctionCallError::RespondToModel(
+                    "tool_search handler received unsupported payload".to_string(),
+                ));
+            }
+        };
+        let args: ToolSearchArgs = serde_json::from_value(arguments).map_err(|err| {
+            FunctionCallError::RespondToModel(format!(
+                "failed to parse tool_search arguments: {err}"
+            ))
+        })?;
+        let query = args.query.trim();
+        if query.is_empty() {
+            return Err(FunctionCallError::RespondToModel(
+                "query must not be empty".to_string(),
+            ));
+        }
+        let limit = args.limit.unwrap_or(TOOL_SEARCH_DEFAULT_LIMIT);
+        if limit == 0 {
+            return Err(FunctionCallError::RespondToModel(
+                "limit must be greater than zero".to_string(),
+            ));
+        }
+        let host_tools = self
+            .tool_executor
+            .list_tools()
+            .await
+            .map_err(host_error_to_function_call_error)?;
+        let tools = search_tools(&host_tools, query, limit).map_err(|err| {
+            FunctionCallError::Fatal(format!("failed to encode tool_search output: {err}"))
+        })?;
+
+        Ok(ToolOutput::ToolSearch { tools, execution })
     }
 
     async fn handle_update_plan(
@@ -813,6 +922,14 @@ fn host_error_to_function_call_error(error: HostError) -> FunctionCallError {
     }
 }
 
+fn stringify_tool_output(output: Value) -> String {
+    match output {
+        Value::String(text) => text,
+        other => serde_json::to_string_pretty(&other)
+            .unwrap_or_else(|err| format!("failed to serialize host tool output: {err}")),
+    }
+}
+
 fn collect_file_lines(content: &str) -> Vec<LineRecord> {
     content
         .split('\n')
@@ -1089,6 +1206,7 @@ mod list_dir_defaults {
 mod tests {
     use super::*;
     use crate::host::HostResult;
+    use crate::host::HostToolSpec;
     use crate::host::ListDirResponse;
     use crate::host::ReadFileResponse;
     use crate::host::SearchMatch;
@@ -1160,6 +1278,8 @@ mod tests {
         approval_value: &'static str,
     }
 
+    struct MockToolExecutor;
+
     #[async_trait::async_trait(?Send)]
     impl HostCollaboration for MockCollaboration {
         async fn update_plan(&self, _request: UpdatePlanRequest) -> HostResult<()> {
@@ -1179,10 +1299,29 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait(?Send)]
+    impl HostToolExecutor for MockToolExecutor {
+        async fn list_tools(&self) -> HostResult<Vec<HostToolSpec>> {
+            Ok(Vec::new())
+        }
+
+        async fn invoke(
+            &self,
+            _request: ToolInvokeRequest,
+        ) -> HostResult<crate::host::ToolInvokeResponse> {
+            unreachable!()
+        }
+
+        async fn cancel(&self, _call_id: String) -> HostResult<()> {
+            Ok(())
+        }
+    }
+
     fn runtime() -> WasmToolRuntime<'static> {
         static COLLABORATION: MockCollaboration = MockCollaboration {
             approval_value: "Approve",
         };
+        static TOOL_EXECUTOR: MockToolExecutor = MockToolExecutor;
         static FS: std::sync::LazyLock<MockFs> = std::sync::LazyLock::new(|| MockFs {
             files: std::collections::HashMap::from([
                 (
@@ -1195,17 +1334,30 @@ mod tests {
                 ),
             ]),
         });
-        WasmToolRuntime::new(&*FS, &COLLABORATION, CollaborationMode::Default, false)
+        WasmToolRuntime::new(
+            &*FS,
+            &COLLABORATION,
+            &TOOL_EXECUTOR,
+            CollaborationMode::Default,
+            false,
+        )
     }
 
     fn rejected_runtime() -> WasmToolRuntime<'static> {
         static COLLABORATION: MockCollaboration = MockCollaboration {
             approval_value: "Reject",
         };
+        static TOOL_EXECUTOR: MockToolExecutor = MockToolExecutor;
         static FS: std::sync::LazyLock<MockFs> = std::sync::LazyLock::new(|| MockFs {
             files: std::collections::HashMap::new(),
         });
-        WasmToolRuntime::new(&*FS, &COLLABORATION, CollaborationMode::Default, false)
+        WasmToolRuntime::new(
+            &*FS,
+            &COLLABORATION,
+            &TOOL_EXECUTOR,
+            CollaborationMode::Default,
+            false,
+        )
     }
 
     #[tokio::test]
@@ -1214,6 +1366,7 @@ mod tests {
             .dispatch_tool_call(
                 ToolCall {
                     tool_name: "read_file".to_string(),
+                    tool_namespace: None,
                     call_id: "call-1".to_string(),
                     payload: ToolPayload::Function {
                         arguments: serde_json::json!({
@@ -1266,6 +1419,7 @@ mod tests {
             .dispatch_tool_call(
                 ToolCall {
                     tool_name: "apply_patch".to_string(),
+                    tool_namespace: None,
                     call_id: "call-1".to_string(),
                     payload: ToolPayload::Function {
                         arguments: serde_json::json!({
@@ -1297,6 +1451,7 @@ mod tests {
             .dispatch_tool_call(
                 ToolCall {
                     tool_name: "request_user_input".to_string(),
+                    tool_namespace: None,
                     call_id: "call-1".to_string(),
                     payload: ToolPayload::Function {
                         arguments: serde_json::json!({
@@ -1356,6 +1511,37 @@ mod tests {
                 "L3:         inner();".to_string(),
                 "L4:     }".to_string(),
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_search_returns_namespaced_deferred_host_tools() {
+        let response = runtime()
+            .dispatch_tool_call(
+                ToolCall {
+                    tool_name: "tool_search".to_string(),
+                    tool_namespace: None,
+                    call_id: "search-1".to_string(),
+                    payload: ToolPayload::ToolSearch {
+                        arguments: serde_json::json!({
+                            "query": "notion"
+                        }),
+                        execution: "client".to_string(),
+                    },
+                },
+                ToolCallSource::Direct,
+            )
+            .await
+            .expect("dispatch succeeds");
+
+        assert_eq!(
+            response,
+            ResponseInputItem::ToolSearchOutput {
+                call_id: "search-1".to_string(),
+                status: "completed".to_string(),
+                execution: "client".to_string(),
+                tools: Vec::new(),
+            }
         );
     }
 }

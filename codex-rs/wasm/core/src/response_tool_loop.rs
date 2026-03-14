@@ -14,6 +14,7 @@ pub enum ToolCallSource {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolCall {
     pub tool_name: String,
+    pub tool_namespace: Option<String>,
     pub call_id: String,
     pub payload: ToolPayload,
 }
@@ -21,6 +22,7 @@ pub struct ToolCall {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToolPayload {
     Function { arguments: String },
+    ToolSearch { arguments: Value, execution: String },
     Custom { input: String },
     LocalShell { params: ShellToolCallParams },
 }
@@ -30,6 +32,10 @@ pub enum ToolOutput {
     Function {
         body: FunctionCallOutputBody,
         success: Option<bool>,
+    },
+    ToolSearch {
+        tools: Vec<Value>,
+        execution: String,
     },
 }
 
@@ -49,6 +55,12 @@ impl ToolOutput {
                     output: FunctionCallOutputPayload { body, success },
                 }
             }
+            ToolOutput::ToolSearch { tools, execution } => ResponseInputItem::ToolSearchOutput {
+                call_id: call_id.to_string(),
+                status: "completed".to_string(),
+                execution,
+                tools,
+            },
         }
     }
 }
@@ -57,13 +69,29 @@ pub fn build_tool_call(item: ResponseItem) -> Result<Option<ToolCall>, String> {
     match item {
         ResponseItem::FunctionCall {
             name,
+            namespace,
             arguments,
             call_id,
             ..
         } => Ok(Some(ToolCall {
             tool_name: name,
+            tool_namespace: namespace,
             call_id,
             payload: ToolPayload::Function { arguments },
+        })),
+        ResponseItem::ToolSearchCall {
+            call_id,
+            execution,
+            arguments,
+            ..
+        } => Ok(call_id.map(|call_id| ToolCall {
+            tool_name: crate::tool_search::TOOL_SEARCH_TOOL_NAME.to_string(),
+            tool_namespace: None,
+            call_id,
+            payload: ToolPayload::ToolSearch {
+                arguments,
+                execution,
+            },
         })),
         ResponseItem::CustomToolCall {
             name,
@@ -72,6 +100,7 @@ pub fn build_tool_call(item: ResponseItem) -> Result<Option<ToolCall>, String> {
             ..
         } => Ok(Some(ToolCall {
             tool_name: name,
+            tool_namespace: None,
             call_id,
             payload: ToolPayload::Custom { input },
         })),
@@ -98,6 +127,7 @@ pub fn build_tool_call(item: ResponseItem) -> Result<Option<ToolCall>, String> {
                     };
                     Ok(Some(ToolCall {
                         tool_name: "local_shell".to_string(),
+                        tool_namespace: None,
                         call_id,
                         payload: ToolPayload::LocalShell { params },
                     }))
@@ -122,6 +152,17 @@ pub fn response_input_to_response_item(input: &ResponseInputItem) -> Option<Resp
                 output: output.clone(),
             })
         }
+        ResponseInputItem::ToolSearchOutput {
+            call_id,
+            status,
+            execution,
+            tools,
+        } => Some(ResponseItem::ToolSearchOutput {
+            call_id: Some(call_id.clone()),
+            status: status.clone(),
+            execution: execution.clone(),
+            tools: tools.clone(),
+        }),
         _ => None,
     }
 }
@@ -153,6 +194,7 @@ pub fn last_assistant_message_from_item(item: &ResponseItem) -> Option<String> {
 pub fn parse_tool_arguments_json(call: &ToolCall) -> Result<Value, serde_json::Error> {
     match &call.payload {
         ToolPayload::Function { arguments } => serde_json::from_str(arguments),
+        ToolPayload::ToolSearch { arguments, .. } => Ok(arguments.clone()),
         ToolPayload::Custom { .. } | ToolPayload::LocalShell { .. } => serde_json::from_str("{}"),
     }
 }
@@ -178,6 +220,7 @@ mod tests {
             build_tool_call(item).expect("build should succeed"),
             Some(ToolCall {
                 tool_name: "read_file".to_string(),
+                tool_namespace: None,
                 call_id: "call-1".to_string(),
                 payload: ToolPayload::Function {
                     arguments: "{\"path\":\"/workspace/src/lib.rs\"}".to_string(),
@@ -248,6 +291,7 @@ mod tests {
             build_tool_call(item).expect("build should succeed"),
             Some(ToolCall {
                 tool_name: "local_shell".to_string(),
+                tool_namespace: None,
                 call_id: "legacy-1".to_string(),
                 payload: ToolPayload::LocalShell {
                     params: ShellToolCallParams {
@@ -259,6 +303,36 @@ mod tests {
                         prefix_rule: None,
                         justification: None,
                     },
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn builds_tool_search_call_from_response_item() {
+        let item = ResponseItem::ToolSearchCall {
+            id: Some("ts-1".to_string()),
+            call_id: Some("search-1".to_string()),
+            status: None,
+            execution: "client".to_string(),
+            arguments: serde_json::json!({
+                "query": "notion search",
+                "limit": 1,
+            }),
+        };
+
+        assert_eq!(
+            build_tool_call(item).expect("build should succeed"),
+            Some(ToolCall {
+                tool_name: "tool_search".to_string(),
+                tool_namespace: None,
+                call_id: "search-1".to_string(),
+                payload: ToolPayload::ToolSearch {
+                    arguments: serde_json::json!({
+                        "query": "notion search",
+                        "limit": 1,
+                    }),
+                    execution: "client".to_string(),
                 },
             })
         );

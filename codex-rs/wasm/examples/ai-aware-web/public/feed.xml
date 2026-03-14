@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>AI-Aware Web</title>
+    <link>http://localhost:4181/</link>
+    <description>Browser-native Codex runtime demo updates and capability notes.</description>
+    <language>en-us</language>
+    <item>
+      <title>AI-Aware Web runtime demo</title>
+      <link>http://localhost:4181/</link>
+      <description>Chat-first browser agent runtime with remote MCP, browser tools, and persistent workspace artifacts.</description>
+      <guid>http://localhost:4181/#runtime-demo</guid>
+    </item>
+  </channel>
+</rss>

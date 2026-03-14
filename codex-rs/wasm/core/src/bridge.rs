@@ -291,7 +291,8 @@ pub struct ToolListParams {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeToolSpec {
-    pub name: String,
+    pub tool_name: String,
+    pub tool_namespace: Option<String>,
     pub description: String,
     pub input_schema: Value,
 }
@@ -307,6 +308,7 @@ pub struct ToolListResult {
 pub struct ToolInvokeParams {
     pub call_id: String,
     pub tool_name: String,
+    pub tool_namespace: Option<String>,
     pub input: Value,
 }
 

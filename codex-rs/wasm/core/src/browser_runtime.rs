@@ -7,6 +7,7 @@ use crate::host::HostInstructionStore;
 use crate::host::HostModelTransport;
 use crate::host::HostResult;
 use crate::host::HostSessionStore;
+use crate::host::HostToolExecutor;
 use crate::host::ModelRequest;
 use crate::host::ModelTransportEvent;
 use crate::host::SessionSnapshot;
@@ -14,6 +15,7 @@ use crate::instructions::with_default_base_instructions;
 use crate::tool_loop::browser_builtin_tool_specs;
 use crate::tool_runtime::CollaborationMode;
 use crate::tool_runtime::WasmToolRuntime;
+use crate::tool_search::create_tool_search_transport_tool;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use futures::StreamExt;
@@ -160,6 +162,7 @@ pub struct BrowserRuntime<'a> {
     instruction_store: &'a dyn HostInstructionStore,
     model_transport: &'a dyn HostModelTransport,
     session_store: &'a dyn HostSessionStore,
+    tool_executor: &'a dyn HostToolExecutor,
     collaboration_mode: CollaborationMode,
     default_mode_request_user_input: bool,
 }
@@ -171,6 +174,7 @@ impl<'a> BrowserRuntime<'a> {
         instruction_store: &'a dyn HostInstructionStore,
         model_transport: &'a dyn HostModelTransport,
         session_store: &'a dyn HostSessionStore,
+        tool_executor: &'a dyn HostToolExecutor,
     ) -> Self {
         Self {
             fs,
@@ -178,6 +182,7 @@ impl<'a> BrowserRuntime<'a> {
             instruction_store,
             model_transport,
             session_store,
+            tool_executor,
             collaboration_mode: CollaborationMode::Default,
             default_mode_request_user_input: false,
         }
@@ -282,6 +287,8 @@ impl<'a> BrowserRuntime<'a> {
         let mut request_index = 0usize;
 
         loop {
+            let builtin_tool_specs = browser_builtin_tool_specs();
+            let host_tool_specs = self.tool_executor.list_tools().await?;
             let request_id = if request_index == 0 {
                 request.turn_id.clone()
             } else {
@@ -290,7 +297,8 @@ impl<'a> BrowserRuntime<'a> {
             let request_payload = with_runtime_payload(
                 model_payload.clone(),
                 response_input_items.clone(),
-                browser_builtin_tool_specs(),
+                builtin_tool_specs,
+                host_tool_specs,
             )?;
             let mut stream = self
                 .model_transport
@@ -302,6 +310,7 @@ impl<'a> BrowserRuntime<'a> {
             let tool_runtime = WasmToolRuntime::new(
                 self.fs,
                 self.collaboration,
+                self.tool_executor,
                 self.collaboration_mode,
                 self.default_mode_request_user_input,
             );
@@ -452,7 +461,8 @@ fn initial_response_input_items(input: &Value) -> Vec<Value> {
 fn with_runtime_payload(
     payload: Value,
     response_input_items: Vec<Value>,
-    tool_specs: Vec<crate::host::HostToolSpec>,
+    builtin_tool_specs: Vec<crate::host::HostToolSpec>,
+    host_tool_specs: Vec<crate::host::HostToolSpec>,
 ) -> HostResult<Value> {
     let payload = match payload {
         Value::Object(map) => map,
@@ -465,7 +475,7 @@ fn with_runtime_payload(
             });
         }
     };
-    let transport_tools = transport_tools_from_host_specs(&tool_specs);
+    let transport_tools = transport_tools_from_host_specs(&builtin_tool_specs, &host_tool_specs);
     let serialized_response_input_items = Value::Array(response_input_items.clone());
     let transport_payload =
         build_transport_payload(&payload, response_input_items, transport_tools)?;
@@ -515,6 +525,7 @@ fn build_transport_payload(
         ("input".to_string(), Value::Array(response_input_items)),
         ("tools".to_string(), tools),
         ("tool_choice".to_string(), Value::String("auto".to_string())),
+        ("parallel_tool_calls".to_string(), Value::Bool(true)),
         ("stream".to_string(), Value::Bool(true)),
     ])))
 }
@@ -534,23 +545,29 @@ fn extract_contextual_user_messages(payload: &Map<String, Value>) -> Vec<String>
         .collect()
 }
 
-fn transport_tools_from_host_specs(tool_specs: &[crate::host::HostToolSpec]) -> Value {
-    Value::Array(
-        tool_specs
-            .iter()
-            .map(|tool| {
-                Value::Object(Map::from_iter([
-                    ("type".to_string(), Value::String("function".to_string())),
-                    ("name".to_string(), Value::String(tool.name.clone())),
-                    (
-                        "description".to_string(),
-                        Value::String(tool.description.clone()),
-                    ),
-                    ("parameters".to_string(), tool.input_schema.clone()),
-                ]))
-            })
-            .collect(),
-    )
+fn transport_tools_from_host_specs(
+    builtin_tool_specs: &[crate::host::HostToolSpec],
+    host_tool_specs: &[crate::host::HostToolSpec],
+) -> Value {
+    let mut tools = builtin_tool_specs
+        .iter()
+        .map(|tool| {
+            Value::Object(Map::from_iter([
+                ("type".to_string(), Value::String("function".to_string())),
+                ("name".to_string(), Value::String(tool.tool_name.clone())),
+                (
+                    "description".to_string(),
+                    Value::String(tool.description.clone()),
+                ),
+                ("strict".to_string(), Value::Bool(false)),
+                ("parameters".to_string(), tool.input_schema.clone()),
+            ]))
+        })
+        .collect::<Vec<_>>();
+    if let Some(tool_search_tool) = create_tool_search_transport_tool(host_tool_specs) {
+        tools.push(tool_search_tool);
+    }
+    Value::Array(tools)
 }
 
 fn serialize_response_item(item: &ResponseItem) -> HostResult<Value> {
@@ -624,6 +641,8 @@ mod tests {
     use crate::host::RequestUserInputResponse;
     use crate::host::SearchRequest;
     use crate::host::SearchResponse;
+    use crate::host::ToolInvokeRequest;
+    use crate::host::ToolInvokeResponse;
     use crate::host::UpdatePlanRequest;
     use crate::host::WriteFileRequest;
     use crate::host::WriteFileResponse;
@@ -658,6 +677,11 @@ mod tests {
     struct MockFs;
 
     struct MockCollaboration;
+
+    struct MockToolExecutor {
+        tools: Vec<crate::host::HostToolSpec>,
+        invocations: Mutex<Vec<ToolInvokeRequest>>,
+    }
 
     #[async_trait(?Send)]
     impl HostModelTransport for MockModelTransport {
@@ -745,6 +769,31 @@ mod tests {
     }
 
     #[async_trait(?Send)]
+    impl HostToolExecutor for MockToolExecutor {
+        async fn list_tools(&self) -> HostResult<Vec<crate::host::HostToolSpec>> {
+            Ok(self.tools.clone())
+        }
+
+        async fn invoke(&self, request: ToolInvokeRequest) -> HostResult<ToolInvokeResponse> {
+            self.invocations
+                .lock()
+                .expect("lock poisoned")
+                .push(request.clone());
+            Ok(ToolInvokeResponse {
+                call_id: request.call_id,
+                output: json!({
+                    "ok": true,
+                    "tool": request.tool_name,
+                }),
+            })
+        }
+
+        async fn cancel(&self, _call_id: String) -> HostResult<()> {
+            Ok(())
+        }
+    }
+
+    #[async_trait(?Send)]
     impl HostSessionStore for MockSessionStore {
         async fn load_thread(&self, _thread_id: String) -> HostResult<Option<SessionSnapshot>> {
             Ok(self.snapshot.lock().expect("lock poisoned").clone())
@@ -773,12 +822,17 @@ mod tests {
         };
         let fs = MockFs;
         let collaboration = MockCollaboration;
+        let tool_executor = MockToolExecutor {
+            tools: Vec::new(),
+            invocations: Mutex::new(Vec::new()),
+        };
         let runtime = BrowserRuntime::new(
             &fs,
             &collaboration,
             &instruction_store,
             &model_transport,
             &session_store,
+            &tool_executor,
         );
 
         let result = runtime
@@ -871,12 +925,29 @@ mod tests {
         };
         let fs = MockFs;
         let collaboration = MockCollaboration;
+        let tool_executor = MockToolExecutor {
+            tools: vec![crate::host::HostToolSpec {
+                tool_name: "search".to_string(),
+                tool_namespace: Some("notion".to_string()),
+                description: "Search Notion workspace pages".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" }
+                    },
+                    "required": ["query"],
+                    "additionalProperties": false
+                }),
+            }],
+            invocations: Mutex::new(Vec::new()),
+        };
         let runtime = BrowserRuntime::new(
             &fs,
             &collaboration,
             &instruction_store,
             &model_transport,
             &session_store,
+            &tool_executor,
         );
 
         let result = runtime
@@ -895,7 +966,7 @@ mod tests {
             .await
             .expect("turn should succeed");
         let expected_transport_tools =
-            transport_tools_from_host_specs(&browser_builtin_tool_specs());
+            transport_tools_from_host_specs(&browser_builtin_tool_specs(), &tool_executor.tools);
 
         assert_eq!(
             result.value,
@@ -1034,6 +1105,7 @@ mod tests {
                         ],
                         "tools": expected_transport_tools,
                         "tool_choice": "auto",
+                        "parallel_tool_calls": true,
                         "stream": true,
                     },
                 }),
@@ -1102,12 +1174,17 @@ mod tests {
         };
         let fs = MockFs;
         let collaboration = MockCollaboration;
+        let tool_executor = MockToolExecutor {
+            tools: Vec::new(),
+            invocations: Mutex::new(Vec::new()),
+        };
         let runtime = BrowserRuntime::new(
             &fs,
             &collaboration,
             &instruction_store,
             &model_transport,
             &session_store,
+            &tool_executor,
         );
 
         let result = runtime
@@ -1147,7 +1224,7 @@ mod tests {
         })
         .expect("function call serializes");
         let expected_transport_tools =
-            transport_tools_from_host_specs(&browser_builtin_tool_specs());
+            transport_tools_from_host_specs(&browser_builtin_tool_specs(), &[]);
 
         let requests = model_transport
             .requests
@@ -1174,6 +1251,7 @@ mod tests {
                     ],
                     "tools": expected_transport_tools,
                     "tool_choice": "auto",
+                    "parallel_tool_calls": true,
                     "stream": true,
                 },
                 "responseInputItems": [
@@ -1211,6 +1289,7 @@ mod tests {
                     ],
                     "tools": expected_transport_tools,
                     "tool_choice": "auto",
+                    "parallel_tool_calls": true,
                     "stream": true,
                 },
                 "responseInputItems": [
@@ -1286,6 +1365,128 @@ mod tests {
                 }),
             ]
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn run_turn_invokes_host_custom_tools() {
+        let session_store = MockSessionStore {
+            snapshot: Mutex::new(Some(SessionSnapshot {
+                thread_id: "thread-1".to_string(),
+                metadata: json!({ "workspaceRoot": "/repo" }),
+                items: Vec::new(),
+            })),
+            saves: Mutex::new(Vec::new()),
+        };
+        let instruction_store = MockInstructionStore { snapshot: None };
+        let model_transport = MockModelTransport {
+            event_sequences: Mutex::new(vec![
+                vec![
+                    ModelTransportEvent::Started {
+                        request_id: "turn-1".to_string(),
+                    },
+                    ModelTransportEvent::OutputItemDone {
+                        request_id: "turn-1".to_string(),
+                        item: ResponseItem::FunctionCall {
+                            id: Some("fc-1".to_string()),
+                            name: "search".to_string(),
+                            namespace: Some("notion".to_string()),
+                            arguments: json!({
+                                "query": "roadmap"
+                            })
+                            .to_string(),
+                            call_id: "call-1".to_string(),
+                        },
+                    },
+                    ModelTransportEvent::Completed {
+                        request_id: "turn-1".to_string(),
+                    },
+                ],
+                vec![
+                    ModelTransportEvent::Started {
+                        request_id: "turn-1:1".to_string(),
+                    },
+                    ModelTransportEvent::OutputItemDone {
+                        request_id: "turn-1:1".to_string(),
+                        item: ResponseItem::Message {
+                            id: Some("msg-1".to_string()),
+                            role: "assistant".to_string(),
+                            content: vec![codex_protocol::models::ContentItem::OutputText {
+                                text: "Done".to_string(),
+                            }],
+                            end_turn: Some(true),
+                            phase: None,
+                        },
+                    },
+                    ModelTransportEvent::Completed {
+                        request_id: "turn-1:1".to_string(),
+                    },
+                ],
+            ]),
+            requests: Mutex::new(Vec::new()),
+        };
+        let fs = MockFs;
+        let collaboration = MockCollaboration;
+        let tool_executor = MockToolExecutor {
+            tools: vec![crate::host::HostToolSpec {
+                tool_name: "search".to_string(),
+                tool_namespace: Some("notion".to_string()),
+                description: "Search Notion workspace pages".to_string(),
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" }
+                    },
+                    "required": ["query"],
+                    "additionalProperties": false
+                }),
+            }],
+            invocations: Mutex::new(Vec::new()),
+        };
+        let runtime = BrowserRuntime::new(
+            &fs,
+            &collaboration,
+            &instruction_store,
+            &model_transport,
+            &session_store,
+            &tool_executor,
+        );
+
+        let result = runtime
+            .run_turn(RunTurnRequest {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                input: json!([{
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        { "type": "input_text", "text": "Search Notion" },
+                    ],
+                }]),
+                model_payload: json!({ "model": "demo", "input": [] }),
+            })
+            .await
+            .expect("turn should succeed");
+
+        assert_eq!(
+            tool_executor
+                .invocations
+                .lock()
+                .expect("lock poisoned")
+                .clone(),
+            vec![ToolInvokeRequest {
+                call_id: "call-1".to_string(),
+                tool_name: "search".to_string(),
+                tool_namespace: Some("notion".to_string()),
+                input: json!({
+                    "query": "roadmap"
+                }),
+            }]
+        );
+        assert!(result.value.items.iter().any(|item| {
+            item.get("type") == Some(&json!("toolOutputItem"))
+                && item.get("item").and_then(|value| value.get("output"))
+                    == Some(&json!("{\n  \"ok\": true,\n  \"tool\": \"search\"\n}"))
+        }));
     }
 
     #[test]

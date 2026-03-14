@@ -90,6 +90,13 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
         })),
       };
     },
+    async listTools() {
+      return [];
+    },
+    async invokeTool() {
+      throw createHostError("unavailable", "host custom tools are not configured");
+    },
+    async cancelTool() {},
     async startModelTurn(request) {
       const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;
       const requestId = typeof normalizedRequest.requestId === "string" ? normalizedRequest.requestId : null;

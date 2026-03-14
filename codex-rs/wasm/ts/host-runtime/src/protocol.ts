@@ -162,7 +162,8 @@ export type FsSearchMatch = {
 };
 
 export type BridgeToolSpec = {
-  name: string;
+  toolName: string;
+  toolNamespace: string | null;
   description: string;
   inputSchema: JsonValue;
 };

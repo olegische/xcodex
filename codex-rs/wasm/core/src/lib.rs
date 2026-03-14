@@ -17,4 +17,5 @@ pub mod models;
 pub mod response_tool_loop;
 pub mod tool_loop;
 pub mod tool_runtime;
+pub mod tool_search;
 pub mod truncate;

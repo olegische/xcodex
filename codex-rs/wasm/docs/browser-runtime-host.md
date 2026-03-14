@@ -22,6 +22,13 @@ interface BrowserRuntimeHost {
   loadSession(threadId: string): Promise<SessionSnapshotPayload | null>;
   loadInstructions(threadId: string): Promise<JsonValue | null>;
   saveSession(snapshot: SessionSnapshotPayload): Promise<void>;
+  listTools(): Promise<Array<{ name: string; description: string; inputSchema: JsonValue }>>;
+  invokeTool(request: {
+    callId: string;
+    toolName: string;
+    input: JsonValue;
+  }): Promise<{ callId: string; output: JsonValue }>;
+  cancelTool(callId: string): Promise<void>;
   startModelTurn(request: {
     requestId: string;
     payload: JsonValue;
@@ -106,6 +113,18 @@ The intended semantic boundary is still `responses`-style streaming:
 
 - Codex emits/consumes normalized turn and delta events.
 - The router layer is responsible for adapting provider-specific protocols to that behavior.
+
+## Host Tools
+
+`listTools()` returns browser-safe custom tools that should be exposed to the model in addition to the fixed filesystem/planning tool set.
+
+This is the intended entrypoint for browser-native remote capabilities such as:
+
+- remote MCP tools over URL transports;
+- extension-backed DevTools actions;
+- SaaS connectors that are not local processes.
+
+`invokeTool()` executes one of those host-provided tools and returns a JSON value that is serialized back into the model loop as tool output.
 
 ## Model Turn Events
 

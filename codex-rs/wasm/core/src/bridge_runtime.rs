@@ -330,7 +330,8 @@ impl<'a> BridgeRuntime<'a> {
                         tools: tools
                             .into_iter()
                             .map(|tool| BridgeToolSpec {
-                                name: tool.name,
+                                tool_name: tool.tool_name,
+                                tool_namespace: tool.tool_namespace,
                                 description: tool.description,
                                 input_schema: tool.input_schema,
                             })
@@ -344,6 +345,7 @@ impl<'a> BridgeRuntime<'a> {
                     .invoke(ToolInvokeRequest {
                         call_id: params.call_id,
                         tool_name: params.tool_name,
+                        tool_namespace: params.tool_namespace,
                         input: params.input,
                     })
                     .await?;
@@ -597,7 +599,8 @@ pub(crate) mod tests {
     impl HostToolExecutor for MockToolExecutor {
         async fn list_tools(&self) -> HostResult<Vec<HostToolSpec>> {
             Ok(vec![HostToolSpec {
-                name: "readFile".to_string(),
+                tool_name: "readFile".to_string(),
+                tool_namespace: None,
                 description: "Read a file".to_string(),
                 input_schema: json!({ "type": "object" }),
             }])

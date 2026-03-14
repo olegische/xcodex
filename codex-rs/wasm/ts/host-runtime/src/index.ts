@@ -9,6 +9,13 @@ export {
   HostRuntime,
 } from "./runtime.js";
 export {
+  RemoteMcpController,
+  createIndexedDbRemoteMcpStateStore,
+  createInMemoryRemoteMcpStateStore,
+  createRemoteMcpToolExecutor,
+  resolveQualifiedToolName,
+} from "./mcp.js";
+export {
   createBrowserSessionStoreAdapter,
   createBrowserWorkspaceStore,
   createWorkspaceFsAdapter,
@@ -32,6 +39,15 @@ export type {
   HostToolExecutorAdapter,
   WasmBridgeTransport,
 } from "./runtime.js";
+export type {
+  RemoteMcpLoginStart,
+  RemoteMcpServerConfig,
+  RemoteMcpServerState,
+  RemoteMcpStateStore,
+  RemoteMcpToolSpec,
+  RemoteMcpControllerOptions,
+  IndexedDbRemoteMcpStateStoreOptions,
+} from "./mcp.js";
 export type {
   AuthStateStore,
   BrowserAuthAdapterOptions,

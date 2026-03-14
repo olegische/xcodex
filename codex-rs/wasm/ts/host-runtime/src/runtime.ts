@@ -51,6 +51,7 @@ export interface HostToolExecutorAdapter {
   invoke(params: {
     callId: string;
     toolName: string;
+    toolNamespace?: string | null;
     input: JsonValue;
   }): Promise<{ callId: string; output: JsonValue }>;
   cancel(params: { callId: string }): Promise<void>;
