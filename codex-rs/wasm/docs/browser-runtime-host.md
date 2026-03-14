@@ -156,20 +156,21 @@ For streaming text output, the host should emit `delta.payload.outputTextDelta` 
 
 `runtime.runTurn(...)` returns a dispatch payload with `value` and `events`.
 
-For model text, browser clients should expect `modelDelta` events in this shape:
+At the JavaScript boundary, `events` are exposed in app-server-style notification
+shape:
 
 ```json
 {
-  "event": "modelDelta",
-  "payload": {
+  "method": "item/agentMessage/delta",
+  "params": {
     "threadId": "browser-chat-demo-thread",
     "turnId": "browser-chat-demo-turn-1",
-    "requestId": "browser-chat-demo-turn-1",
-    "payload": {
-      "outputTextDelta": "I found the Rust entrypoint..."
-    }
+    "itemId": "browser-chat-demo-turn-1:assistant",
+    "delta": "I found the Rust entrypoint..."
   }
 }
 ```
 
-That nested `payload.payload.outputTextDelta` shape is the current A3 runtime contract and is covered by Rust unit tests.
+The internal Rust runtime may still use `UiEvent`, but browser clients should
+reason about the exported dispatch stream in `app-server-protocol` notification
+vocabulary rather than the legacy `event/payload` shape.

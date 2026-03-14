@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use codex_app_server_protocol::ServerNotification;
 use codex_protocol::models::ResponseItem;
 use core::pin::Pin;
 use futures::stream::Stream;
@@ -269,6 +270,11 @@ pub trait HostCollaboration: Send + Sync {
         &self,
         request: RequestUserInputRequest,
     ) -> HostResult<RequestUserInputResponse>;
+}
+
+#[async_trait(?Send)]
+pub trait HostNotificationSink: Send + Sync {
+    async fn emit_notification(&self, notification: ServerNotification) -> HostResult<()>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

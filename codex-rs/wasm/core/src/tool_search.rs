@@ -100,7 +100,14 @@ pub fn search_tools(
 fn tool_search_description(host_tools: &[HostToolSpec]) -> String {
     let mut app_names = host_tools
         .iter()
-        .filter_map(|tool| tool.tool_namespace.clone())
+        .filter_map(|tool| tool.tool_namespace.as_deref())
+        .map(|namespace| {
+            namespace
+                .strip_prefix("mcp__")
+                .and_then(|trimmed| trimmed.strip_suffix("__"))
+                .unwrap_or(namespace)
+                .to_string()
+        })
         .collect::<Vec<_>>();
     app_names.sort();
     app_names.dedup();
@@ -179,7 +186,11 @@ fn namespace_description(namespace: &str, fallback: &str) -> String {
     if namespace.is_empty() {
         return fallback.to_string();
     }
-    format!("Tools for working with {namespace}.")
+    let display_namespace = namespace
+        .strip_prefix("mcp__")
+        .and_then(|trimmed| trimmed.strip_suffix("__"))
+        .unwrap_or(namespace);
+    format!("Tools for working with {display_namespace}.")
 }
 
 fn build_search_text(tool: &HostToolSpec) -> String {
@@ -258,7 +269,7 @@ mod tests {
             },
             HostToolSpec {
                 tool_name: "notion-search".to_string(),
-                tool_namespace: Some("notion".to_string()),
+                tool_namespace: Some("mcp__notion__".to_string()),
                 description: "Search Notion workspace content.".to_string(),
                 input_schema: json!({"type": "object"}),
             },
@@ -284,7 +295,7 @@ mod tests {
                 }),
                 json!({
                     "type": "namespace",
-                    "name": "notion",
+                    "name": "mcp__notion__",
                     "description": "Tools for working with notion.",
                     "tools": [{
                         "type": "function",

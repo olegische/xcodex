@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BootState } from "../stores/boot";
+  import type { BootState, BootStep } from "../stores/boot";
 
   export let bootState: BootState;
 
@@ -15,32 +15,42 @@
     }
     return "pending";
   }
+
+  function currentStep(): BootStep | null {
+    const activeStep = bootState.steps.find((step) => step.status === "active");
+    if (activeStep) {
+      return activeStep;
+    }
+    const errorStep = bootState.steps.find((step) => step.status === "error");
+    if (errorStep) {
+      return errorStep;
+    }
+    const completedSteps = bootState.steps.filter((step) => step.status === "done");
+    return completedSteps[completedSteps.length - 1] ?? null;
+  }
+
+  $: stage = currentStep();
 </script>
 
 <section class:error={bootState.phase === "error"} class="boot-console">
-  <div class="boot-console-header">
-    <div>
+  <div class="boot-console-panel">
+    <div class="boot-console-stage">
       <div class="eyebrow">Boot Sequence</div>
       <strong>{bootState.phase === "error" ? "Boot failed" : bootState.message}</strong>
-    </div>
-    <span class:warning={bootState.phase === "error"} class="status-tag">
-      {bootState.phase}
-    </span>
-  </div>
 
-  <div class="boot-console-steps">
-    {#each bootState.steps as step}
-      <div class={`boot-step ${stepTone(step.status)}`}>
-        <div class="boot-step-title">
-          <span>{step.label}</span>
-          <span class="chip ghost">{step.status}</span>
+      {#if stage !== null}
+        <div class={`boot-stage-card ${stepTone(stage.status)}`}>
+          <div class="boot-stage-meta">
+            <span class="boot-stage-label">{stage.label}</span>
+            <span class="chip ghost">{stage.status}</span>
+          </div>
+          <div class="boot-stage-detail">{stage.detail}</div>
         </div>
-        <div class="card-footnote">{step.detail}</div>
-      </div>
-    {/each}
-  </div>
+      {/if}
+    </div>
 
-  {#if bootState.errorDetail !== null}
-    <pre class="boot-console-error">{bootState.errorDetail}</pre>
-  {/if}
+    {#if bootState.errorDetail !== null}
+      <pre class="boot-console-error">{bootState.errorDetail}</pre>
+    {/if}
+  </div>
 </section>

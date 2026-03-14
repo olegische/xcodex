@@ -1,9 +1,11 @@
 #[cfg(target_arch = "wasm32")]
 mod wasm_exports {
-    use crate::browser_runtime::BrowserRuntime as CoreBrowserRuntime;
-    use crate::browser_runtime::ResumeThreadRequest;
-    use crate::browser_runtime::RunTurnRequest;
-    use crate::browser_runtime::StartThreadRequest;
+    use crate::app_server_events::browser_dispatch_from_turn;
+    use crate::app_server_events::browser_dispatch_without_events;
+    use crate::codex::BrowserRuntime as CoreBrowserRuntime;
+    use crate::codex::ResumeThreadRequest;
+    use crate::codex::RunTurnRequest;
+    use crate::codex::StartThreadRequest;
     use crate::host::AccountReadRequest;
     use crate::host::AccountReadResponse;
     use crate::host::ApplyPatchRequest;
@@ -17,6 +19,7 @@ mod wasm_exports {
     use crate::host::HostFs;
     use crate::host::HostInstructionStore;
     use crate::host::HostModelTransport;
+    use crate::host::HostNotificationSink;
     use crate::host::HostResult;
     use crate::host::HostSessionStore;
     use crate::host::HostToolExecutor;
@@ -41,8 +44,9 @@ mod wasm_exports {
     use crate::host::WriteFileRequest;
     use crate::host::WriteFileResponse;
     use crate::instructions::InstructionSnapshot;
-    use crate::tool_runtime::CollaborationMode;
+    use crate::tools::runtime::CollaborationMode;
     use async_trait::async_trait;
+    use codex_app_server_protocol::ServerNotification;
     use futures::stream;
     use serde::Deserialize;
     use serde::Serialize;
@@ -165,6 +169,12 @@ mod wasm_exports {
             this: &BrowserRuntimeHost,
             call_id: JsValue,
         ) -> Result<JsValue, JsValue>;
+
+        #[wasm_bindgen(method, catch, js_name = emitNotification)]
+        async fn emit_notification(
+            this: &BrowserRuntimeHost,
+            notification: JsValue,
+        ) -> Result<JsValue, JsValue>;
     }
 
     #[wasm_bindgen(typescript_custom_section)]
@@ -197,6 +207,7 @@ export interface BrowserRuntimeHost {
   }>>;
   invokeTool(request: import("./protocol").JsonValue): Promise<import("./protocol").JsonValue>;
   cancelTool(callId: string): Promise<void>;
+  emitNotification(notification: import("./protocol").JsonValue): Promise<void>;
   startModelTurn(request: {
     requestId: string;
     payload: import("./protocol").JsonValue;
@@ -238,6 +249,7 @@ export interface BrowserRuntimeHost {
             let collaboration = JsHostCollaboration { host: &self.host };
             let instructions = JsHostInstructionStore { host: &self.host };
             let model_transport = JsHostModelTransport { host: &self.host };
+            let notification_sink = JsHostNotificationSink { host: &self.host };
             let session_store = JsHostSessionStore { host: &self.host };
             let tool_executor = JsHostToolExecutor { host: &self.host };
             let runtime = CoreBrowserRuntime::new(
@@ -245,6 +257,7 @@ export interface BrowserRuntimeHost {
                 &collaboration,
                 &instructions,
                 &model_transport,
+                &notification_sink,
                 &session_store,
                 &tool_executor,
             )
@@ -253,7 +266,7 @@ export interface BrowserRuntimeHost {
                 .start_thread(request)
                 .await
                 .map_err(host_error_to_js_value)?;
-            encode_js_value(&dispatch)
+            encode_js_value(&browser_dispatch_without_events(dispatch))
         }
 
         #[wasm_bindgen(js_name = resumeThread)]
@@ -263,6 +276,7 @@ export interface BrowserRuntimeHost {
             let collaboration = JsHostCollaboration { host: &self.host };
             let instructions = JsHostInstructionStore { host: &self.host };
             let model_transport = JsHostModelTransport { host: &self.host };
+            let notification_sink = JsHostNotificationSink { host: &self.host };
             let session_store = JsHostSessionStore { host: &self.host };
             let tool_executor = JsHostToolExecutor { host: &self.host };
             let runtime = CoreBrowserRuntime::new(
@@ -270,6 +284,7 @@ export interface BrowserRuntimeHost {
                 &collaboration,
                 &instructions,
                 &model_transport,
+                &notification_sink,
                 &session_store,
                 &tool_executor,
             )
@@ -278,16 +293,18 @@ export interface BrowserRuntimeHost {
                 .resume_thread(request)
                 .await
                 .map_err(host_error_to_js_value)?;
-            encode_js_value(&dispatch)
+            encode_js_value(&browser_dispatch_without_events(dispatch))
         }
 
         #[wasm_bindgen(js_name = runTurn)]
         pub async fn run_turn(&self, request: JsValue) -> Result<JsValue, JsValue> {
             let request = decode_js_value::<RunTurnRequest>(request)?;
+            let turn_id = request.turn_id.clone();
             let fs = JsHostFs { host: &self.host };
             let collaboration = JsHostCollaboration { host: &self.host };
             let instructions = JsHostInstructionStore { host: &self.host };
             let model_transport = JsHostModelTransport { host: &self.host };
+            let notification_sink = JsHostNotificationSink { host: &self.host };
             let session_store = JsHostSessionStore { host: &self.host };
             let tool_executor = JsHostToolExecutor { host: &self.host };
             let runtime = CoreBrowserRuntime::new(
@@ -295,6 +312,7 @@ export interface BrowserRuntimeHost {
                 &collaboration,
                 &instructions,
                 &model_transport,
+                &notification_sink,
                 &session_store,
                 &tool_executor,
             )
@@ -303,7 +321,7 @@ export interface BrowserRuntimeHost {
                 .run_turn(request)
                 .await
                 .map_err(host_error_to_js_value)?;
-            encode_js_value(&dispatch)
+            encode_js_value(&browser_dispatch_from_turn(dispatch, &turn_id))
         }
 
         #[wasm_bindgen(js_name = cancelModelTurn)]
@@ -522,8 +540,14 @@ export interface BrowserRuntimeHost {
         host: &'a BrowserRuntimeHost,
     }
 
+    struct JsHostNotificationSink<'a> {
+        host: &'a BrowserRuntimeHost,
+    }
+
     unsafe impl Send for JsHostModelTransport<'_> {}
     unsafe impl Sync for JsHostModelTransport<'_> {}
+    unsafe impl Send for JsHostNotificationSink<'_> {}
+    unsafe impl Sync for JsHostNotificationSink<'_> {}
 
     #[async_trait(?Send)]
     impl<'a> HostModelTransport for JsHostModelTransport<'a> {
@@ -546,6 +570,18 @@ export interface BrowserRuntimeHost {
         async fn cancel(&self, request_id: String) -> HostResult<()> {
             self.host
                 .cancel_model_turn(JsValue::from_str(&request_id))
+                .await
+                .map_err(js_value_to_host_error)?;
+            Ok(())
+        }
+    }
+
+    #[async_trait(?Send)]
+    impl<'a> HostNotificationSink for JsHostNotificationSink<'a> {
+        async fn emit_notification(&self, notification: ServerNotification) -> HostResult<()> {
+            let value = encode_js_value(&notification).map_err(js_value_encode_error)?;
+            self.host
+                .emit_notification(value)
                 .await
                 .map_err(js_value_to_host_error)?;
             Ok(())

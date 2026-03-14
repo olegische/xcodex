@@ -1,13 +1,12 @@
 <script lang="ts">
   import ComposerWidget from "./widgets/ComposerWidget.svelte";
   import TranscriptWidget from "./widgets/TranscriptWidget.svelte";
-  import type { RuntimeActivity, TranscriptEntry } from "../runtime";
+  import type { TranscriptEntry } from "../runtime";
 
   export let transcript: TranscriptEntry[] = [];
   export let liveStreamText = "";
   export let status = "";
   export let running = false;
-  export let runtimeActivities: RuntimeActivity[] = [];
   export let disabled = false;
   export let onSend: () => void;
   export let onStop: () => void;
@@ -17,7 +16,7 @@
 <div class="chat-foundation">
   <div class="chat-foundation-transcript-layer">
     <div class="chat-foundation-transcript-shell">
-      <TranscriptWidget {transcript} {liveStreamText} {status} {running} {runtimeActivities} />
+      <TranscriptWidget {transcript} {liveStreamText} {status} {running} />
     </div>
   </div>
 

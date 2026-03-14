@@ -104,16 +104,20 @@ function createRuntimeSessionStore() {
       const session = get({ subscribe });
       const runtime = requireRuntime(session.state);
       const normalizedMessage = message.trim();
+      const optimisticState =
+        normalizedMessage.length > 0
+          ? {
+              ...session.state,
+              transcript: appendUserTranscriptEntry(session.state.transcript, normalizedMessage),
+            }
+          : session.state;
       if (normalizedMessage.length > 0) {
         set({
           ...session,
-          state: {
-            ...session.state,
-            transcript: appendUserTranscriptEntry(session.state.transcript, normalizedMessage),
-          },
+          state: optimisticState,
         });
       }
-      const outcome = await runTurnFromDraft(runtime, session.state, session.providerDraft, message, turnCounter);
+      const outcome = await runTurnFromDraft(runtime, optimisticState, session.providerDraft, message, turnCounter);
       set({
         state: outcome.state,
         providerDraft: outcome.providerDraft,

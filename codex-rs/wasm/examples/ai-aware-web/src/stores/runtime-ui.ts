@@ -1,8 +1,9 @@
 import { get, writable } from "svelte/store";
-import type { RuntimeActivity } from "../runtime";
+import type { RuntimeActivity, TranscriptEntry } from "../runtime";
 
 export type RuntimeUiState = {
   activities: RuntimeActivity[];
+  transcriptEntries: TranscriptEntry[];
   liveStreamText: string;
   activeRequestId: string | null;
   running: boolean;
@@ -12,6 +13,7 @@ export type RuntimeUiState = {
 
 const initialState: RuntimeUiState = {
   activities: [],
+  transcriptEntries: [],
   liveStreamText: "",
   activeRequestId: null,
   running: false,
@@ -53,14 +55,37 @@ function createRuntimeUiStore() {
           return {
             ...state,
             activities,
+            transcriptEntries: appendTranscriptEntry(state.transcriptEntries, {
+              role: "assistant",
+              text: stringifyActivityContent(activity.content),
+            }),
             liveStreamText: "",
+          };
+        }
+        if (activity.type === "toolCall") {
+          return {
+            ...state,
+            activities,
+            transcriptEntries: appendTranscriptEntry(state.transcriptEntries, {
+              role: "tool",
+              text: `Using ${activity.toolName ?? "tool"}`,
+            }),
+          };
+        }
+        if (activity.type === "toolOutput") {
+          return {
+            ...state,
+            activities,
+            transcriptEntries: appendTranscriptEntry(state.transcriptEntries, {
+              role: "tool",
+              text: stringifyActivityContent(activity.output),
+            }),
           };
         }
         if (activity.type === "completed") {
           return {
             ...state,
             activities,
-            liveStreamText: "",
           };
         }
         return {
@@ -105,6 +130,7 @@ function createRuntimeUiStore() {
       update((state) => ({
         ...state,
         activities: [],
+        transcriptEntries: [],
         liveStreamText: "",
         turnCounter: 1,
         activeRequestId: null,
@@ -113,6 +139,28 @@ function createRuntimeUiStore() {
       }));
     },
   };
+}
+
+function appendTranscriptEntry(
+  transcript: TranscriptEntry[],
+  nextEntry: TranscriptEntry,
+): TranscriptEntry[] {
+  const text = nextEntry.text.trim();
+  if (text.length === 0) {
+    return transcript;
+  }
+  return [...transcript, { ...nextEntry, text }];
+}
+
+function stringifyActivityContent(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  try {
+    return JSON.stringify(content, null, 2);
+  } catch {
+    return String(content);
+  }
 }
 
 export const runtimeUiStore = createRuntimeUiStore();

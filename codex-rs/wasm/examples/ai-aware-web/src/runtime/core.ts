@@ -301,8 +301,8 @@ export async function runTurnFromDraft(
     state: {
       ...state,
       codexConfig,
-      transcript: result.transcript,
-      output: result.output,
+      transcript: state.transcript,
+      output: state.output,
       status: "Turn completed.",
       isError: false,
     },

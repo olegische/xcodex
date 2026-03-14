@@ -132,10 +132,10 @@ function toolTextFromResponseItem(item: Record<string, unknown>): string | null 
 
 export function buildOutputFromDispatch(dispatch: RuntimeDispatch): string {
   return dispatch.events
-    .filter((event) => event !== null && typeof event === "object" && event.event === "modelDelta")
+    .filter((event) => event !== null && typeof event === "object" && event.method === "item/agentMessage/delta")
     .map((event) => {
-      const payload = event.payload as { payload: { outputTextDelta: string } };
-      return payload.payload.outputTextDelta;
+      const params = event.params as { delta?: string };
+      return typeof params.delta === "string" ? params.delta : "";
     })
     .join("");
 }

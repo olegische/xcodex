@@ -2,10 +2,10 @@
 //! and suffix on UTF-8 boundaries, and helpers for line/token‑based truncation
 //! used across codex runtimes.
 
-use crate::models::FunctionCallOutputContentItem;
 use crate::models::TruncationMode;
 use crate::models::TruncationPolicyConfig;
 use crate::models::WireTruncationPolicy;
+use codex_protocol::models::FunctionCallOutputContentItem;
 
 const APPROX_BYTES_PER_TOKEN: usize = 4;
 
@@ -323,7 +323,7 @@ mod tests {
     use super::truncate_function_output_items_with_policy;
     use super::truncate_text;
     use super::truncate_with_token_budget;
-    use crate::models::FunctionCallOutputContentItem;
+    use codex_protocol::models::FunctionCallOutputContentItem;
     use pretty_assertions::assert_eq;
 
     #[test]

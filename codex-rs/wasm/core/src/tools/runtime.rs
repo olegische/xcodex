@@ -28,16 +28,16 @@ use crate::host::RequestUserInputRequest;
 use crate::host::RequestUserInputResponse;
 use crate::host::ToolInvokeRequest;
 use crate::host::UpdatePlanRequest;
-use crate::response_tool_loop::ToolCall;
-use crate::response_tool_loop::ToolCallSource;
-use crate::response_tool_loop::ToolOutput;
-use crate::response_tool_loop::ToolPayload;
-use crate::response_tool_loop::build_tool_call;
-use crate::response_tool_loop::last_assistant_message_from_item;
-use crate::response_tool_loop::response_input_to_response_item;
 use crate::tool_search::DEFAULT_LIMIT as TOOL_SEARCH_DEFAULT_LIMIT;
 use crate::tool_search::ToolSearchArgs;
 use crate::tool_search::search_tools;
+use crate::tools::router::ToolCall;
+use crate::tools::router::ToolCallSource;
+use crate::tools::router::ToolOutput;
+use crate::tools::router::ToolPayload;
+use crate::tools::router::build_tool_call;
+use crate::tools::router::last_assistant_message_from_item;
+use crate::tools::router::response_input_to_response_item;
 use codex_utils_string::take_bytes_at_char_boundary;
 
 const DEFAULT_GREP_LIMIT: usize = 100;
@@ -507,6 +507,14 @@ impl<'a> WasmToolRuntime<'a> {
                 arguments,
                 execution,
             } => (arguments, execution),
+            ToolPayload::Function { arguments } => (
+                serde_json::from_str::<Value>(&arguments).map_err(|err| {
+                    FunctionCallError::RespondToModel(format!(
+                        "failed to parse tool_search function arguments: {err}"
+                    ))
+                })?,
+                "client".to_string(),
+            ),
             _ => {
                 return Err(FunctionCallError::RespondToModel(
                     "tool_search handler received unsupported payload".to_string(),

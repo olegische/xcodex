@@ -95,8 +95,8 @@ export type SessionSnapshot = {
 };
 
 export type RuntimeEvent = {
-  event: string;
-  payload: JsonValue;
+  method: string;
+  params: JsonValue;
 };
 
 export type RequestUserInputOption = {
@@ -281,6 +281,7 @@ export type BrowserRuntimeHost = {
   listTools(): Promise<HostToolSpec[]>;
   invokeTool(request: JsonValue): Promise<JsonValue>;
   cancelTool(callId: string): Promise<void>;
+  emitNotification(notification: JsonValue): Promise<void>;
   startModelTurn(request: JsonValue): Promise<JsonValue>;
   cancelModelTurn(requestId: string): Promise<void>;
 };

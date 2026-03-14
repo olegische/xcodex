@@ -25,6 +25,13 @@
       .filter((part) => part.length > 0);
   }
 
+  function copyableTranscript(): string {
+    return transcript
+      .filter((entry) => entry.role !== "user")
+      .map((entry) => `${entry.role === "tool" ? "Tool" : "Agent"}\n${entry.text.trim()}`)
+      .join("\n\n");
+  }
+
   async function copyMessage(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -49,8 +56,9 @@
     </div>
   {/if}
 
-  {#each transcript as entry}
+  {#each transcript as entry, index}
     <article
+      data-transcript-index={index}
       class:user={entry.role === "user"}
       class:tool={entry.role === "tool"}
       class:assistant={entry.role !== "user" && entry.role !== "tool"}
@@ -65,13 +73,6 @@
             <p>{paragraph}</p>
           {/each}
         </div>
-        {#if entry.role !== "user" && entry.role !== "tool"}
-          <div class="message-actions">
-            <button class="message-action-button" on:click={() => void copyMessage(entry.text)}>
-              {copiedText === entry.text ? "Copied" : "Copy"}
-            </button>
-          </div>
-        {/if}
       </div>
     </article>
   {/each}
@@ -89,16 +90,24 @@
     </article>
   {/each}
 
-  {#if running || liveStreamText.length > 0}
+  {#if liveStreamText.length > 0}
     <article class="message-row">
       <div class="message-body">
         <div class="message-role">Agent</div>
         <div class="message-text">
-          {#each paragraphs(liveStreamText || "Waiting for stream...") as paragraph}
+          {#each paragraphs(liveStreamText) as paragraph}
             <p>{paragraph}</p>
           {/each}
         </div>
       </div>
     </article>
+  {/if}
+
+  {#if !running && transcript.some((entry) => entry.role !== "user")}
+    <div class="message-actions">
+      <button class="message-action-button" on:click={() => void copyMessage(copyableTranscript())}>
+        {copiedText === copyableTranscript() ? "Copied" : "Copy"}
+      </button>
+    </div>
   {/if}
 </section>

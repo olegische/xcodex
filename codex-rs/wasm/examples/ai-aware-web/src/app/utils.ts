@@ -2,11 +2,12 @@ import type { ThreadSummary } from "../types";
 
 export function buildThreadList(transcript: Array<{ role: string; text: string }>): ThreadSummary[] {
   const firstUserMessage = transcript.find((entry) => entry.role === "user")?.text;
+  const normalizedTitle = firstUserMessage?.replace(/\s+/g, " ").trim();
   return [
     {
       id: "current-thread",
-      title: firstUserMessage?.slice(0, 36) || "Current thread",
-      subtitle: transcript.length === 0 ? "No messages yet" : `${transcript.length} transcript entries`,
+      title: normalizedTitle?.slice(0, 64) || "New mission",
+      subtitle: "",
       active: true,
     },
   ];

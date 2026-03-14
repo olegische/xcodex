@@ -355,10 +355,10 @@ export async function runChatTurn(
   assertRuntimeDispatch(dispatch);
 
   const output = dispatch.events
-    .filter((event) => event !== null && typeof event === "object" && event.event === "modelDelta")
+    .filter((event) => event !== null && typeof event === "object" && event.method === "item/agentMessage/delta")
     .map((event) => {
-      const payload = event.payload as { payload: { outputTextDelta: string } };
-      return payload.payload.outputTextDelta;
+      const params = event.params as { delta?: string };
+      return typeof params.delta === "string" ? params.delta : "";
     })
     .join("");
 
@@ -486,20 +486,15 @@ function assertRuntimeDispatch(dispatch: RuntimeDispatch): void {
   }
 
   dispatch.events
-    .filter((event) => event !== null && typeof event === "object" && event.event === "modelDelta")
+    .filter((event) => event !== null && typeof event === "object" && event.method === "item/agentMessage/delta")
     .forEach((event) => {
       if (
-        event.payload === null ||
-        typeof event.payload !== "object" ||
-        !("payload" in event.payload) ||
-        event.payload.payload === null ||
-        typeof event.payload.payload !== "object" ||
-        !("outputTextDelta" in event.payload.payload) ||
-        typeof event.payload.payload.outputTextDelta !== "string"
+        event.params === null ||
+        typeof event.params !== "object" ||
+        !("delta" in event.params) ||
+        typeof event.params.delta !== "string"
       ) {
-        throw new Error(
-          "runtime.runTurn() returned a modelDelta event without payload.payload.outputTextDelta",
-        );
+        throw new Error("runtime.runTurn() returned an item/agentMessage/delta event without params.delta");
       }
     });
 }

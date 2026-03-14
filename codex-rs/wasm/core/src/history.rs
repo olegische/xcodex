@@ -1,9 +1,3 @@
-use crate::models::ContentItem;
-use crate::models::FunctionCallOutputBody;
-use crate::models::FunctionCallOutputContentItem;
-use crate::models::FunctionCallOutputPayload;
-use crate::models::ImageDetail;
-use crate::models::ResponseItem;
 use crate::truncate::TruncationPolicy;
 use crate::truncate::approx_bytes_for_tokens;
 use crate::truncate::approx_tokens_from_byte_count_i64;
@@ -11,6 +5,12 @@ use crate::truncate::truncate_function_output_items_with_policy;
 use crate::truncate::truncate_text;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use codex_protocol::models::ContentItem;
+use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::FunctionCallOutputContentItem;
+use codex_protocol::models::FunctionCallOutputPayload;
+use codex_protocol::models::ImageDetail;
+use codex_protocol::models::ResponseItem;
 
 /// Approximate model-visible byte cost for one image input.
 ///
@@ -47,6 +47,8 @@ pub fn is_api_message(message: &ResponseItem) -> bool {
         ResponseItem::Message { role, .. } => role.as_str() != "system",
         ResponseItem::FunctionCallOutput { .. }
         | ResponseItem::FunctionCall { .. }
+        | ResponseItem::ToolSearchCall { .. }
+        | ResponseItem::ToolSearchOutput { .. }
         | ResponseItem::CustomToolCall { .. }
         | ResponseItem::CustomToolCallOutput { .. }
         | ResponseItem::LocalShellCall { .. }
@@ -202,12 +204,14 @@ pub fn is_model_generated_item(item: &ResponseItem) -> bool {
         ResponseItem::Message { role, .. } => role == "assistant",
         ResponseItem::Reasoning { .. }
         | ResponseItem::FunctionCall { .. }
+        | ResponseItem::ToolSearchCall { .. }
         | ResponseItem::WebSearchCall { .. }
         | ResponseItem::ImageGenerationCall { .. }
         | ResponseItem::CustomToolCall { .. }
         | ResponseItem::LocalShellCall { .. }
         | ResponseItem::Compaction { .. } => true,
         ResponseItem::FunctionCallOutput { .. }
+        | ResponseItem::ToolSearchOutput { .. }
         | ResponseItem::CustomToolCallOutput { .. }
         | ResponseItem::GhostSnapshot { .. }
         | ResponseItem::Other => false,
@@ -217,7 +221,9 @@ pub fn is_model_generated_item(item: &ResponseItem) -> bool {
 pub fn is_codex_generated_item(item: &ResponseItem) -> bool {
     matches!(
         item,
-        ResponseItem::FunctionCallOutput { .. } | ResponseItem::CustomToolCallOutput { .. }
+        ResponseItem::FunctionCallOutput { .. }
+            | ResponseItem::ToolSearchOutput { .. }
+            | ResponseItem::CustomToolCallOutput { .. }
     ) || matches!(item, ResponseItem::Message { role, .. } if role == "developer")
 }
 
@@ -228,17 +234,17 @@ mod tests {
     use super::is_api_message;
     use super::is_codex_generated_item;
     use super::truncate_function_output_payload;
-    use crate::models::ContentItem;
-    use crate::models::FunctionCallOutputBody;
-    use crate::models::FunctionCallOutputContentItem;
-    use crate::models::FunctionCallOutputPayload;
-    use crate::models::ImageDetail;
-    use crate::models::ReasoningItemContent;
-    use crate::models::ReasoningItemReasoningSummary;
-    use crate::models::ResponseItem;
     use crate::truncate::TruncationPolicy;
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use codex_protocol::models::ContentItem;
+    use codex_protocol::models::FunctionCallOutputBody;
+    use codex_protocol::models::FunctionCallOutputContentItem;
+    use codex_protocol::models::FunctionCallOutputPayload;
+    use codex_protocol::models::ImageDetail;
+    use codex_protocol::models::ReasoningItemContent;
+    use codex_protocol::models::ReasoningItemReasoningSummary;
+    use codex_protocol::models::ResponseItem;
     use image::ImageBuffer;
     use image::ImageFormat;
     use image::Rgba;

@@ -1,30 +1,21 @@
-use crate::function_tool::FunctionCallError;
 use crate::host::HostCollaboration;
 use crate::host::HostError;
 use crate::host::HostErrorCode;
 use crate::host::HostFs;
 use crate::host::HostInstructionStore;
 use crate::host::HostModelTransport;
+use crate::host::HostNotificationSink;
 use crate::host::HostResult;
 use crate::host::HostSessionStore;
 use crate::host::HostToolExecutor;
-use crate::host::ModelRequest;
-use crate::host::ModelTransportEvent;
 use crate::host::SessionSnapshot;
-use crate::instructions::with_default_base_instructions;
-use crate::tool_loop::browser_builtin_tool_specs;
-use crate::tool_runtime::CollaborationMode;
-use crate::tool_runtime::WasmToolRuntime;
-use crate::tool_search::create_tool_search_transport_tool;
-use codex_protocol::models::ResponseInputItem;
+use crate::state::SessionState;
+use crate::tasks::RegularTurnTask;
+use crate::tools::runtime::CollaborationMode;
 use codex_protocol::models::ResponseItem;
-use futures::StreamExt;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json::Map;
 use serde_json::Value;
-
-const MAX_TOOL_ITERATIONS_PER_TURN: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "payload", rename_all = "camelCase")]
@@ -161,6 +152,7 @@ pub struct BrowserRuntime<'a> {
     collaboration: &'a dyn HostCollaboration,
     instruction_store: &'a dyn HostInstructionStore,
     model_transport: &'a dyn HostModelTransport,
+    notification_sink: &'a dyn HostNotificationSink,
     session_store: &'a dyn HostSessionStore,
     tool_executor: &'a dyn HostToolExecutor,
     collaboration_mode: CollaborationMode,
@@ -173,6 +165,7 @@ impl<'a> BrowserRuntime<'a> {
         collaboration: &'a dyn HostCollaboration,
         instruction_store: &'a dyn HostInstructionStore,
         model_transport: &'a dyn HostModelTransport,
+        notification_sink: &'a dyn HostNotificationSink,
         session_store: &'a dyn HostSessionStore,
         tool_executor: &'a dyn HostToolExecutor,
     ) -> Self {
@@ -181,6 +174,7 @@ impl<'a> BrowserRuntime<'a> {
             collaboration,
             instruction_store,
             model_transport,
+            notification_sink,
             session_store,
             tool_executor,
             collaboration_mode: CollaborationMode::Default,
@@ -249,365 +243,33 @@ impl<'a> BrowserRuntime<'a> {
         &self,
         request: RunTurnRequest,
     ) -> HostResult<RuntimeDispatch<SessionSnapshot>> {
-        let mut snapshot = self
+        let snapshot = self
             .session_store
             .load_thread(request.thread_id.clone())
             .await?
             .ok_or_else(|| missing_thread_error(&request.thread_id))?;
-        let instruction_snapshot = self
-            .instruction_store
-            .load_instructions(request.thread_id.clone())
-            .await?;
-
-        snapshot.items.push(serde_json::json!({
-            "type": "userInput",
-            "turnId": request.turn_id,
-            "input": request.input,
-        }));
-        self.session_store.save_thread(snapshot.clone()).await?;
-
-        let mut events = vec![
-            UiEvent::ThreadLoaded(ThreadLoadedEvent {
-                thread_id: snapshot.thread_id.clone(),
-                item_count: snapshot.items.len(),
-            }),
-            UiEvent::TurnStarted(TurnStartedEvent {
-                thread_id: snapshot.thread_id.clone(),
-                turn_id: request.turn_id.clone(),
-            }),
-        ];
-        let model_payload = with_default_base_instructions(request.model_payload);
-        let model_payload = if let Some(snapshot) = instruction_snapshot.as_ref() {
-            snapshot.append_to_model_payload(model_payload)
-        } else {
-            model_payload
+        let task = RegularTurnTask {
+            fs: self.fs,
+            collaboration: self.collaboration,
+            instruction_store: self.instruction_store,
+            model_transport: self.model_transport,
+            notification_sink: self.notification_sink,
+            session_store: self.session_store,
+            tool_executor: self.tool_executor,
+            collaboration_mode: self.collaboration_mode,
+            default_mode_request_user_input: self.default_mode_request_user_input,
         };
-
-        let mut response_input_items = initial_response_input_items(&request.input);
-        let mut request_index = 0usize;
-
-        loop {
-            let builtin_tool_specs = browser_builtin_tool_specs();
-            let host_tool_specs = self.tool_executor.list_tools().await?;
-            let request_id = if request_index == 0 {
-                request.turn_id.clone()
-            } else {
-                format!("{}:{request_index}", request.turn_id)
-            };
-            let request_payload = with_runtime_payload(
-                model_payload.clone(),
-                response_input_items.clone(),
-                builtin_tool_specs,
-                host_tool_specs,
-            )?;
-            let mut stream = self
-                .model_transport
-                .start_stream(ModelRequest {
-                    request_id: request_id.clone(),
-                    payload: request_payload,
-                })
-                .await?;
-            let tool_runtime = WasmToolRuntime::new(
-                self.fs,
-                self.collaboration,
-                self.tool_executor,
-                self.collaboration_mode,
-                self.default_mode_request_user_input,
-            );
-            let mut should_continue = false;
-
-            while let Some(event) = stream.next().await {
-                match event {
-                    ModelTransportEvent::Started { request_id } => {
-                        events.push(UiEvent::ModelStarted(ModelStartedUiEvent {
-                            thread_id: snapshot.thread_id.clone(),
-                            turn_id: request.turn_id.clone(),
-                            request_id,
-                        }));
-                    }
-                    ModelTransportEvent::Delta {
-                        request_id,
-                        payload,
-                    } => {
-                        snapshot.items.push(serde_json::json!({
-                            "type": "modelDelta",
-                            "turnId": request.turn_id,
-                            "requestId": request_id,
-                            "payload": payload,
-                        }));
-                        events.push(UiEvent::ModelDelta(ModelDeltaUiEvent {
-                            thread_id: snapshot.thread_id.clone(),
-                            turn_id: request.turn_id.clone(),
-                            request_id,
-                            payload,
-                        }));
-                    }
-                    ModelTransportEvent::OutputItemDone { request_id, item } => {
-                        response_input_items.push(serialize_response_item(&item)?);
-                        snapshot.items.push(serde_json::json!({
-                            "type": "modelOutputItem",
-                            "turnId": request.turn_id,
-                            "requestId": request_id,
-                            "item": item,
-                        }));
-                        events.push(UiEvent::ModelOutputItem(ModelOutputItemUiEvent {
-                            thread_id: snapshot.thread_id.clone(),
-                            turn_id: request.turn_id.clone(),
-                            request_id: request_id.clone(),
-                            item: item.clone(),
-                        }));
-
-                        let output = tool_runtime
-                            .handle_output_item_done(item)
-                            .await
-                            .map_err(function_call_error_to_host_error)?;
-                        if let Some(tool_output) = output.tool_output {
-                            should_continue = true;
-                            response_input_items.push(serialize_response_input_item(&tool_output)?);
-                            snapshot.items.push(serde_json::json!({
-                                "type": "toolOutputItem",
-                                "turnId": request.turn_id,
-                                "requestId": request_id,
-                                "item": tool_output,
-                            }));
-                        }
-                    }
-                    ModelTransportEvent::Completed { request_id } => {
-                        snapshot.items.push(serde_json::json!({
-                            "type": "modelCompleted",
-                            "turnId": request.turn_id,
-                            "requestId": request_id,
-                        }));
-                        events.push(UiEvent::ModelCompleted(ModelCompletedUiEvent {
-                            thread_id: snapshot.thread_id.clone(),
-                            turn_id: request.turn_id.clone(),
-                            request_id,
-                        }));
-                    }
-                    ModelTransportEvent::Failed { request_id, error } => {
-                        snapshot.items.push(serde_json::json!({
-                            "type": "modelFailed",
-                            "turnId": request.turn_id,
-                            "requestId": request_id,
-                            "error": error,
-                        }));
-                        events.push(UiEvent::ModelFailed(ModelFailedUiEvent {
-                            thread_id: snapshot.thread_id.clone(),
-                            turn_id: request.turn_id.clone(),
-                            request_id,
-                            error: error.clone(),
-                        }));
-                        events.push(UiEvent::TurnFailed(TurnFailedEvent {
-                            thread_id: snapshot.thread_id.clone(),
-                            turn_id: request.turn_id.clone(),
-                            error,
-                        }));
-                    }
-                }
-            }
-
-            request_index += 1;
-            if !should_continue {
-                break;
-            }
-            if request_index > MAX_TOOL_ITERATIONS_PER_TURN {
-                let error = HostError {
-                    code: HostErrorCode::Conflict,
-                    message: format!(
-                        "model exceeded max tool iterations for turn: {MAX_TOOL_ITERATIONS_PER_TURN}"
-                    ),
-                    retryable: false,
-                    data: None,
-                };
-                snapshot.items.push(serde_json::json!({
-                    "type": "turnFailed",
-                    "turnId": request.turn_id,
-                    "error": error,
-                }));
-                events.push(UiEvent::TurnFailed(TurnFailedEvent {
-                    thread_id: snapshot.thread_id.clone(),
-                    turn_id: request.turn_id.clone(),
-                    error,
-                }));
-                break;
-            }
-        }
-
-        events.push(UiEvent::TurnCompleted(TurnCompletedEvent {
-            thread_id: snapshot.thread_id.clone(),
-            turn_id: request.turn_id.clone(),
-        }));
-
-        self.session_store.save_thread(snapshot.clone()).await?;
+        let (session, mut events) = task.run(SessionState::new(snapshot), request).await?;
         events.push(UiEvent::SessionSaved(SessionSavedEvent {
-            thread_id: snapshot.thread_id.clone(),
-            item_count: snapshot.items.len(),
+            thread_id: session.thread_id().to_string(),
+            item_count: session.item_count(),
         }));
+        let snapshot = session.into_snapshot();
 
         Ok(RuntimeDispatch {
             value: snapshot,
             events,
         })
-    }
-}
-
-fn initial_response_input_items(input: &Value) -> Vec<Value> {
-    match input {
-        Value::Array(items) => items.clone(),
-        other => vec![other.clone()],
-    }
-}
-
-fn with_runtime_payload(
-    payload: Value,
-    response_input_items: Vec<Value>,
-    builtin_tool_specs: Vec<crate::host::HostToolSpec>,
-    host_tool_specs: Vec<crate::host::HostToolSpec>,
-) -> HostResult<Value> {
-    let payload = match payload {
-        Value::Object(map) => map,
-        other => {
-            return Err(HostError {
-                code: HostErrorCode::InvalidInput,
-                message: "browser runtime expected model payload object".to_string(),
-                retryable: false,
-                data: Some(other),
-            });
-        }
-    };
-    let transport_tools = transport_tools_from_host_specs(&builtin_tool_specs, &host_tool_specs);
-    let serialized_response_input_items = Value::Array(response_input_items.clone());
-    let transport_payload =
-        build_transport_payload(&payload, response_input_items, transport_tools)?;
-    Ok(Value::Object(Map::from_iter([
-        (
-            "responseInputItems".to_string(),
-            serialized_response_input_items,
-        ),
-        ("transportPayload".to_string(), transport_payload),
-    ])))
-}
-
-fn build_transport_payload(
-    payload: &Map<String, Value>,
-    response_input_items: Vec<Value>,
-    tools: Value,
-) -> HostResult<Value> {
-    let model = payload.get("model").cloned().ok_or_else(|| HostError {
-        code: HostErrorCode::Internal,
-        message: "browser runtime expected model payload to include `model`".to_string(),
-        retryable: false,
-        data: None,
-    })?;
-    let base_instructions = payload
-        .get("baseInstructions")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(ToOwned::to_owned);
-    let contextual_messages = extract_contextual_user_messages(payload);
-    let instructions = std::iter::once(base_instructions.as_deref())
-        .flatten()
-        .chain(contextual_messages.iter().map(String::as_str))
-        .collect::<Vec<_>>()
-        .join("\n\n");
-
-    Ok(Value::Object(Map::from_iter([
-        ("model".to_string(), model),
-        (
-            "instructions".to_string(),
-            if instructions.is_empty() {
-                Value::Null
-            } else {
-                Value::String(instructions)
-            },
-        ),
-        ("input".to_string(), Value::Array(response_input_items)),
-        ("tools".to_string(), tools),
-        ("tool_choice".to_string(), Value::String("auto".to_string())),
-        ("parallel_tool_calls".to_string(), Value::Bool(true)),
-        ("stream".to_string(), Value::Bool(true)),
-    ])))
-}
-
-fn extract_contextual_user_messages(payload: &Map<String, Value>) -> Vec<String> {
-    let codex_instructions = payload.get("codexInstructions").and_then(Value::as_object);
-    let contextual_messages = codex_instructions
-        .and_then(|value| value.get("contextualUserMessages"))
-        .and_then(Value::as_array);
-    contextual_messages
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(ToOwned::to_owned)
-        .collect()
-}
-
-fn transport_tools_from_host_specs(
-    builtin_tool_specs: &[crate::host::HostToolSpec],
-    host_tool_specs: &[crate::host::HostToolSpec],
-) -> Value {
-    let mut tools = builtin_tool_specs
-        .iter()
-        .map(|tool| {
-            Value::Object(Map::from_iter([
-                ("type".to_string(), Value::String("function".to_string())),
-                ("name".to_string(), Value::String(tool.tool_name.clone())),
-                (
-                    "description".to_string(),
-                    Value::String(tool.description.clone()),
-                ),
-                ("strict".to_string(), Value::Bool(false)),
-                ("parameters".to_string(), tool.input_schema.clone()),
-            ]))
-        })
-        .collect::<Vec<_>>();
-    if let Some(tool_search_tool) = create_tool_search_transport_tool(host_tool_specs) {
-        tools.push(tool_search_tool);
-    }
-    Value::Array(tools)
-}
-
-fn serialize_response_item(item: &ResponseItem) -> HostResult<Value> {
-    serde_json::to_value(item).map_err(|error| HostError {
-        code: HostErrorCode::Internal,
-        message: format!("failed to serialize response item: {error}"),
-        retryable: false,
-        data: None,
-    })
-}
-
-fn serialize_response_input_item(item: &ResponseInputItem) -> HostResult<Value> {
-    serde_json::to_value(item).map_err(|error| HostError {
-        code: HostErrorCode::Internal,
-        message: format!("failed to serialize response input item: {error}"),
-        retryable: false,
-        data: None,
-    })
-}
-
-fn function_call_error_to_host_error(error: FunctionCallError) -> HostError {
-    match error {
-        FunctionCallError::RespondToModel(message) => HostError {
-            code: HostErrorCode::InvalidInput,
-            message,
-            retryable: false,
-            data: None,
-        },
-        FunctionCallError::MissingLocalShellCallId => HostError {
-            code: HostErrorCode::InvalidInput,
-            message: "LocalShellCall without call_id or id".to_string(),
-            retryable: false,
-            data: None,
-        },
-        FunctionCallError::Fatal(message) => HostError {
-            code: HostErrorCode::Internal,
-            message,
-            retryable: false,
-            data: None,
-        },
     }
 }
 
@@ -625,15 +287,19 @@ fn missing_thread_error(thread_id: &str) -> HostError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context_manager::updates::transport_tools_from_host_specs;
     use crate::host::ApplyPatchRequest;
     use crate::host::ApplyPatchResponse;
     use crate::host::HostCollaboration;
     use crate::host::HostFileEntry;
     use crate::host::HostFs;
+    use crate::host::HostNotificationSink;
     use crate::host::HostSessionStore;
     use crate::host::ListDirRequest;
     use crate::host::ListDirResponse;
     use crate::host::ModelEventStream;
+    use crate::host::ModelRequest;
+    use crate::host::ModelTransportEvent;
     use crate::host::ReadFileRequest;
     use crate::host::ReadFileResponse;
     use crate::host::RequestUserInputAnswer;
@@ -650,8 +316,9 @@ mod tests {
     use crate::instructions::InstructionSnapshot;
     use crate::instructions::SkillInstructions;
     use crate::instructions::UserInstructions;
-    use crate::tool_loop::browser_builtin_tool_specs;
+    use crate::tools::spec::browser_builtin_tool_specs;
     use async_trait::async_trait;
+    use codex_app_server_protocol::ServerNotification;
     use codex_protocol::models::FunctionCallOutputBody;
     use codex_protocol::models::FunctionCallOutputPayload;
     use codex_protocol::models::ResponseInputItem;
@@ -682,6 +349,8 @@ mod tests {
         tools: Vec<crate::host::HostToolSpec>,
         invocations: Mutex<Vec<ToolInvokeRequest>>,
     }
+
+    struct MockNotificationSink;
 
     #[async_trait(?Send)]
     impl HostModelTransport for MockModelTransport {
@@ -809,6 +478,13 @@ mod tests {
         }
     }
 
+    #[async_trait(?Send)]
+    impl HostNotificationSink for MockNotificationSink {
+        async fn emit_notification(&self, _notification: ServerNotification) -> HostResult<()> {
+            Ok(())
+        }
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn start_thread_persists_empty_snapshot() {
         let session_store = MockSessionStore {
@@ -826,11 +502,13 @@ mod tests {
             tools: Vec::new(),
             invocations: Mutex::new(Vec::new()),
         };
+        let notification_sink = MockNotificationSink;
         let runtime = BrowserRuntime::new(
             &fs,
             &collaboration,
             &instruction_store,
             &model_transport,
+            &notification_sink,
             &session_store,
             &tool_executor,
         );
@@ -941,11 +619,13 @@ mod tests {
             }],
             invocations: Mutex::new(Vec::new()),
         };
+        let notification_sink = MockNotificationSink;
         let runtime = BrowserRuntime::new(
             &fs,
             &collaboration,
             &instruction_store,
             &model_transport,
+            &notification_sink,
             &session_store,
             &tool_executor,
         );
@@ -1178,11 +858,13 @@ mod tests {
             tools: Vec::new(),
             invocations: Mutex::new(Vec::new()),
         };
+        let notification_sink = MockNotificationSink;
         let runtime = BrowserRuntime::new(
             &fs,
             &collaboration,
             &instruction_store,
             &model_transport,
+            &notification_sink,
             &session_store,
             &tool_executor,
         );
@@ -1442,11 +1124,13 @@ mod tests {
             }],
             invocations: Mutex::new(Vec::new()),
         };
+        let notification_sink = MockNotificationSink;
         let runtime = BrowserRuntime::new(
             &fs,
             &collaboration,
             &instruction_store,
             &model_transport,
+            &notification_sink,
             &session_store,
             &tool_executor,
         );

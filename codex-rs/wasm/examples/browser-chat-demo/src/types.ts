@@ -95,8 +95,8 @@ export type SessionSnapshot = {
 };
 
 export type RuntimeEvent = {
-  event: string;
-  payload: JsonValue;
+  method: string;
+  params: JsonValue;
 };
 
 export type ResponseItem = {

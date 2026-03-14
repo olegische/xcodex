@@ -1,19 +1,19 @@
 <script lang="ts">
   import { afterUpdate, onMount } from "svelte";
   import Transcript from "../Transcript.svelte";
-  import type { RuntimeActivity, TranscriptEntry } from "../../runtime";
+  import type { TranscriptEntry } from "../../runtime";
 
   export let transcript: TranscriptEntry[] = [];
   export let liveStreamText = "";
   export let status = "";
   export let running = false;
-  export let runtimeActivities: RuntimeActivity[] = [];
   export let flat = false;
 
   const BOTTOM_THRESHOLD = 48;
 
   let scrollContainer: HTMLDivElement | null = null;
   let showScrollToBottom = false;
+  let lastAnchoredUserEntry = "";
 
   function updateScrollState(): void {
     if (!scrollContainer) {
@@ -38,49 +38,21 @@
     });
   }
 
-  function currentTurnActivities(activities: RuntimeActivity[]): RuntimeActivity[] {
-    for (let index = activities.length - 1; index >= 0; index -= 1) {
-      if (activities[index]?.type === "turnStart") {
-        return activities.slice(index);
-      }
+  function scrollTranscriptToEntryTop(index: number): void {
+    if (!scrollContainer) {
+      return;
     }
-    return activities;
-  }
-
-  function formatToolOutput(output: unknown): string {
-    if (typeof output === "string") {
-      return output;
+    const target = scrollContainer.querySelector<HTMLElement>(`[data-transcript-index="${index}"]`);
+    if (!target) {
+      return;
     }
-    try {
-      return JSON.stringify(output);
-    } catch {
-      return String(output);
-    }
-  }
-
-  function liveToolEntries(activities: RuntimeActivity[]): TranscriptEntry[] {
-    return currentTurnActivities(activities).flatMap((activity) => {
-      if (activity.type === "toolCall") {
-        return [
-          {
-            role: "tool" as const,
-            text: `Using ${activity.toolName ?? "tool"}`,
-          },
-        ];
-      }
-      if (activity.type === "toolOutput") {
-        return [
-          {
-            role: "tool" as const,
-            text: formatToolOutput(activity.output),
-          },
-        ];
-      }
-      return [];
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    scrollContainer.scrollTo({
+      top: Math.max(scrollContainer.scrollTop + targetRect.top - containerRect.top, 0),
+      behavior: "auto",
     });
   }
-
-  $: liveToolTranscript = liveToolEntries(runtimeActivities);
 
   onMount(() => {
     updateScrollState();
@@ -99,13 +71,20 @@
   });
 
   afterUpdate(() => {
+    const lastEntry = transcript[transcript.length - 1];
+    const nextUserAnchor =
+      lastEntry?.role === "user" ? `${transcript.length - 1}:${lastEntry.text}` : "";
+    if (nextUserAnchor.length > 0 && nextUserAnchor !== lastAnchoredUserEntry) {
+      lastAnchoredUserEntry = nextUserAnchor;
+      scrollTranscriptToEntryTop(transcript.length - 1);
+    }
     updateScrollState();
   });
 </script>
 
 <section class:transcript-flat={flat} class="transcript-widget-shell widget-surface">
   <div bind:this={scrollContainer} class="transcript-scroll" on:scroll={updateScrollState}>
-    <Transcript {transcript} toolEntries={liveToolTranscript} {liveStreamText} {status} {running} />
+    <Transcript {transcript} toolEntries={[]} {liveStreamText} {status} {running} />
   </div>
 
   {#if showScrollToBottom}
@@ -115,7 +94,16 @@
       aria-label="Scroll transcript to bottom"
       on:click={scrollTranscriptToBottom}
     >
-      ↓
+      <svg aria-hidden="true" viewBox="0 0 20 20" class="transcript-scroll-icon">
+        <path
+          d="M10 4.5v9m0 0-4-4m4 4 4-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1.8"
+        />
+      </svg>
     </button>
   {/if}
 </section>
