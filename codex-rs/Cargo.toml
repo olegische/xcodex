@@ -65,6 +65,7 @@ members = [
     "codex-api",
     "state",
     "wasm/core",
+    "wasm_v2/core",
     "codex-experimental-api-macros",
     "test-macros",
     "package-manager",
