@@ -1,7 +1,14 @@
 import { get, writable } from "svelte/store";
 import type { RemoteMcpServerState } from "../../../../ts/host-runtime/src/mcp";
 import { saveRemoteMcpServersSnapshot } from "../aiAware/workspace";
-import { connectRemoteMcpServer, listRemoteMcpServers, logoutRemoteMcpServer, refreshRemoteMcpServer } from "../runtime/mcp";
+import {
+  addRemoteMcpServer,
+  connectRemoteMcpServer,
+  listRemoteMcpServers,
+  logoutRemoteMcpServer,
+  refreshRemoteMcpServer,
+  removeRemoteMcpServer,
+} from "../runtime/mcp";
 
 type RemoteMcpStoreState = {
   servers: RemoteMcpServerState[];
@@ -134,6 +141,40 @@ function createRemoteMcpStore() {
           ...state,
           actionServer: null,
           error: error instanceof Error ? error.message : `Failed to disconnect ${serverName}`,
+        }));
+      }
+    },
+    async addServer(serverUrl: string) {
+      update((state) => ({
+        ...state,
+        actionServer: "__add__",
+        error: null,
+      }));
+      try {
+        await addRemoteMcpServer({ serverUrl });
+        await syncServers();
+      } catch (error) {
+        update((state) => ({
+          ...state,
+          actionServer: null,
+          error: error instanceof Error ? error.message : `Failed to add MCP server ${serverUrl}`,
+        }));
+      }
+    },
+    async removeServer(serverName: string) {
+      update((state) => ({
+        ...state,
+        actionServer: serverName,
+        error: null,
+      }));
+      try {
+        await removeRemoteMcpServer(serverName);
+        await syncServers();
+      } catch (error) {
+        update((state) => ({
+          ...state,
+          actionServer: null,
+          error: error instanceof Error ? error.message : `Failed to remove ${serverName}`,
         }));
       }
     },

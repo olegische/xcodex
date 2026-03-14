@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { readManifestExcerpt, readRemoteMcpServers } from "../../aiAware/workspace";
+  import { readRemoteMcpServers } from "../../aiAware/workspace";
   import { remoteMcpStore } from "../../stores/remote-mcp";
   import type { WorkspaceFileSummary } from "../../types";
 
   export let title = "Remote MCP";
   export let workspaceFiles: WorkspaceFileSummary[] = [];
+  let serverUrl = "";
 
-  $: manifestExcerpt = readManifestExcerpt(workspaceFiles);
   $: seededServers = readRemoteMcpServers(workspaceFiles);
   $: seededById = new Map(seededServers.map((server) => [server.id, server]));
   $: storeState = $remoteMcpStore;
@@ -17,8 +17,6 @@
       name: seeded?.name ?? prettifyServerName(server.serverName),
       url: server.serverUrl,
       status: server.authStatus,
-      authMode: "oauth",
-      login: server.authStatus === "connected" ? "authenticated" : "required",
       latencyMs: seeded?.latencyMs ?? 0,
       scopes: server.scopes,
       tools: server.tools.map((tool) => tool.originalName),
@@ -26,7 +24,6 @@
         seeded?.description ?? `Remote MCP capability lane for ${prettifyServerName(server.serverName)}.`,
       expiresAt: server.expiresAt,
       lastError: server.lastError,
-      clientId: server.clientId,
     };
   });
   $: connectedCount = servers.filter((server) => server.status === "connected").length;
@@ -38,20 +35,25 @@
       .map((segment) => segment[0]!.toUpperCase() + segment.slice(1))
       .join(" ");
   }
-
-  function formatExpiry(expiresAt: number | null | undefined) {
-    if (expiresAt === null || expiresAt === undefined) {
-      return "session";
-    }
-    return new Date(expiresAt * 1000).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
   function isBusy(serverId: string) {
     return storeState.actionServer === serverId;
   }
+
+  function isAddingServer() {
+    return storeState.actionServer === "__add__";
+  }
+
+  async function addServer() {
+    const normalizedUrl = serverUrl.trim();
+    if (normalizedUrl.length === 0) {
+      return;
+    }
+    await remoteMcpStore.addServer(normalizedUrl);
+    if ($remoteMcpStore.error === null) {
+      serverUrl = "";
+    }
+  }
+
 </script>
 
 <section class="widget-panel inspector-section">
@@ -60,16 +62,33 @@
       <div class="eyebrow">{title}</div>
       <div class="widget-lead">{connectedCount}/{servers.length} bridges online</div>
     </div>
-    <div class="pill-row">
-      <span class="chip">remote-first</span>
-      <span class="chip ghost">oauth tab</span>
-      <button class="button ghost mcp-action-button" disabled={storeState.loading} on:click={() => void remoteMcpStore.refresh()}>
-        Sync
-      </button>
-    </div>
+    <button class="button ghost mcp-action-button" disabled={storeState.loading} on:click={() => void remoteMcpStore.refresh()}>
+      Sync
+    </button>
   </div>
 
-  <p class="card-copy">{manifestExcerpt}</p>
+  <article class="signal-card">
+    <div class="card-topline">
+      <strong>Add remote MCP</strong>
+    </div>
+    <div class="card-subtitle">Paste an MCP server URL.</div>
+    <div class="mcp-add-row">
+      <input
+        class="settings-input"
+        type="text"
+        bind:value={serverUrl}
+        placeholder="https://your-mcp-server.example/mcp"
+        autocomplete="new-password"
+        name="remote-mcp-url"
+        inputmode="url"
+        autocapitalize="off"
+        spellcheck={false}
+      />
+      <button class="button primary mcp-action-button" disabled={isAddingServer() || serverUrl.trim().length === 0} on:click={() => void addServer()}>
+        {isAddingServer() ? "Adding..." : "Add"}
+      </button>
+    </div>
+  </article>
 
   {#if storeState.error !== null}
     <article class="signal-card mcp-error-card">
@@ -82,6 +101,15 @@
   {/if}
 
   <div class="card-grid">
+    {#if servers.length === 0}
+      <article class="signal-card">
+        <div class="card-topline">
+          <strong>No remote MCP servers</strong>
+          <span class="status-tag warning">empty</span>
+        </div>
+        <p class="card-copy">Add a server URL to create a new remote MCP entry. Login is available after creation.</p>
+      </article>
+    {/if}
     {#each servers as server}
       <article class="signal-card">
         <div class="card-topline">
@@ -89,13 +117,21 @@
           <span class:warning={server.status !== "connected"} class="status-tag">{server.status}</span>
         </div>
         <div class="card-subtitle">{server.url}</div>
-        <p class="card-copy">{server.description}</p>
-        <div class="pill-row">
-          <span class="chip">{server.authMode}</span>
-          <span class="chip ghost">{server.login}</span>
-          <span class="chip ghost">{server.tools.length} tools</span>
-          <span class="chip ghost">exp {formatExpiry(server.expiresAt)}</span>
-        </div>
+        <details class="mcp-tools-disclosure">
+          <summary class="mcp-tools-toggle">
+            <span>{server.tools.length} tools</span>
+            <span class="mcp-tools-caret" aria-hidden="true">▾</span>
+          </summary>
+          <div class="mcp-tools-list">
+            {#if server.tools.length > 0}
+              {#each server.tools as tool}
+                <div class="mcp-tool-row">{tool}</div>
+              {/each}
+            {:else}
+              <div class="card-footnote">No tools cached yet. Run sync after login.</div>
+            {/if}
+          </div>
+        </details>
         {#if server.scopes.length > 0}
           <div class="pill-row">
             {#each server.scopes as scope}
@@ -103,17 +139,10 @@
             {/each}
           </div>
         {/if}
-        <div class="card-footnote">
-          {#if server.tools.length > 0}
-            {server.tools.join(" · ")}
-          {:else}
-            No tools cached yet. Run sync after login.
-          {/if}
-        </div>
         {#if server.lastError}
           <div class="mcp-inline-error">{server.lastError}</div>
         {/if}
-        <div class="pill-row">
+        <div class="mcp-server-actions">
           {#if server.status !== "connected"}
             <button class="button primary mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.connect(server.id)}>
               {isBusy(server.id) ? "Authorizing..." : "Connect"}
@@ -126,9 +155,9 @@
               Disconnect
             </button>
           {/if}
-          {#if server.clientId}
-            <span class="chip ghost">client {server.clientId}</span>
-          {/if}
+          <button class="button ghost mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.removeServer(server.id)}>
+            Remove
+          </button>
         </div>
       </article>
     {/each}

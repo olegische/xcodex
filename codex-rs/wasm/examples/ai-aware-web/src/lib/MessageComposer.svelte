@@ -186,7 +186,11 @@
                   >
                     <span>{model.displayName || model.id}</span>
                     {#if model.id === composerState.selectedModelId}
-                      <span class="composer-menu-check">✓</span>
+                      <span class="composer-menu-check" aria-hidden="true">
+                        <svg viewBox="0 0 12 10" focusable="false">
+                          <path d="M1.5 5.5 4.5 8.5 10.5 1.5"></path>
+                        </svg>
+                      </span>
                     {/if}
                   </button>
                 {/each}
@@ -220,7 +224,11 @@
                 >
                   <span>{option.label}</span>
                   {#if option.value === composerState.selectedReasoning}
-                    <span class="composer-menu-check">✓</span>
+                    <span class="composer-menu-check" aria-hidden="true">
+                      <svg viewBox="0 0 12 10" focusable="false">
+                        <path d="M1.5 5.5 4.5 8.5 10.5 1.5"></path>
+                      </svg>
+                    </span>
                   {/if}
                 </button>
               {/each}

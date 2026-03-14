@@ -1,4 +1,5 @@
 import { cancelActiveModelRequests, emitRuntimeActivity } from "./activity";
+import { emitActivitiesFromNotifications } from "./notifications";
 import { loadStoredAuthState, loadStoredCodexConfig, loadStoredInstructionSnapshot, loadStoredSession, saveStoredAuthState, saveStoredSession } from "./storage";
 import { applyWorkspacePatch, listWorkspaceDir, readWorkspaceFile, searchWorkspace, writeWorkspaceFile } from "./workspace";
 import { activeProviderApiKey, createHostError, getActiveProvider, normalizeHostValue } from "./utils";
@@ -27,12 +28,7 @@ function getRemoteMcpRuntime() {
     return remoteMcpRuntime;
   }
   remoteMcpRuntime = createRemoteMcpToolExecutor({
-    servers: [
-      {
-        serverName: "notion",
-        serverUrl: "https://mcp.notion.com/mcp",
-      },
-    ],
+    servers: [],
     stateStore: createIndexedDbRemoteMcpStateStore({
       dbName: "codex-ai-aware-web-mcp",
     }),
@@ -52,23 +48,134 @@ function splitQualifiedToolName(name: string): { toolName: string; toolNamespace
     const stripped = name.slice("mcp__".length);
     const separatorIndex = stripped.indexOf("__");
     if (separatorIndex !== -1) {
+      const serverName = stripped.slice(0, separatorIndex);
       return {
         toolName: stripped.slice(separatorIndex + "__".length),
-        toolNamespace: stripped.slice(0, separatorIndex),
+        toolNamespace: `mcp__${serverName}__`,
       };
     }
   }
   return { toolName: name, toolNamespace: null };
 }
 
+function normalizeToolIdentity(params: {
+  toolName: string;
+  toolNamespace: string | null;
+}): { toolName: string; toolNamespace: string | null; qualifiedName: string } {
+  const split = splitQualifiedToolName(params.toolName);
+  const toolNamespace = split.toolNamespace ?? params.toolNamespace;
+  const toolName = split.toolName;
+  return {
+    toolName,
+    toolNamespace,
+    qualifiedName: qualifyToolName(toolName, toolNamespace),
+  };
+}
+
 function qualifyToolName(toolName: string, toolNamespace: string | null): string {
   if (toolNamespace === "browser") {
     return toolName.startsWith("browser__") ? toolName : `browser__${toolName}`;
   }
-  if (typeof toolNamespace === "string" && toolNamespace.length > 0) {
-    return toolName.startsWith("mcp__") ? toolName : `mcp__${toolNamespace}__${toolName}`;
+  if (
+    typeof toolNamespace === "string" &&
+    toolNamespace.length > 0 &&
+    toolNamespace.startsWith("mcp__")
+  ) {
+    return toolName.startsWith(toolNamespace) ? toolName : `${toolNamespace}${toolName}`;
   }
   return toolName;
+}
+
+function normalizeHostToolSpec(tool: Record<string, unknown>): {
+  toolName: string;
+  toolNamespace: string | null;
+  description: string;
+  inputSchema: JsonValue;
+} {
+  if (typeof tool.toolName === "string") {
+    return {
+      toolName: tool.toolName,
+      toolNamespace: typeof tool.toolNamespace === "string" ? tool.toolNamespace : null,
+      description: typeof tool.description === "string" ? tool.description : "",
+      inputSchema: (tool.inputSchema as JsonValue | undefined) ?? null,
+    };
+  }
+
+  const split = splitQualifiedToolName(typeof tool.name === "string" ? tool.name : "");
+  return {
+    toolName: split.toolName,
+    toolNamespace: split.toolNamespace,
+    description: typeof tool.description === "string" ? tool.description : "",
+    inputSchema: (tool.inputSchema as JsonValue | undefined) ?? null,
+  };
+}
+
+function isMcpNamespace(toolNamespace: string | null): boolean {
+  return typeof toolNamespace === "string" && toolNamespace.startsWith("mcp__");
+}
+
+function resolveRemoteToolByPlainName(
+  toolName: string,
+  remoteTools: Array<{
+    toolName: string;
+    toolNamespace: string | null;
+    description: string;
+    inputSchema: JsonValue;
+  }>,
+): { toolName: string; toolNamespace: string | null; qualifiedName: string } | null {
+  const matches = remoteTools.filter(
+    (tool) => tool.toolName === toolName && isMcpNamespace(tool.toolNamespace),
+  );
+  if (matches.length !== 1) {
+    return null;
+  }
+  return normalizeToolIdentity({
+    toolName: matches[0].toolName,
+    toolNamespace: matches[0].toolNamespace,
+  });
+}
+
+function summarizeToolExecutionError(error: unknown): string {
+  if (error instanceof Error && error.message.length > 0) {
+    return error.message;
+  }
+  if (error !== null && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return String(error);
+}
+
+function buildToolErrorOutput(params: {
+  toolName: string;
+  toolNamespace: string | null;
+  input: JsonValue;
+  error: unknown;
+}): JsonValue {
+  const message = summarizeToolExecutionError(params.error);
+  const output: Record<string, JsonValue> = {
+    ok: false,
+    error: {
+      message,
+      toolName: params.toolName,
+      toolNamespace: params.toolNamespace,
+    },
+  };
+
+  if (
+    params.toolName === "notion-search" &&
+    (message.includes("path") && message.includes("query") || message.includes("query too short"))
+  ) {
+    output.suggested_retry = {
+      query: "workspace",
+      query_type: "internal",
+      page_size: 10,
+    };
+    output.hint =
+      "Retry notion-search with a non-empty query of at least 3 characters, or use a specific title fragment from the workspace.";
+  }
+
+  output.input = params.input;
+  return output;
 }
 
 export function createBrowserRuntimeHost(): BrowserRuntimeHost {
@@ -191,45 +298,115 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
         })),
       });
     },
+    async emitNotification(notification) {
+      const normalizedNotification = normalizeHostValue(notification);
+      if (
+        normalizedNotification !== null &&
+        typeof normalizedNotification === "object" &&
+        !Array.isArray(normalizedNotification) &&
+        typeof (normalizedNotification as Record<string, unknown>).method === "string"
+      ) {
+        emitActivitiesFromNotifications([normalizedNotification as never]);
+      }
+    },
     async listTools() {
       const [browserTools, remoteTools] = await Promise.all([
         browserToolExecutor.list(),
         mcpRuntime.toolExecutor.list(),
       ]);
+      const normalizedBrowserTools = browserTools.tools.map((tool) =>
+        normalizeHostToolSpec(tool as Record<string, unknown>),
+      );
+      const normalizedRemoteTools = remoteTools.tools.map((tool) =>
+        normalizeHostToolSpec(tool as Record<string, unknown>),
+      );
       console.info("[webui] host.list-tools", {
-        browserTools: browserTools.tools.map((tool) => splitQualifiedToolName(tool.name)),
-        remoteTools: remoteTools.tools.map((tool) => splitQualifiedToolName(tool.name)),
+        browserTools: normalizedBrowserTools,
+        remoteTools: normalizedRemoteTools,
+        remoteQualifiedNames: normalizedRemoteTools.map((tool) =>
+          qualifyToolName(tool.toolName, tool.toolNamespace),
+        ),
       });
-      return [...browserTools.tools, ...remoteTools.tools].map((tool) => {
-        const split = splitQualifiedToolName(tool.name);
-        return {
-          toolName: split.toolName,
-          toolNamespace: split.toolNamespace,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        };
-      });
+      return [...normalizedBrowserTools, ...normalizedRemoteTools];
     },
     async invokeTool(request) {
       const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;
       if (typeof normalizedRequest.callId !== "string" || typeof normalizedRequest.toolName !== "string") {
         throw createHostError("invalidInput", "invokeTool expected callId and toolName");
       }
-      const toolNamespace =
+      const requestedToolNamespace =
         typeof normalizedRequest.toolNamespace === "string" ? normalizedRequest.toolNamespace : null;
-      const qualifiedToolName = qualifyToolName(normalizedRequest.toolName, toolNamespace);
-      if (toolNamespace === "browser" || qualifiedToolName.startsWith("browser__")) {
-        return browserToolExecutor.invoke({
-          callId: normalizedRequest.callId,
-          toolName: qualifiedToolName,
-          input: (normalizedRequest.input as JsonValue | undefined) ?? null,
-        });
-      }
-      return mcpRuntime.toolExecutor.invoke({
-        callId: normalizedRequest.callId,
-        toolName: qualifiedToolName,
-        input: (normalizedRequest.input as JsonValue | undefined) ?? null,
+      const normalizedTool = normalizeToolIdentity({
+        toolName: normalizedRequest.toolName,
+        toolNamespace: requestedToolNamespace,
       });
+      if (
+        normalizedTool.toolNamespace === "browser" ||
+        normalizedTool.qualifiedName.startsWith("browser__")
+      ) {
+        const input = (normalizedRequest.input as JsonValue | undefined) ?? null;
+        try {
+          return await browserToolExecutor.invoke({
+            callId: normalizedRequest.callId,
+            toolName: normalizedTool.toolName,
+            toolNamespace: "browser",
+            input,
+          });
+        } catch (error) {
+          return {
+            callId: normalizedRequest.callId,
+            output: buildToolErrorOutput({
+              toolName: normalizedTool.toolName,
+              toolNamespace: "browser",
+              input,
+              error,
+            }),
+          };
+        }
+      }
+      let resolvedMcpTool = normalizedTool;
+      if (!isMcpNamespace(resolvedMcpTool.toolNamespace)) {
+        const remoteTools = (await mcpRuntime.toolExecutor.list()).tools.map((tool) =>
+          normalizeHostToolSpec(tool as Record<string, unknown>),
+        );
+        const matchedRemoteTool = resolveRemoteToolByPlainName(
+          normalizedRequest.toolName,
+          remoteTools,
+        );
+        if (matchedRemoteTool !== null) {
+          console.info("[webui] host.invoke-tool:fallback-mcp-name", {
+            requestToolName: normalizedRequest.toolName,
+            resolvedQualifiedName: matchedRemoteTool.qualifiedName,
+            resolvedNamespace: matchedRemoteTool.toolNamespace,
+          });
+          resolvedMcpTool = matchedRemoteTool;
+        }
+      }
+      if (!isMcpNamespace(resolvedMcpTool.toolNamespace)) {
+        throw createHostError(
+          "invalidInput",
+          `invokeTool expected a browser or MCP tool, got ${normalizedRequest.toolName}`,
+        );
+      }
+      const input = (normalizedRequest.input as JsonValue | undefined) ?? null;
+      try {
+        return await mcpRuntime.toolExecutor.invoke({
+          callId: normalizedRequest.callId,
+          toolName: resolvedMcpTool.toolName,
+          toolNamespace: resolvedMcpTool.toolNamespace,
+          input,
+        });
+      } catch (error) {
+        return {
+          callId: normalizedRequest.callId,
+          output: buildToolErrorOutput({
+            toolName: resolvedMcpTool.toolName,
+            toolNamespace: resolvedMcpTool.toolNamespace,
+            input,
+            error,
+          }),
+        };
+      }
     },
     async cancelTool(callId) {
       await Promise.all([browserToolExecutor.cancel({ callId }), mcpRuntime.toolExecutor.cancel(callId)]);
@@ -266,6 +443,13 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
           Array.isArray(transportRequest.tools)
             ? transportRequest.tools.map((tool) => summarizeTransportTool(tool as JsonValue))
             : null,
+        toolNames:
+          Array.isArray(transportRequest.tools)
+            ? transportRequest.tools.flatMap((tool) => {
+                const summary = summarizeTransportTool(tool as JsonValue);
+                return summary?.name === null || summary?.name === undefined ? [] : [summary.name];
+              })
+            : null,
         toolChoice: transportRequest.tool_choice ?? null,
         responseInputItemTypes:
           responseInputItems?.flatMap((item) =>
@@ -276,22 +460,6 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
       });
 
       emitRuntimeActivity({ type: "turnStart", requestId, model: selectedModel });
-      if (responseInputItems !== null) {
-        for (const item of responseInputItems) {
-          if (item === null || typeof item !== "object" || Array.isArray(item)) {
-            continue;
-          }
-          const record = item as Record<string, unknown>;
-          if (record.type === "function_call_output") {
-            emitRuntimeActivity({
-              type: "toolOutput",
-              requestId,
-              callId: typeof record.call_id === "string" ? record.call_id : null,
-              output: (record.output as JsonValue | undefined) ?? null,
-            });
-          }
-        }
-      }
 
       return provider.providerKind === "xrouter_browser"
         ? runXrouterTurn({

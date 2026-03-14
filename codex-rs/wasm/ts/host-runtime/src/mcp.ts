@@ -15,6 +15,7 @@ export type RemoteMcpServerConfig = {
 };
 
 export type RemoteMcpToolSpec = {
+  serverName: string;
   qualifiedName: string;
   originalName: string;
   description: string;
@@ -103,6 +104,28 @@ const MCP_DB_NAME = "codex-wasm-browser-mcp";
 const MCP_STORE_NAME = "remote-mcp-servers";
 const PKCE_METHOD = "S256";
 
+function summarizeMcpValue(value: JsonValue): string {
+  if (typeof value === "string") {
+    return value.length > 200 ? `${value.slice(0, 200)}...` : value;
+  }
+  if (Array.isArray(value)) {
+    return `array(${value.length})`;
+  }
+  if (value !== null && typeof value === "object") {
+    const keys = Object.keys(value);
+    return `object(${keys.slice(0, 8).join(",")}${keys.length > 8 ? ",..." : ""})`;
+  }
+  return String(value);
+}
+
+function stringifyMcpValueForLog(value: JsonValue): string {
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return error instanceof Error ? `[unserializable: ${error.message}]` : "[unserializable]";
+  }
+}
+
 export class RemoteMcpController {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
@@ -130,6 +153,33 @@ export class RemoteMcpController {
       [...known].sort().map(async (serverName) => this.toServerState(await this.loadState(serverName))),
     );
     return states;
+  }
+
+  public async addServer(params: { serverUrl: string; serverName?: string | null }): Promise<RemoteMcpServerState> {
+    const normalizedUrl = normalizeServerUrl(params.serverUrl);
+    const existingNames = new Set<string>([
+      ...this.configs.keys(),
+      ...(await this.stateStore.list()).map((record) => record.serverName),
+    ]);
+    const requestedName =
+      typeof params.serverName === "string" && params.serverName.trim().length > 0
+        ? slugifyServerName(params.serverName)
+        : null;
+    const serverName = ensureUniqueServerName(
+      requestedName ?? deriveServerNameFromUrl(normalizedUrl),
+      existingNames,
+    );
+    this.configs.set(serverName, {
+      serverName,
+      serverUrl: normalizedUrl,
+    });
+    const state = await this.loadState(serverName);
+    return this.toServerState(state);
+  }
+
+  public async removeServer(serverName: string): Promise<void> {
+    this.configs.delete(serverName);
+    await this.stateStore.delete(serverName);
   }
 
   public async beginLogin(params: {
@@ -231,11 +281,26 @@ export class RemoteMcpController {
     let state = await this.loadState(serverName);
     state = await this.ensureFreshToken(state);
     const initialized = await this.ensureInitialized(state);
+    console.info("[mcp] tools/list:start", {
+      serverName,
+      serverUrl: initialized.serverUrl,
+      authStatus: initialized.token === null ? "unauthenticated" : "authenticated",
+      sessionId: initialized.sessionId,
+      protocolVersion: initialized.protocolVersion,
+    });
     const response = await this.sendJsonRpc(initialized, "tools/list", {});
     const toolEntries = extractToolSpecs(initialized, response);
     initialized.tools = toolEntries;
     initialized.lastError = null;
     await this.stateStore.save(initialized);
+    console.info("[mcp] tools/list:done", {
+      serverName,
+      toolCount: toolEntries.length,
+      tools: toolEntries.map((tool) => ({
+        qualifiedName: tool.qualifiedName,
+        originalName: tool.originalName,
+      })),
+    });
     return this.toServerState(initialized);
   }
 
@@ -275,6 +340,13 @@ export class RemoteMcpController {
       this.inflight.set(callId, controller);
     }
     try {
+      console.info("[mcp] tools/call:start", {
+        serverName,
+        toolName,
+        callId: callId ?? null,
+        input: summarizeMcpValue(input),
+        inputJson: stringifyMcpValueForLog(input),
+      });
       const response = await this.sendJsonRpc(
         state,
         "tools/call",
@@ -287,10 +359,22 @@ export class RemoteMcpController {
       );
       state.lastError = null;
       await this.stateStore.save(state);
+      console.info("[mcp] tools/call:done", {
+        serverName,
+        toolName,
+        callId: callId ?? null,
+        result: summarizeMcpValue(response.result as JsonValue),
+      });
       return response.result;
     } catch (error) {
       state.lastError = error instanceof Error ? error.message : "remote MCP tool call failed";
       await this.stateStore.save(state);
+      console.error("[mcp] tools/call:failed", {
+        serverName,
+        toolName,
+        callId: callId ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     } finally {
       if (callId !== undefined) {
@@ -301,23 +385,46 @@ export class RemoteMcpController {
 
   public createToolExecutorAdapter(): HostToolExecutorAdapter {
     return {
-      list: async () => ({
-        tools: (await this.listTools()).map((tool) => ({
-          toolName: tool.name,
-          toolNamespace: tool.serverName,
+      list: async () => {
+        const tools = (await this.listTools()).map((tool) => ({
+          toolName: tool.originalName,
+          toolNamespace: buildQualifiedToolNamespace(tool.serverName),
           description: tool.description,
           inputSchema: tool.inputSchema,
-        })),
-      }),
+        }));
+        console.info("[mcp] adapter.list", {
+          toolCount: tools.length,
+          tools: tools.map((tool) => ({
+            qualifiedName: `${tool.toolNamespace}${tool.toolName}`,
+            namespace: tool.toolNamespace,
+            toolName: tool.toolName,
+          })),
+        });
+        return { tools };
+      },
       invoke: async (params) => {
+        const resolvedInvocation =
+          typeof params.toolNamespace === "string" &&
+          params.toolNamespace.startsWith("mcp__")
+            ? resolveQualifiedToolName(`${params.toolNamespace}${params.toolName}`)
+            : typeof params.toolNamespace === "string" && params.toolNamespace.length > 0
+              ? {
+                  serverName: params.toolNamespace,
+                  toolName: params.toolName,
+                }
+              : resolveQualifiedToolName(params.toolName);
+        console.info("[mcp] adapter.invoke", {
+          callId: params.callId,
+          toolName: params.toolName,
+          toolNamespace: params.toolNamespace ?? null,
+          resolvedServerName: resolvedInvocation.serverName,
+          resolvedToolName: resolvedInvocation.toolName,
+        });
         return {
           callId: params.callId,
           output: await this.invokeToolForCall({
-            serverName:
-              typeof params.toolNamespace === "string" && params.toolNamespace.length > 0
-                ? params.toolNamespace
-                : resolveQualifiedToolName(params.toolName).serverName,
-            toolName: params.toolName,
+            serverName: resolvedInvocation.serverName,
+            toolName: resolvedInvocation.toolName,
             input: params.input,
             callId: params.callId,
           }),
@@ -337,8 +444,12 @@ export class RemoteMcpController {
     const config = this.configs.get(serverName);
     const stored = await this.stateStore.load(serverName);
     if (stored !== null) {
+      const normalizedTools = stored.tools.map((tool) => normalizeStoredToolSpec(stored.serverName, tool));
       if (config === undefined) {
-        return stored;
+        return {
+          ...stored,
+          tools: normalizedTools,
+        };
       }
       return {
         ...stored,
@@ -351,6 +462,7 @@ export class RemoteMcpController {
         clientUri: config.clientUri ?? stored.clientUri,
         clientId: config.oauthClientId ?? stored.clientId,
         clientMetadataUrl: config.oauthClientMetadataUrl ?? stored.clientMetadataUrl,
+        tools: normalizedTools,
       };
     }
     if (config === undefined) {
@@ -673,6 +785,44 @@ export class RemoteMcpController {
   }
 }
 
+function normalizeServerUrl(serverUrl: string): string {
+  const normalized = new URL(serverUrl.trim());
+  normalized.hash = "";
+  return normalized.toString();
+}
+
+function deriveServerNameFromUrl(serverUrl: string): string {
+  const url = new URL(serverUrl);
+  const hostSegments = url.hostname
+    .split(".")
+    .map((segment) => segment.trim().toLowerCase())
+    .filter((segment) => segment.length > 0 && !["www", "mcp", "api"].includes(segment));
+  const filteredHostSegments =
+    hostSegments.length > 1 ? hostSegments.filter((segment, index) => index < hostSegments.length - 1) : hostSegments;
+  const baseName = filteredHostSegments.join("-") || "remote-mcp";
+  return slugifyServerName(baseName);
+}
+
+function slugifyServerName(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : "remote-mcp";
+}
+
+function ensureUniqueServerName(baseName: string, existingNames: Set<string>): string {
+  if (!existingNames.has(baseName)) {
+    return baseName;
+  }
+  let suffix = 2;
+  while (existingNames.has(`${baseName}-${suffix}`)) {
+    suffix += 1;
+  }
+  return `${baseName}-${suffix}`;
+}
+
 export function createRemoteMcpToolExecutor(
   options: RemoteMcpControllerOptions,
 ): {
@@ -777,6 +927,33 @@ function buildQualifiedToolName(prefix: string, toolName: string): string {
   return `${prefix}${toolName}`;
 }
 
+function buildQualifiedToolNamespace(serverName: string): string {
+  return `mcp__${serverName}__`;
+}
+
+function normalizeStoredToolSpec(
+  defaultServerName: string,
+  tool: RemoteMcpToolSpec,
+): RemoteMcpToolSpec {
+  if (typeof tool.serverName === "string" && tool.serverName.length > 0) {
+    return tool;
+  }
+
+  let serverName = defaultServerName;
+  if (typeof tool.qualifiedName === "string" && tool.qualifiedName.startsWith("mcp__")) {
+    try {
+      serverName = resolveQualifiedToolName(tool.qualifiedName).serverName;
+    } catch {
+      serverName = defaultServerName;
+    }
+  }
+
+  return {
+    ...tool,
+    serverName,
+  };
+}
+
 function extractToolSpecs(
   state: RemoteMcpStoredServer,
   response: { result: JsonValue; sessionId: string | null },
@@ -801,6 +978,7 @@ function extractToolSpecs(
     }
     return [
       {
+        serverName: state.serverName,
         qualifiedName: buildQualifiedToolName(state.toolPrefix, record.name),
         originalName: record.name,
         description:

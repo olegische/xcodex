@@ -1,9 +1,7 @@
 import { bootStore } from "../stores/boot";
-import { inspectorStore } from "../stores/inspector";
 import { missionControlStore } from "../stores/mission-control";
 import { pageRuntimeStore } from "../stores/page-runtime";
 import { runtimeUiStore } from "../stores/runtime-ui";
-import { uiSystemStore } from "../stores/ui-system";
 import { webSignalsStore } from "../stores/web-signals";
 import { workspaceBrowserStore } from "../stores/workspace-browser";
 import { subscribeRuntimeActivity } from "../runtime";
@@ -20,7 +18,6 @@ export function setupAppLifecycle(options?: {
 
   let disconnectComposerSessionSync = () => {};
   let unsubscribeRuntimeActivity = () => {};
-  let unsubscribeUiSystem = () => {};
   let disconnectWorkspaceBrowser = () => {};
   let disconnectWebSignals = () => {};
   let disconnectPageRuntime = () => {};
@@ -45,10 +42,6 @@ export function setupAppLifecycle(options?: {
         unsubscribeRuntimeActivity = subscribeRuntimeActivity((activity) => {
           logRuntimeActivity(activity, deltaLogState);
           runtimeUiStore.observeActivity(activity);
-        });
-        unsubscribeUiSystem = uiSystemStore.subscribeToWorkspace((nextSystem) => {
-          void nextSystem;
-          inspectorStore.setDefaultTab("mission");
         });
       });
 
@@ -94,7 +87,6 @@ export function setupAppLifecycle(options?: {
   return () => {
     disconnectComposerSessionSync();
     unsubscribeRuntimeActivity();
-    unsubscribeUiSystem();
     disconnectWorkspaceBrowser();
     disconnectWebSignals();
     disconnectPageRuntime();
@@ -190,5 +182,22 @@ function logRuntimeActivity(
     return;
   }
 
+  if (activity.type === "toolCall") {
+    console.info("[webui] runtime-tool-call:args", {
+      requestId: activity.requestId,
+      callId: activity.callId,
+      toolName: activity.toolName,
+      argumentsJson: stringifyForLog(activity.arguments),
+    });
+  }
+
   console.info("[webui] runtime-activity", activity);
+}
+
+function stringifyForLog(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return error instanceof Error ? `[unserializable: ${error.message}]` : "[unserializable]";
+  }
 }

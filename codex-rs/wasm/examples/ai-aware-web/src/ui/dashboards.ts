@@ -206,24 +206,17 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
     {
       id: "access",
       name: "Tools",
-      description: "Remote MCP bridges, browser tool posture, and artifact/tool routing.",
+      description: "Remote MCP bridges and authentication flow.",
       layout: {
         ...structuredClone(DEFAULT_UI_LAYOUT),
         chatPlacement: "left",
         inspectorMode: "column",
         defaultInspectorTab: "tools",
         areas: {
-          mainTop: [{ id: "remote_mcp", title: "Capability Bridge" }],
-          mainBody: [
-            { id: "page_state", title: "Browser Tools" },
-            { id: "tool_activity", title: "Tool Relay" },
-          ],
-          mainBottom: [{ id: "runtime_events", title: "Event Stream" }],
-          inspector: [
-            { id: "session_status", title: "Access State" },
-            { id: "metrics", title: "Bridge Metrics" },
-            { id: "workspace_files", title: "Saved Access State" },
-          ],
+          mainTop: [{ id: "remote_mcp", title: "Remote MCP" }],
+          mainBody: [],
+          mainBottom: [],
+          inspector: [],
         },
       },
       widgets: {

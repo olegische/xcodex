@@ -88,7 +88,7 @@
       case "signals":
         return widgetId === "web_signals";
       case "tools":
-        return widgetId === "remote_mcp" || widgetId === "tool_activity" || widgetId === "session_status";
+        return widgetId === "remote_mcp" || widgetId === "tool_activity";
       case "workspace":
         return widgetId === "workspace_files";
       case "events":
@@ -188,6 +188,7 @@
   );
   $: rightWidgets = runtimeWidgets.filter((widget) => inspectorWidgetVisible(inspectorState.activeTab, widget.id));
   $: missionMode = inspectorState.activeTab === "mission";
+  $: displayTranscript = [...state.transcript, ...runtimeUiState.transcriptEntries];
 </script>
 
 <AppShell {drawerOpen} sidebarOpen={inspectorState.sidebarOpen} sidebarSide={renderPlan.sidebarSide}>
@@ -227,7 +228,7 @@
               running={runtimeUiState.running}
               runtimeActivities={runtimeUiState.activities}
               status={state.status}
-              transcript={state.transcript}
+              transcript={displayTranscript}
             />
           </div>
         </section>
@@ -250,7 +251,7 @@
               sessionStatus={sessionStatus}
               status={state.status}
               toolActivities={toolActivities}
-              transcript={state.transcript}
+              transcript={displayTranscript}
               widgetsDocument={uiSystem.widgets}
               {workspaceFiles}
             />

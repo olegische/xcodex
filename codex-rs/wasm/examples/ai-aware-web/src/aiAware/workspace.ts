@@ -73,44 +73,7 @@ export type SwarmDocument = {
 };
 
 const DEFAULT_REMOTE_MCP_DOC: { servers: RemoteMcpServer[] } = {
-  servers: [
-    {
-      id: "notion",
-      name: "Notion Remote MCP",
-      url: "https://mcp.notion.com/mcp",
-      status: "login_required",
-      authMode: "oauth",
-      login: "required",
-      latencyMs: 148,
-      scopes: ["pages:read", "search"],
-      tools: ["search", "fetch"],
-      description: "Workspace memory, page search and structured knowledge retrieval over Notion's remote MCP lane.",
-    },
-    {
-      id: "docs",
-      name: "Docs Memory Fabric",
-      url: "https://docs.example.ai/mcp",
-      status: "login-needed",
-      authMode: "oauth",
-      login: "required",
-      latencyMs: 264,
-      scopes: ["kb:read", "kb:cite"],
-      tools: ["doc.lookup", "doc.search", "doc.quote"],
-      description: "Tenant docs with citation-grade retrieval and org-level access control.",
-    },
-    {
-      id: "telemetry",
-      name: "Telemetry Relay",
-      url: "https://ops.example.ai/mcp",
-      status: "standby",
-      authMode: "bearer",
-      login: "token",
-      latencyMs: 96,
-      scopes: ["deployments:read", "incidents:read"],
-      tools: ["incident.list", "deploy.read", "trace.peek"],
-      description: "Production state, release history and incident timelines for the agent swarm.",
-    },
-  ],
+  servers: [],
 };
 
 const DEFAULT_WEB_SIGNALS_DOC: { sites: WebSignalSite[] } = {
@@ -289,30 +252,25 @@ export async function saveRemoteMcpServersSnapshot(states: RemoteMcpServerState[
     (Array.isArray(current.servers) ? current.servers : []).map((server) => [server.id, server]),
   );
   const nextDocument = {
-    servers: [
-      ...states.map((state) => {
-        const previous = previousById.get(state.serverName);
-        return {
-          id: state.serverName,
-          name: previous?.name ?? prettifyServerName(state.serverName),
-          url: state.serverUrl,
-          status: state.authStatus,
-          authMode: "oauth",
-          login: state.authStatus === "connected" ? "authenticated" : "required",
-          latencyMs: previous?.latencyMs ?? 0,
-          scopes: state.scopes,
-          tools: state.tools.map((tool) => tool.originalName),
-          description:
-            previous?.description ?? `Remote MCP capability lane for ${prettifyServerName(state.serverName)}.`,
-          expiresAt: state.expiresAt,
-          lastError: state.lastError,
-          clientId: state.clientId,
-        } satisfies RemoteMcpServer;
-      }),
-      ...(Array.isArray(current.servers) ? current.servers : []).filter(
-        (server) => !states.some((state) => state.serverName === server.id),
-      ),
-    ],
+    servers: states.map((state) => {
+      const previous = previousById.get(state.serverName);
+      return {
+        id: state.serverName,
+        name: previous?.name ?? prettifyServerName(state.serverName),
+        url: state.serverUrl,
+        status: state.authStatus,
+        authMode: "oauth",
+        login: state.authStatus === "connected" ? "authenticated" : "required",
+        latencyMs: previous?.latencyMs ?? 0,
+        scopes: state.scopes,
+        tools: state.tools.map((tool) => tool.originalName),
+        description:
+          previous?.description ?? `Remote MCP capability lane for ${prettifyServerName(state.serverName)}.`,
+        expiresAt: state.expiresAt,
+        lastError: state.lastError,
+        clientId: state.clientId,
+      } satisfies RemoteMcpServer;
+    }),
   };
   const nextContent = serializeJson(nextDocument);
   const existing = workspace.files.find((file) => file.path === AI_AWARE_MCP_PATH);

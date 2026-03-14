@@ -57,6 +57,17 @@ export async function listRemoteMcpServers(): Promise<RemoteMcpServerState[]> {
   return getRemoteMcpController().listServers();
 }
 
+export async function addRemoteMcpServer(input: {
+  serverUrl: string;
+  serverName?: string | null;
+}): Promise<RemoteMcpServerState> {
+  return getRemoteMcpController().addServer(input);
+}
+
+export async function removeRemoteMcpServer(serverName: string): Promise<void> {
+  await getRemoteMcpController().removeServer(serverName);
+}
+
 export async function refreshRemoteMcpServer(serverName: string): Promise<RemoteMcpServerState> {
   return getRemoteMcpController().refreshServerTools(serverName);
 }
