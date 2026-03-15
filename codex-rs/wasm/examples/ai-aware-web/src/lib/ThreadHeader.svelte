@@ -14,8 +14,6 @@
 
   const inspectorTabs: Array<{ id: InspectorTab; label: string }> = [
     { id: "mission", label: "Mission" },
-    { id: "page", label: "Page" },
-    { id: "signals", label: "Signals" },
     { id: "tools", label: "Tools" },
     { id: "workspace", label: "Artifacts" },
     { id: "events", label: "Events" },

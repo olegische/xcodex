@@ -51,6 +51,11 @@
         <button class="button ghost" type="button" on:click={closeModal}>Close</button>
       </div>
 
+      <p class="profiles-note">
+        Provider secrets are stored locally in this browser profile for convenience. They are not kept in a secure
+        enclave and can be read by scripts running on this origin.
+      </p>
+
       <form class="settings-form" on:submit|preventDefault={() => dispatch("save", draft)}>
       <div class="settings-grid">
         <label>
@@ -87,6 +92,7 @@
         <label>
           <span>API Key</span>
           <input bind:value={draft.apiKey} type="password" disabled={disabled} />
+          <span class="settings-help">Stored locally in this browser profile. Do not use on shared machines or untrusted origins.</span>
         </label>
 
         <label>
