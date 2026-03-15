@@ -5,6 +5,18 @@ import {
   recordPageEvent,
   refreshPageRuntimeSnapshot,
 } from "./page-telemetry";
+import {
+  inspectBrowserStorage,
+  inspectCookies,
+  inspectGlobals,
+  inspectPageResources,
+  performanceSnapshot,
+  probeHttpSurface,
+  probeInputReflection,
+  runProbe,
+  scanDangerousSinks,
+  scanDomXssSurface,
+} from "./browser-sandbox-tools";
 import type { JsonValue } from "./types";
 
 type BrowserAiSurfaceSnapshot = {
@@ -140,6 +152,127 @@ const BROWSER_TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: "browser__inspect_storage",
+    description: "Inspect browser storage available to page JavaScript, including localStorage, sessionStorage, indexedDB, and non-HttpOnly cookies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeValues: { type: "boolean" },
+        limit: { type: "number" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__inspect_cookies",
+    description: "Inspect cookies visible to document.cookie in the current page context.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeValues: { type: "boolean" },
+        limit: { type: "number" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__probe_http",
+    description: "Probe a same-origin HTTP URL with GET or HEAD and return readable response headers and status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string" },
+        method: { type: "string", enum: ["GET", "HEAD"] },
+        includeAllHeaders: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__page_resources",
+    description: "Inventory scripts, styles, links, forms, iframes, meta tags, and resource timing entries on the current page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__performance_snapshot",
+    description: "Read navigation and resource timing data exposed by the Performance API for the current page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__run_probe",
+    description: "Run a bounded JavaScript probe in the current page context and return JSON-serializable output.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        script: { type: "string" },
+        args: {},
+        timeoutMs: { type: "number" },
+      },
+      required: ["script"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__scan_dom_xss_surface",
+    description: "Scan the current DOM for XSS-relevant client-side surfaces such as inline handlers, javascript: URLs, srcdoc iframes, contenteditable nodes, and unsafe target=_blank links.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__scan_dangerous_sinks",
+    description: "Scan inline and same-origin script sources for dangerous DOM sinks such as innerHTML, outerHTML, insertAdjacentHTML, and document.write.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__inspect_globals",
+    description: "Inspect interesting window globals that may expose auth, config, tokens, or other sensitive client-side state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "browser__probe_input_reflection",
+    description: "Inject a payload into a form control, optionally trigger a submit click, and test whether the payload is reflected back into the page DOM as text or HTML.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        selector: { type: "string" },
+        payload: { type: "string" },
+        submitSelector: { type: "string" },
+        waitMs: { type: "number" },
+      },
+      required: ["selector"],
+      additionalProperties: false,
+    },
+  },
 ] as const;
 
 export function createBrowserAwareToolExecutor(): HostToolExecutorAdapter {
@@ -178,6 +311,26 @@ export function createBrowserAwareToolExecutor(): HostToolExecutorAdapter {
         output = await waitForElement(asRecord(params.input));
       } else if (toolName === "browser__event_stream") {
         output = readEventStream(asRecord(params.input));
+      } else if (toolName === "browser__inspect_storage") {
+        output = await inspectBrowserStorage(params.input);
+      } else if (toolName === "browser__inspect_cookies") {
+        output = inspectCookies(params.input);
+      } else if (toolName === "browser__probe_http") {
+        output = await probeHttpSurface(params.input);
+      } else if (toolName === "browser__page_resources") {
+        output = inspectPageResources(params.input);
+      } else if (toolName === "browser__performance_snapshot") {
+        output = performanceSnapshot(params.input);
+      } else if (toolName === "browser__run_probe") {
+        output = await runProbe(params.input);
+      } else if (toolName === "browser__scan_dom_xss_surface") {
+        output = scanDomXssSurface(params.input);
+      } else if (toolName === "browser__scan_dangerous_sinks") {
+        output = await scanDangerousSinks(params.input);
+      } else if (toolName === "browser__inspect_globals") {
+        output = inspectGlobals(params.input);
+      } else if (toolName === "browser__probe_input_reflection") {
+        output = await probeInputReflection(params.input);
       } else {
         throw new Error(`Unsupported browser-aware tool: ${toolName}`);
       }

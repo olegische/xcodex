@@ -135,6 +135,27 @@ function resolveRemoteToolByPlainName(
   });
 }
 
+function resolveBrowserToolByPlainName(
+  toolName: string,
+  browserTools: Array<{
+    toolName: string;
+    toolNamespace: string | null;
+    description: string;
+    inputSchema: JsonValue;
+  }>,
+): { toolName: string; toolNamespace: string | null; qualifiedName: string } | null {
+  const matches = browserTools.filter(
+    (tool) => tool.toolName === toolName && tool.toolNamespace === "browser",
+  );
+  if (matches.length !== 1) {
+    return null;
+  }
+  return normalizeToolIdentity({
+    toolName: matches[0].toolName,
+    toolNamespace: matches[0].toolNamespace,
+  });
+}
+
 function summarizeToolExecutionError(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) {
     return error.message;
@@ -340,15 +361,32 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
         toolName: normalizedRequest.toolName,
         toolNamespace: requestedToolNamespace,
       });
+      let resolvedBrowserTool = normalizedTool;
+      if (resolvedBrowserTool.toolNamespace !== "browser") {
+        const browserTools = (await browserToolExecutor.list()).tools.map((tool) =>
+          normalizeHostToolSpec(tool as Record<string, unknown>),
+        );
+        const matchedBrowserTool = resolveBrowserToolByPlainName(
+          normalizedRequest.toolName,
+          browserTools,
+        );
+        if (matchedBrowserTool !== null) {
+          console.info("[webui] host.invoke-tool:fallback-browser-name", {
+            requestToolName: normalizedRequest.toolName,
+            resolvedQualifiedName: matchedBrowserTool.qualifiedName,
+          });
+          resolvedBrowserTool = matchedBrowserTool;
+        }
+      }
       if (
-        normalizedTool.toolNamespace === "browser" ||
-        normalizedTool.qualifiedName.startsWith("browser__")
+        resolvedBrowserTool.toolNamespace === "browser" ||
+        resolvedBrowserTool.qualifiedName.startsWith("browser__")
       ) {
         const input = (normalizedRequest.input as JsonValue | undefined) ?? null;
         try {
           return await browserToolExecutor.invoke({
             callId: normalizedRequest.callId,
-            toolName: normalizedTool.toolName,
+            toolName: resolvedBrowserTool.toolName,
             toolNamespace: "browser",
             input,
           });
@@ -356,7 +394,7 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
           return {
             callId: normalizedRequest.callId,
             output: buildToolErrorOutput({
-              toolName: normalizedTool.toolName,
+              toolName: resolvedBrowserTool.toolName,
               toolNamespace: "browser",
               input,
               error,
