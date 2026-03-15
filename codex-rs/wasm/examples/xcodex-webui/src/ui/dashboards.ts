@@ -11,8 +11,8 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
   dashboards: [
     {
       id: "mission",
-      name: "Zone",
-      description: "Target-defined zone state, page surface, capability bridges, and lifecycle events.",
+      name: "Chat",
+      description: "Chat-first browser demo with citations, tools, and artifacts.",
       layout: {
         ...structuredClone(DEFAULT_UI_LAYOUT),
         chatPlacement: "center",
@@ -20,13 +20,11 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
         defaultInspectorTab: "workspace",
         areas: {
           mainTop: [
-            { id: "mission_state", title: "Zone" },
+            { id: "mission_state", title: "Chat" },
             { id: "page_state", title: "Surface" },
           ],
           mainBody: [{ id: "remote_mcp", title: "Capability Bridges" }],
-          mainBottom: [{ id: "runtime_events", title: "Event Stream" }],
           inspector: [
-            { id: "ledger", title: "Ledger" },
             { id: "citations", title: "Citations" },
             { id: "workspace_files", title: "Artifacts" },
             { id: "session_status", title: "Runtime Status" },
@@ -60,10 +58,8 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
             { id: "page_state", title: "Surface" },
             { id: "web_signals", title: "Signals" },
           ],
-          mainBody: [{ id: "mission_state", title: "Zone Flow" }],
-          mainBottom: [{ id: "runtime_events", title: "Event Stream" }],
+          mainBody: [{ id: "mission_state", title: "Chat Flow" }],
           inspector: [
-            { id: "ledger", title: "Ledger" },
             { id: "citations", title: "Citations" },
             { id: "remote_mcp", title: "Capability Bridges" },
             { id: "workspace_files", title: "Artifacts" },
@@ -90,10 +86,8 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
             { id: "tool_activity", title: "Capability Telemetry" },
             { id: "plan_status", title: "Current Plan" },
           ],
-          mainBottom: [{ id: "runtime_events", title: "Event Stream" }],
           inspector: [
             { id: "approvals", title: "Approvals" },
-            { id: "ledger", title: "Ledger" },
             { id: "citations", title: "Citations" },
             { id: "workspace_files", title: "Artifacts" },
           ],
@@ -105,7 +99,7 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
           sidebarPrimaryAction: "new_thread",
           sidebarFooterActions: ["status", "plan", "tools", "workspace", "settings"],
           headerLeadingActions: ["toggle_sidebar", "new_thread"],
-          headerTrailingActions: ["metrics", "events", "approvals", "settings"],
+          headerTrailingActions: ["metrics", "approvals", "settings"],
         },
       },
     },
@@ -123,8 +117,7 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
             { id: "page_state", title: "Current Surface" },
             { id: "web_signals", title: "Signal Scan" },
           ],
-          mainBody: [{ id: "mission_state", title: "Zone Pressure" }],
-          mainBottom: [{ id: "ledger", title: "Ledger" }],
+          mainBody: [{ id: "mission_state", title: "Chat Pressure" }],
           inspector: [{ id: "remote_mcp", title: "Capability Bridges" }],
         },
       },
@@ -134,31 +127,32 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
           sidebarPrimaryAction: "new_thread",
           sidebarFooterActions: ["workspace", "settings"],
           headerLeadingActions: ["toggle_sidebar", "new_thread"],
-          headerTrailingActions: ["workspace", "events", "settings"],
+          headerTrailingActions: ["workspace", "settings"],
         },
       },
     },
     {
       id: "status",
       name: "Events",
-      description: "Chronological event stream for APSIX lifecycle, model turns, and browser activity.",
+      description: "Runtime status, approvals, citations, and artifacts.",
       layout: {
         ...structuredClone(DEFAULT_UI_LAYOUT),
         chatPlacement: "left",
-        inspectorMode: "hidden",
-        defaultInspectorTab: "events",
+        inspectorMode: "column",
+        defaultInspectorTab: "status",
         areas: {
-          mainTop: [{ id: "mission_state", title: "Zone" }],
-          mainBody: [{ id: "ledger", title: "Authoritative Ledger" }],
-          mainBottom: [{ id: "runtime_events", title: "Operational Runtime Stream" }],
-          inspector: [],
+          mainTop: [{ id: "mission_state", title: "Chat" }],
+          mainBody: [{ id: "session_status", title: "Runtime Status" }],
+          mainBottom: [{ id: "plan_status", title: "Plan" }],
+          inspector: [
+            { id: "approvals", title: "Approvals" },
+            { id: "citations", title: "Citations" },
+            { id: "workspace_files", title: "Artifacts" },
+          ],
         },
       },
       widgets: {
         ...structuredClone(DEFAULT_UI_WIDGETS),
-        runtimeEvents: {
-          compact: true,
-        },
         approvals: {
           compact: true,
         },
@@ -166,7 +160,7 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
           sidebarPrimaryAction: "new_thread",
           sidebarFooterActions: ["status", "plan", "tools", "workspace", "settings"],
           headerLeadingActions: ["toggle_sidebar", "new_thread"],
-          headerTrailingActions: ["events", "approvals", "metrics", "settings"],
+          headerTrailingActions: ["approvals", "metrics", "settings"],
         },
       },
     },
@@ -181,16 +175,14 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
         defaultInspectorTab: "workspace",
         areas: {
           mainTop: [
-            { id: "mission_state", title: "Zone" },
+            { id: "mission_state", title: "Chat" },
             { id: "workspace_files", title: "Artifacts" },
           ],
           mainBody: [
             { id: "agent_swarm", title: "Actors and Anchors" },
             { id: "plan_status", title: "Execution Queue" },
           ],
-          mainBottom: [{ id: "runtime_events", title: "Event Stream" }],
           inspector: [
-            { id: "ledger", title: "Ledger" },
             { id: "citations", title: "Citations" },
             { id: "session_status", title: "Runtime Pulse" },
             { id: "metrics", title: "Workspace Metrics" },

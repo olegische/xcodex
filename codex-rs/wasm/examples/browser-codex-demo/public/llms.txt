@@ -1,0 +1,40 @@
+# AI-Aware Web
+
+> Browser-native Codex runtime demo with chat-first control, remote MCP, browser tools, and persistent workspace memory.
+
+## Product
+
+- Name: AI-Aware Web
+- Kind: browser agent runtime demo
+- Primary surface: chat-first mission control
+- Secondary surfaces: page inspection, signals, tools, artifacts, events
+
+## Core capabilities
+
+- Remote MCP over URL with browser-side login flow
+- Browser-native context tools for page inspection and extraction
+- Persistent workspace artifacts stored in the browser runtime
+- AI-readable web signal scanning using llms.txt, schema.org, and metadata heuristics
+- Mission state tracking for observe, plan, act, and persist loops
+
+## Recommended usage
+
+1. Start in `Mission` and describe the task in chat.
+2. Open `Page` or `Signals` only when you need browser context or AI-readable diagnostics.
+3. Open `Tools` when you need browser actions or remote MCP capabilities.
+4. Open `Artifacts` or `Events` to inspect durable state and runtime logs.
+
+## Important constraints
+
+- This is a browser environment, not a native desktop shell.
+- Remote MCP is first-class; local process MCP is not assumed.
+- Browser tools and page context are available only when the host runtime exposes them.
+
+## Files worth reading
+
+- `/workspace/ai-aware/README.md`
+- `/workspace/ai-aware/mcp-servers.json`
+- `/workspace/ai-aware/web-signals.json`
+- `/workspace/ai-aware/mission-state.json`
+- `/workspace/ai-aware/page-runtime.json`
+

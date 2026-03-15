@@ -1687,6 +1687,10 @@ function sourceMatchesCitationReference(
   if (source.kind === "workspace_doc" && source.locator === normalizedReference) {
     return true;
   }
+  if (normalizedReference.startsWith("tool:")) {
+    const locator = normalizedReference.slice(5);
+    return source.locator === locator || source.sourceRef === locator;
+  }
   if (source.kind === "page_observation" && `tool:${source.sourceRef}` === normalizedReference) {
     return true;
   }

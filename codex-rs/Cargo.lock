@@ -2754,6 +2754,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-wasm-v2-app-server"
+version = "0.0.0"
+dependencies = [
+ "codex-app-server-protocol",
+ "codex-protocol",
+ "pretty_assertions",
+ "serde_json",
+]
+
+[[package]]
 name = "codex-wasm-v2-browser"
 version = "0.0.0"
 dependencies = [
@@ -2762,6 +2772,7 @@ dependencies = [
  "async-trait",
  "codex-app-server-protocol",
  "codex-protocol",
+ "codex-wasm-v2-app-server",
  "codex-wasm-v2-core",
  "console_error_panic_hook",
  "js-sys",

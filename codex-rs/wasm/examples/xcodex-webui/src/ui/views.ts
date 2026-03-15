@@ -11,7 +11,7 @@ export const DEFAULT_UI_VIEWS: UiViewsDocument = {
   views: [
     {
       id: "mission",
-      name: "Zone",
+      name: "Chat",
       dashboardId: "mission",
     },
   ],

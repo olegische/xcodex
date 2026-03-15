@@ -26,7 +26,6 @@
     stopTurn,
     toggleInspectorTab,
     toggleApprovals,
-    toggleEvents,
   } from "./app/actions";
 
   $: runtimeSession = $runtimeSessionStore;
@@ -82,7 +81,6 @@
   onSelectTools={() => toggleInspectorTab("tools", workbenchModel.renderPlan)}
   onSelectWorkspace={() => toggleInspectorTab("workspace", workbenchModel.renderPlan)}
   onToggleApprovals={() => toggleApprovals(workbenchModel.renderPlan)}
-  onToggleEvents={() => toggleEvents(workbenchModel.renderPlan)}
   {providerDraft}
   providerSummary={workbenchModel.providerSummary}
   renderPlan={workbenchModel.renderPlan}

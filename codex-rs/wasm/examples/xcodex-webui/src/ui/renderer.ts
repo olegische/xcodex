@@ -4,12 +4,18 @@ import type { MetricItem, UiRenderPlan, UiSystemDocument } from "./types";
 
 export function buildUiRenderPlan(document: UiSystemDocument): UiRenderPlan {
   const profile = resolveActiveUiProfile(document.profiles);
+  const rawAreas = {
+    mainTop: document.layout.areas.mainTop ?? [],
+    mainBody: document.layout.areas.mainBody ?? [],
+    mainBottom: document.layout.areas.mainBottom ?? [],
+    inspector: document.layout.areas.inspector ?? [],
+  };
   const areas = Object.fromEntries(
-    Object.entries(document.layout.areas).map(([areaName, widgets]) => [
+    Object.entries(rawAreas).map(([areaName, widgets]) => [
       areaName,
       widgets.flatMap((widget) => {
         const definition = WIDGET_REGISTRY[widget.id];
-        if (definition === undefined || !definition.allowedAreas.includes(areaName as keyof typeof document.layout.areas)) {
+        if (definition === undefined || !definition.allowedAreas.includes(areaName as keyof typeof rawAreas)) {
           return [];
         }
         return [

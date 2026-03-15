@@ -13,12 +13,10 @@
   export let activeInspectorTab: InspectorTab = "mission";
 
   const inspectorTabs: Array<{ id: InspectorTab; label: string }> = [
-    { id: "mission", label: "Zone" },
-    { id: "ledger", label: "Ledger" },
+    { id: "mission", label: "Chat" },
     { id: "citations", label: "Citations" },
     { id: "tools", label: "Tools" },
     { id: "workspace", label: "Artifacts" },
-    { id: "events", label: "Events" },
   ];
 
   let inspectorMenuOpen = false;
@@ -69,7 +67,7 @@
     <div class="composer-menu-shell" bind:this={inspectorShellElement}>
       <button class="composer-menu-trigger" on:click={toggleInspectorMenu}>
         <span class="composer-menu-label">
-          {inspectorTabs.find((tab) => tab.id === activeInspectorTab)?.label ?? "Zone"}
+          {inspectorTabs.find((tab) => tab.id === activeInspectorTab)?.label ?? "Chat"}
         </span>
         <span class="composer-menu-caret" aria-hidden="true"></span>
       </button>

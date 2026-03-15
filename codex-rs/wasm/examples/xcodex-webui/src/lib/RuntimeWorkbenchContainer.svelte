@@ -33,7 +33,6 @@
   export let onSelectStatus: () => void;
   export let onSelectPlan: () => void;
   export let onSelectMetrics: () => void;
-  export let onToggleEvents: () => void;
   export let onToggleApprovals: () => void;
   export let onSelectTools: () => void;
   export let onSelectWorkspace: () => void;
@@ -46,17 +45,13 @@
     inspectorStore.toggleSidebar();
   }
 
-  function closeEvents() {
-    inspectorStore.closeEvents();
-  }
-
   function closeApprovals() {
     inspectorStore.closeApprovals();
   }
 
   $: runtimeUiState = $runtimeUiStore;
   $: inspectorState = $inspectorStore;
-  $: drawerOpen = renderPlan.inspectorMode === "drawer" && (inspectorState.showEvents || inspectorState.showApprovals);
+  $: drawerOpen = renderPlan.inspectorMode === "drawer" && inspectorState.showApprovals;
   $: shellActions = buildShellActionSet(uiSystem.widgets.shell);
 </script>
 
@@ -75,7 +70,6 @@
   headerLeadingActions={shellActions.headerLeadingActions}
   headerTrailingActions={shellActions.headerTrailingActions}
   onCloseApprovals={closeApprovals}
-  onCloseEvents={closeEvents}
   {onComposerSend}
   {onComposerStop}
   {onOpenProfiles}
@@ -89,7 +83,6 @@
   {onSelectWorkspace}
   onToggleSidebar={toggleSidebar}
   {onToggleApprovals}
-  {onToggleEvents}
   {renderPlan}
   runtimeUiState={runtimeUiState}
   sidebarFooterActions={shellActions.sidebarFooterActions}

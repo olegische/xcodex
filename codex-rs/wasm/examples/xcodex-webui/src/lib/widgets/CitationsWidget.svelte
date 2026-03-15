@@ -32,9 +32,9 @@
   $: citedSources =
     selectedArtifact === null
       ? []
-      : selectedArtifact.citations
-          .map((citationKey) => sourceByKey.get(citationKey) ?? null)
-          .filter((source): source is ApsixCitationSourceSummary => source !== null);
+      : selectedArtifact.citations.flatMap((reference) =>
+          sources.filter((source) => sourceMatchesReference(source, reference)),
+        );
   $: admissionSourceKeys = new Set(
     (zone.target?.citations ?? []).flatMap((reference) =>
       sources
@@ -74,7 +74,8 @@
       return true;
     }
     if (reference.startsWith("tool:")) {
-      return source.locator === reference.slice(5);
+      const locator = reference.slice(5);
+      return source.locator === locator || source.sourceRef === locator;
     }
     if (reference.startsWith("input:")) {
       return source.kind === "user_input" && source.requestId === reference.slice(6);

@@ -2,7 +2,6 @@
   import AppShell from "./AppShell.svelte";
   import ApprovalDrawer from "./ApprovalDrawer.svelte";
   import ChatFoundation from "./ChatFoundation.svelte";
-  import RuntimeEventsDrawer from "./RuntimeEventsDrawer.svelte";
   import RuntimeSurfaceStack from "./RuntimeSurfaceStack.svelte";
   import Sidebar from "./Sidebar.svelte";
   import ThreadHeader from "./ThreadHeader.svelte";
@@ -41,14 +40,12 @@
   export let headerLeadingActions: ShellActionSpec[] = [];
   export let headerTrailingActions: ShellActionSpec[] = [];
   export let onToggleSidebar: () => void;
-  export let onCloseEvents: () => void;
   export let onCloseApprovals: () => void;
   export let onResetThread: () => void;
   export let onSelectInspector: (event: CustomEvent<{ id: InspectorTab }>) => void;
   export let onSelectStatus: () => void;
   export let onSelectPlan: () => void;
   export let onSelectMetrics: () => void;
-  export let onToggleEvents: () => void;
   export let onToggleApprovals: () => void;
   export let onSelectTools: () => void;
   export let onSelectWorkspace: () => void;
@@ -63,7 +60,6 @@
     status: () => onSelectStatus(),
     plan: () => onSelectPlan(),
     metrics: () => onSelectMetrics(),
-    events: () => onToggleEvents(),
     approvals: () => onToggleApprovals(),
     tools: () => onSelectTools(),
     workspace: () => onSelectWorkspace(),
@@ -83,8 +79,6 @@
     switch (tab) {
       case "mission":
         return widgetId === "mission_state" || widgetId === "plan_status";
-      case "ledger":
-        return widgetId === "ledger";
       case "citations":
         return widgetId === "citations";
       case "page":
@@ -95,8 +89,6 @@
         return widgetId === "remote_mcp" || widgetId === "tool_activity";
       case "workspace":
         return widgetId === "workspace_files";
-      case "events":
-        return widgetId === "runtime_events";
       case "status":
         return widgetId === "session_status" || widgetId === "metrics";
       case "plan":
@@ -114,15 +106,9 @@
     switch (tab) {
       case "mission":
         return {
-          eyebrow: "Zone",
-          title: "Target, spawn, authority",
-          copy: "Current APSIX zone state, spawn posture, and authority boundary.",
-        };
-      case "ledger":
-        return {
-          eyebrow: "Ledger",
-          title: "Authoritative lifecycle",
-          copy: "Ordered APSIX records for zone, spawn, artifact, anchor, and freeze transitions.",
+          eyebrow: "Chat",
+          title: "Chat and execution context",
+          copy: "Current chat turn, execution posture, and bounded browser-task context.",
         };
       case "citations":
         return {
@@ -153,12 +139,6 @@
           eyebrow: "Artifacts",
           title: "Workspace memory",
           copy: "Durable files, notes, and generated outputs.",
-        };
-      case "events":
-        return {
-          eyebrow: "Events",
-          title: "Runtime log",
-          copy: "Chronological event stream for turns, tools, and browser activity.",
         };
       case "status":
         return {
@@ -193,11 +173,15 @@
     }
   }
 
+  $: mainTopWidgets = renderPlan.areas.mainTop ?? [];
+  $: mainBodyWidgets = renderPlan.areas.mainBody ?? [];
+  $: mainBottomWidgets = renderPlan.areas.mainBottom ?? [];
+  $: inspectorWidgets = renderPlan.areas.inspector ?? [];
   $: runtimeWidgets = [
-    ...renderPlan.areas.mainTop,
-    ...renderPlan.areas.mainBody,
-    ...renderPlan.areas.mainBottom,
-    ...renderPlan.areas.inspector,
+    ...mainTopWidgets,
+    ...mainBodyWidgets,
+    ...mainBottomWidgets,
+    ...inspectorWidgets,
     { id: "citations", title: "Citations" },
   ].filter(
     (widget, index, widgets) =>
@@ -287,11 +271,6 @@
   </div>
 
   <div slot="drawer">
-    <RuntimeEventsDrawer
-      open={renderPlan.inspectorMode === "drawer" && inspectorState.showEvents}
-      activities={runtimeUiState.activities}
-      on:close={onCloseEvents}
-    />
     <ApprovalDrawer
       open={renderPlan.inspectorMode === "drawer" && inspectorState.showApprovals}
       {approvals}

@@ -1,0 +1,9 @@
+APSIX_SCHEMA_VERSION = 1
+APSIX_POLICY_VERSION = "apsix_runtime_v2"
+APSIX_RUNTIME_PROFILE = "apsix_markdown_sections_v2"
+APSIX_MEASUREMENT_PROFILE = "markdown_sections_v2"
+STATE_ROOT_NAME = ".spawn/apsix_runtime/zones"
+REPO_LOCK_NAME = ".spawn/repo.lock"
+DEFAULT_PROFILE = "research_web"
+MARKDOWN_SECTIONS_KIND = "markdown-sections"
+ZONE_STATES = {"open", "throttled", "quarantined", "frozen", "closed"}

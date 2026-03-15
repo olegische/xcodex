@@ -24,8 +24,8 @@ export function createWorkbenchModel(input: {
     .at(-1);
   const metrics = buildMetrics(input.uiSystem.widgets.metrics.items, {
     profile: renderPlan.profile.name,
-    view: input.uiSystem.activeView?.name ?? "Zone",
-    dashboard: input.uiSystem.activeDashboard?.name ?? "Zone",
+    view: input.uiSystem.activeView?.name ?? "Chat",
+    dashboard: input.uiSystem.activeDashboard?.name ?? "Chat",
     theme: renderPlan.profile.theme,
     sidebar: renderPlan.profile.sidebarSide,
     transcript: `${input.state.transcript.length}`,
@@ -55,8 +55,8 @@ export function createWorkbenchModel(input: {
       input.providerDraft,
       input.running,
       input.workspaceFiles.length,
-      input.uiSystem.activeView?.name ?? "Zone",
-      input.uiSystem.activeDashboard?.name ?? "Zone",
+      input.uiSystem.activeView?.name ?? "Chat",
+      input.uiSystem.activeDashboard?.name ?? "Chat",
     ),
     metrics,
     toolActivities,

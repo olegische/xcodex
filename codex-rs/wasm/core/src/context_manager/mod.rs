@@ -2,6 +2,6 @@ mod history;
 mod normalize;
 pub(crate) mod updates;
 
-pub(crate) use history::serialize_response_input_item;
-pub(crate) use history::serialize_response_item;
-pub(crate) use updates::build_request_payload;
+pub(crate) use history::ContextManager;
+pub(crate) use history::TotalTokenUsageBreakdown;
+pub(crate) use updates::is_user_turn_boundary;

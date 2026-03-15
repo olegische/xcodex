@@ -9,9 +9,9 @@ const SHELL_ACTION_REGISTRY: Record<ShellActionId, ShellActionSpec> = {
   },
   new_thread: {
     id: "new_thread",
-    label: "New Zone",
+    label: "New Chat",
     shortLabel: "New",
-    ariaLabel: "Start a new zone",
+    ariaLabel: "Start a new chat",
   },
   status: {
     id: "status",
