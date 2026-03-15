@@ -23,7 +23,7 @@ This repository's main track is the browser-native WASM runtime under [`codex-rs
 
 The goal is to run real Codex agent/runtime logic in the browser wherever the code is portable, while keeping browser-specific host capabilities on the JavaScript side. In practice, that means:
 
-- `codex-wasm-core` is the Rust agent runtime
+- `codex-rs/wasm/core` is the Rust agent runtime layer and `codex-rs/wasm/browser` is the browser export/runtime surface
 - the browser host provides capabilities such as model transport, storage, and browser-safe tools
 - the UI is a shell and debug surface, not the place where agent semantics are rebuilt
 - authentication in the browser track is `BYOK`; no ChatGPT account login is part of the XCodex WASM baseline
@@ -42,9 +42,16 @@ Security boundary:
 
 Start here:
 
-- Architecture: [`codex-rs/wasm/ARCHITECTURE.md`](./codex-rs/wasm/ARCHITECTURE.md)
-- Plan and scope: [`codex-rs/wasm/PLAN.md`](./codex-rs/wasm/PLAN.md)
-- Browser chat demo: [`codex-rs/wasm/examples/browser-chat-demo/README.md`](./codex-rs/wasm/examples/browser-chat-demo/README.md)
+- Official browser demo: [`codex-rs/wasm/apps/webui/README.md`](./codex-rs/wasm/apps/webui/README.md)
+
+That guide covers:
+
+- building the WASM Codex runtime and bundled `xrouter-browser` assets;
+- launching the official browser app;
+- providing provider/API-key credentials in the UI;
+- running the browser-native Codex agent with streaming, tools, citations, and artifacts.
+
+If you only want to try the browser-native Codex runtime, start with that README first.
 
 ### Upstream Codex CLI
 
