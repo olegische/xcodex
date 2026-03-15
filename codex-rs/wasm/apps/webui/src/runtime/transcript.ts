@@ -113,6 +113,7 @@ function dynamicToolCallEntry(item: Record<string, unknown>): TranscriptEntry | 
     summary,
     details: lines.slice(1).join("\n").trim() || null,
     text: lines.join("\n"),
+    callId: typeof item.id === "string" ? item.id : null,
   };
 }
 
@@ -139,6 +140,7 @@ function mcpToolCallEntry(item: Record<string, unknown>): TranscriptEntry | null
     summary,
     details: lines.slice(1).join("\n").trim() || null,
     text: lines.join("\n"),
+    callId: typeof item.id === "string" ? item.id : null,
   };
 }
 

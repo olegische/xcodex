@@ -7,9 +7,6 @@
   export let running = false;
   let copiedText: string | null = null;
   let copiedResetTimeout: ReturnType<typeof setTimeout> | null = null;
-  let expandedToolEntries = new Set<string>();
-  let previousRunning = running;
-  let previousToolKeys = "";
 
   function currentGreeting(): string {
     return "What should I do in this browser environment?";
@@ -53,42 +50,6 @@
     return entry.role === "tool" && typeof entry.details === "string" && entry.details.trim().length > 0;
   }
 
-  function toolEntryKey(entry: TranscriptEntry, index: number): string {
-    return `${index}:${entry.summary ?? entry.text}`;
-  }
-
-  function isToolEntryExpanded(entry: TranscriptEntry, index: number): boolean {
-    return expandedToolEntries.has(toolEntryKey(entry, index));
-  }
-
-  function toggleToolEntry(entry: TranscriptEntry, index: number): void {
-    const key = toolEntryKey(entry, index);
-    const next = new Set(expandedToolEntries);
-    if (next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
-    expandedToolEntries = next;
-  }
-
-  $: {
-    const visibleToolKeys = transcript.flatMap((entry, index) =>
-      hasToolDetails(entry) ? [toolEntryKey(entry, index)] : [],
-    );
-    const nextToolKeys = visibleToolKeys.join("|");
-
-    if (running !== previousRunning) {
-      expandedToolEntries = new Set();
-    } else if (nextToolKeys !== previousToolKeys && expandedToolEntries.size > 0) {
-      expandedToolEntries = new Set(
-        Array.from(expandedToolEntries).filter((key) => visibleToolKeys.includes(key)),
-      );
-    }
-
-    previousRunning = running;
-    previousToolKeys = nextToolKeys;
-  }
 </script>
 
 <section class="transcript">
@@ -113,26 +74,17 @@
         </div>
         <div class="message-text">
           {#if hasToolDetails(entry)}
-            <div class="tool-details">
-              <button
-                type="button"
-                class="tool-details-toggle"
-                aria-expanded={isToolEntryExpanded(entry, index)}
-                on:click={() => toggleToolEntry(entry, index)}
-              >
-                <span class="tool-details-marker">
-                  {isToolEntryExpanded(entry, index) ? "-" : "+"}
-                </span>
+            <details class="tool-details">
+              <summary class="tool-details-toggle">
+                <span class="tool-details-marker">+</span>
                 <span>{entry.summary ?? entry.text}</span>
-              </button>
-              {#if isToolEntryExpanded(entry, index)}
+              </summary>
                 <div class="tool-details-body">
                   {#each paragraphs(entry.details ?? "") as paragraph}
                     <p>{paragraph}</p>
                   {/each}
                 </div>
-              {/if}
-            </div>
+            </details>
           {:else}
             {#each paragraphs(entry.text) as paragraph}
               <p>{paragraph}</p>

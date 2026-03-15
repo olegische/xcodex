@@ -37,14 +37,14 @@ export function handleRemoteMcpPopupCallback(): boolean {
     window.location.origin,
   );
 
-  document.title = `AI-Aware Web | ${serverName} MCP Login`;
+  document.title = `WASM Codex | ${serverName} MCP Login`;
   if (document.body !== null) {
     document.body.innerHTML = `
       <main style="min-height:100vh;display:grid;place-items:center;background:#060816;color:#d7e3ff;font:16px/1.5 'IBM Plex Sans',sans-serif;padding:24px;">
         <section style="max-width:32rem;padding:24px 28px;border:1px solid rgba(95,223,255,.22);border-radius:20px;background:rgba(10,18,36,.88);box-shadow:0 24px 80px rgba(0,0,0,.45);">
           <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#5fdfff;">Remote MCP</div>
           <h1 style="margin:12px 0 0;font-size:32px;line-height:1.05;">Login captured</h1>
-          <p style="margin:12px 0 0;color:#96a5c6;">The authorization result was sent back to AI-Aware Web. This window can close now.</p>
+          <p style="margin:12px 0 0;color:#96a5c6;">The authorization result was sent back to WASM Codex. This window can close now.</p>
         </section>
       </main>
     `;

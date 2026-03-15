@@ -189,6 +189,8 @@ impl ToolRouter {
     ) -> Result<ResponseInputItem, FunctionCallError> {
         let payload = call.payload.clone();
         let call_id = call.call_id.clone();
+        let resolved_dynamic_tool_name =
+            self.resolve_dynamic_tool_name(&call.tool_name, call.tool_namespace.as_deref());
         if matches!(payload, ToolPayload::Custom { .. }) && call.tool_name == "shell" {
             return Err(FunctionCallError::Fatal(
                 "tool shell invoked with incompatible payload".to_string(),
@@ -204,17 +206,17 @@ impl ToolRouter {
         {
             Box::new(output)
         } else if matches!(payload, ToolPayload::Function { .. })
-            && self
-                .dynamic_tool_names
-                .iter()
-                .any(|name| name == &call.tool_name)
+            && resolved_dynamic_tool_name.is_some()
         {
+            let dynamic_tool_name = resolved_dynamic_tool_name
+                .clone()
+                .expect("dynamic tool name checked above");
             Box::new(
                 dynamic_handler::handle_dynamic_tool_call(
                     session.as_ref(),
                     turn.as_ref(),
                     call.call_id.clone(),
-                    call.tool_name.clone(),
+                    dynamic_tool_name,
                     payload.clone(),
                 )
                 .await?,
@@ -251,6 +253,34 @@ impl ToolRouter {
             ))
         };
         Ok(output.to_response_item(&call_id, &payload))
+    }
+
+    fn resolve_dynamic_tool_name(
+        &self,
+        tool_name: &str,
+        tool_namespace: Option<&str>,
+    ) -> Option<String> {
+        if self.dynamic_tool_names.iter().any(|name| name == tool_name) {
+            return Some(tool_name.to_string());
+        }
+
+        if let Some(namespace) = tool_namespace {
+            let qualified_name = format!("{namespace}__{tool_name}");
+            if self.dynamic_tool_names.iter().any(|name| name == &qualified_name) {
+                return Some(qualified_name);
+            }
+        }
+
+        let browser_qualified_name = format!("browser__{tool_name}");
+        if self
+            .dynamic_tool_names
+            .iter()
+            .any(|name| name == &browser_qualified_name)
+        {
+            return Some(browser_qualified_name);
+        }
+
+        None
     }
 }
 

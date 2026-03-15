@@ -1,8 +1,13 @@
 import { collaborationStore } from "../stores/collaboration";
 import type { ClientRequest } from "../../../../../app-server-protocol/schema/typescript/ClientRequest";
+import type { DynamicToolCallOutputContentItem } from "../../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallOutputContentItem";
+import type { DynamicToolCallParams } from "../../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallParams";
+import type { DynamicToolCallResponse } from "../../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallResponse";
+import type { DynamicToolSpec } from "../../../../../app-server-protocol/schema/typescript/v2/DynamicToolSpec";
 import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ServerRequest } from "../../../../../app-server-protocol/schema/typescript/ServerRequest";
 import { AppServerClient } from "./app-server-client";
+import { createBrowserAwareToolExecutor } from "./browser-tools";
 import { emitActivitiesFromNotifications } from "./notifications";
 import { discoverProviderModels, discoverRouterModels } from "./transports";
 import {
@@ -12,7 +17,7 @@ import {
   saveStoredAuthState,
   saveStoredSession,
 } from "./storage";
-import { getActiveProvider, normalizeHostValue } from "./utils";
+import { formatError, getActiveProvider, normalizeHostValue } from "./utils";
 import type {
   Account,
   AuthState,
@@ -24,6 +29,8 @@ import type {
   RuntimeModule,
   SessionSnapshot,
 } from "./types";
+
+const browserToolExecutor = createBrowserAwareToolExecutor();
 
 type PendingTurn = {
   threadId: string;
@@ -119,6 +126,7 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
     metadata: JsonValue;
   }): Promise<RuntimeDispatch> {
     const config = await loadStoredCodexConfig();
+    const dynamicTools = await listBrowserDynamicTools();
     const response = await this.request("thread/start", {
       threadId: request.threadId,
       model: config.model.trim() || null,
@@ -126,6 +134,7 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
       cwd: "/workspace",
       approvalPolicy: "on-request",
       ephemeral: false,
+      dynamicTools,
     });
     const thread = normalizeHostValue((response as { thread?: unknown }).thread) as Record<string, unknown>;
     const actualThreadId =
@@ -387,11 +396,52 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
       case "item/permissions/requestApproval":
         return { permissions: {}, scope: "turn" };
       case "item/tool/call":
-        return { contentItems: [], success: false };
+        return this.handleDynamicToolCall(request);
       case "mcpServer/elicitation/request":
         return { action: "cancel", content: null, meta: null };
       default:
         return {};
+    }
+  }
+
+  private async handleDynamicToolCall(request: ServerRequest): Promise<DynamicToolCallResponse> {
+    const params = request.params as DynamicToolCallParams;
+    const tool = typeof params.tool === "string" ? params.tool : "";
+    const callId = typeof params.callId === "string" ? params.callId : request.id;
+
+    if (!tool.startsWith("browser__")) {
+      return {
+        contentItems: [
+          {
+            type: "inputText",
+            text: `Unsupported dynamic tool: ${tool}`,
+          },
+        ],
+        success: false,
+      };
+    }
+
+    try {
+      const result = await browserToolExecutor.invoke({
+        callId,
+        toolName: tool,
+        toolNamespace: "browser",
+        input: (params.arguments ?? null) as JsonValue,
+      });
+      return {
+        contentItems: asDynamicToolContentItems(result.output),
+        success: true,
+      };
+    } catch (error) {
+      return {
+        contentItems: [
+          {
+            type: "inputText",
+            text: `Browser tool ${tool} failed: ${formatError(error)}`,
+          },
+        ],
+        success: false,
+      };
     }
   }
 
@@ -473,8 +523,33 @@ export async function createAppServerBrowserRuntime(
   host: unknown,
 ): Promise<BrowserRuntime> {
   const runtime = new runtimeModule.WasmBrowserRuntime(host);
-  const client = await AppServerClient.start(runtime, {});
+  const client = await AppServerClient.start(runtime, { experimentalApi: true });
   return new AppServerBrowserRuntime(client);
+}
+
+async function listBrowserDynamicTools(): Promise<DynamicToolSpec[]> {
+  const listed = await browserToolExecutor.list();
+  return listed.tools.map((tool) => ({
+    name:
+      tool.toolNamespace === "browser" && !tool.toolName.startsWith("browser__")
+        ? `browser__${tool.toolName}`
+        : tool.toolName,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+  }));
+}
+
+function asDynamicToolContentItems(output: JsonValue): DynamicToolCallOutputContentItem[] {
+  if (typeof output === "string") {
+    return [{ type: "inputText", text: output }];
+  }
+
+  return [
+    {
+      type: "inputText",
+      text: JSON.stringify(output, null, 2),
+    },
+  ];
 }
 
 function threadToSessionSnapshot(thread: Record<string, unknown>): SessionSnapshot {

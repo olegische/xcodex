@@ -131,7 +131,17 @@ function createRuntimeUiStore() {
         ...state,
         running: false,
         activeRequestId: null,
-        transcriptEntries: [],
+        liveStreamText: "",
+        stopRequested: false,
+        turnCounter: nextTurnCounter,
+      }));
+    },
+    finalizeTranscript(finalTranscript: TranscriptEntry[], nextTurnCounter: number) {
+      update((state) => ({
+        ...state,
+        running: false,
+        activeRequestId: null,
+        transcriptEntries: mergeFinalTranscript(finalTranscript, state.transcriptEntries),
         liveStreamText: "",
         stopRequested: false,
         turnCounter: nextTurnCounter,
@@ -265,6 +275,46 @@ function appendToolResultDetails(details: string | null, resultText: string): st
     return details;
   }
   return `${details}\n\n${resultSection}`;
+}
+
+function mergeFinalTranscript(
+  finalTranscript: TranscriptEntry[],
+  liveTranscript: TranscriptEntry[],
+): TranscriptEntry[] {
+  const merged = finalTranscript.map((entry) => {
+    if (entry.role !== "tool") {
+      return entry;
+    }
+    const liveEntry = liveTranscript.find(
+      (candidate) =>
+        candidate.role === "tool" &&
+        ((entry.callId !== null && entry.callId !== undefined && candidate.callId === entry.callId) ||
+          (candidate.summary ?? candidate.text) === (entry.summary ?? entry.text)),
+    );
+    if (liveEntry === undefined) {
+      return entry;
+    }
+    const entryDetailsLength = entry.details?.trim().length ?? 0;
+    const liveDetailsLength = liveEntry.details?.trim().length ?? 0;
+    return liveDetailsLength > entryDetailsLength ? { ...entry, ...liveEntry } : entry;
+  });
+
+  for (const liveEntry of liveTranscript) {
+    if (liveEntry.role !== "tool") {
+      continue;
+    }
+    const exists = merged.some(
+      (entry) =>
+        entry.role === "tool" &&
+        ((liveEntry.callId !== null && liveEntry.callId !== undefined && entry.callId === liveEntry.callId) ||
+          (entry.summary ?? entry.text) === (liveEntry.summary ?? liveEntry.text)),
+    );
+    if (!exists) {
+      merged.push(liveEntry);
+    }
+  }
+
+  return merged;
 }
 
 export const runtimeUiStore = createRuntimeUiStore();

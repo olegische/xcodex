@@ -189,7 +189,10 @@
   );
   $: rightWidgets = runtimeWidgets.filter((widget) => inspectorWidgetVisible(inspectorState.activeTab, widget.id));
   $: missionMode = inspectorState.activeTab === "mission";
-  $: displayTranscript = [...state.transcript, ...runtimeUiState.transcriptEntries];
+  $: displayTranscript =
+    runtimeUiState.transcriptEntries.length > 0
+      ? runtimeUiState.transcriptEntries
+      : state.transcript;
 </script>
 
 <AppShell {drawerOpen} sidebarOpen={inspectorState.sidebarOpen} sidebarSide={renderPlan.sidebarSide}>

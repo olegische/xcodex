@@ -116,7 +116,10 @@ export async function sendTurn(): Promise<void> {
     runtimeSessionStore.setStatus("Sending turn...", false);
     const outcome = await runtimeSessionStore.runTurn(message, runtimeUiState.turnCounter);
     await apsixZoneStore.finalizeCompletedTurn(outcome.state.transcript);
-    runtimeUiStore.completeTurn(outcome.result.nextTurnCounter);
+    runtimeUiStore.finalizeTranscript(
+      outcome.state.transcript,
+      outcome.result.nextTurnCounter,
+    );
     console.info("[webui] ui:send:done", {
       nextTurnCounter: outcome.result.nextTurnCounter,
       transcriptEntries: outcome.state.transcript.length,

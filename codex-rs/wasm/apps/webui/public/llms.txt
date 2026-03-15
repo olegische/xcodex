@@ -1,10 +1,10 @@
-# AI-Aware Web
+# WASM Codex
 
 > Browser-native Codex runtime demo with chat-first control, remote MCP, browser tools, and persistent workspace memory.
 
 ## Product
 
-- Name: AI-Aware Web
+- Name: WASM Codex
 - Kind: browser agent runtime demo
 - Primary surface: chat-first mission control
 - Secondary surfaces: page inspection, signals, tools, artifacts, events
@@ -37,4 +37,3 @@
 - `/workspace/ai-aware/web-signals.json`
 - `/workspace/ai-aware/mission-state.json`
 - `/workspace/ai-aware/page-runtime.json`
-

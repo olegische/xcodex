@@ -977,12 +977,26 @@ button {
   background: transparent;
   cursor: pointer;
   color: var(--text-muted);
+  list-style: none;
+}
+
+.tool-details-toggle::-webkit-details-marker {
+  display: none;
 }
 
 .tool-details-marker {
   display: inline-block;
   width: 1rem;
   text-align: center;
+}
+
+.tool-details[open] .tool-details-toggle .tool-details-marker {
+  font-size: 0;
+}
+
+.tool-details[open] .tool-details-toggle .tool-details-marker::before {
+  content: "-";
+  font-size: 1rem;
 }
 
 .tool-details-body {

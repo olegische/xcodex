@@ -5,6 +5,7 @@ use pretty_assertions::assert_eq;
 use rmcp::model::JsonObject;
 use serde_json::json;
 use std::sync::Arc;
+use codex_protocol::dynamic_tools::DynamicToolSpec;
 
 fn app_tool(name: &str, namespace: &str, connector_name: &str) -> ToolInfo {
     ToolInfo {
@@ -130,4 +131,35 @@ fn router_publishes_tool_suggest_when_enabled_for_discoverable_tools() {
         1
     );
     assert!(router.tool_supports_parallel("tool_suggest"));
+}
+
+#[test]
+fn router_resolves_browser_namespace_dynamic_tools() {
+    let dynamic_tools = [DynamicToolSpec {
+        name: "browser__page_context".to_string(),
+        description: "Inspect page context".to_string(),
+        input_schema: json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+        }),
+    }];
+    let router = ToolRouter::from_config(
+        &crate::tools::spec::ToolsConfig::default(),
+        ToolRouterParams {
+            mcp_tools: None,
+            app_tools: None,
+            discoverable_tools: None,
+            dynamic_tools: &dynamic_tools,
+        },
+    );
+
+    assert_eq!(
+        router.resolve_dynamic_tool_name("page_context", Some("browser")),
+        Some("browser__page_context".to_string())
+    );
+    assert_eq!(
+        router.resolve_dynamic_tool_name("page_context", None),
+        Some("browser__page_context".to_string())
+    );
 }

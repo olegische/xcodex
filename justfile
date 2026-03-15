@@ -94,8 +94,8 @@ wasm-build-runtime app="examples/browser-codex-demo" runtime="wasm":
     ./wasm-arch/tools/build-web-runtime.sh --app {{app}} --runtime {{runtime}}
 
 wasm-webui-build-runtime:
-    ./wasm-arch/tools/build-web-runtime.sh --app apps/webui --runtime wasm-arch
+    ./wasm-arch/tools/build-web-runtime.sh --app apps/webui --runtime wasm
 
 wasm-webui-dev:
-    ./wasm-arch/tools/build-web-runtime.sh --app apps/webui --runtime wasm-arch
-    cd wasm-arch/apps/webui && npm run dev
+    ./wasm-arch/tools/build-web-runtime.sh --app apps/webui --runtime wasm
+    cd wasm/apps/webui && npm run dev
