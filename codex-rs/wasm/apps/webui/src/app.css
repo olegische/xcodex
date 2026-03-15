@@ -554,7 +554,7 @@ button {
 
 .runtime-group {
   margin-top: auto;
-  padding: 12px;
+  padding: 12px 12px;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: rgba(49, 49, 49, 0.96);
@@ -578,13 +578,13 @@ button {
 }
 
 .runtime-settings-button {
-  min-height: 28px;
+  min-height: 27px;
   padding: 0 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 
 .runtime-settings-button:hover {
@@ -596,13 +596,13 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 24px;
+  min-height: 23px;
   padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--badge-bg);
   color: var(--text-muted);
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   font-weight: 600;
 }
 
@@ -652,7 +652,7 @@ button {
 
 .runtime-status-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   margin-top: 12px;
 }
 
@@ -660,12 +660,12 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 11px;
 }
 
 .runtime-status-label {
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
 }
 
 .runtime-status-server {

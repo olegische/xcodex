@@ -1,4 +1,4 @@
-import { ensureWorkspaceDocument, subscribeWorkspaceDocument } from "./workspace";
+import { ensureWorkspaceDocument, subscribeWorkspaceDocument, upsertWorkspaceDocument } from "./workspace";
 import { loadStoredWorkspaceSnapshot, saveStoredWorkspaceSnapshot, upsertWorkspaceFile } from "../runtime/storage";
 import { normalizeProfilesDocument } from "./validators";
 import type { UiProfile, UiProfilesDocument } from "./types";
@@ -20,7 +20,7 @@ export const DEFAULT_UI_PROFILES: UiProfilesDocument = {
 
 export async function ensureUiProfilesDocument(): Promise<UiProfilesDocument> {
   const content = await ensureWorkspaceDocument(UI_PROFILES_PATH, serializeProfilesDocument(DEFAULT_UI_PROFILES));
-  await ensureWorkspaceDocument(UI_PROFILES_GUIDE_PATH, buildProfilesGuide());
+  await upsertWorkspaceDocument(UI_PROFILES_GUIDE_PATH, buildProfilesGuide());
   const parsed = parseProfilesDocument(content);
   if (!parsed.ok) {
     await repairInvalidUiJsonDocument(
@@ -112,7 +112,7 @@ function serializeProfilesDocument(document: UiProfilesDocument): string {
 
 function buildProfilesGuide(): string {
   return [
-    "# APSIX Web Profiles",
+    "# WASM Codex Profiles",
     "",
     `Edit \`${UI_PROFILES_PATH}\` to switch themes, sidebar side, and token overrides.`,
     "",

@@ -516,17 +516,7 @@ function createApsixZoneStore() {
         const turnRequestId = normalizedRequestId(activity.requestId) ?? activity.requestId;
         const timestamp = Date.now();
         const targetAssessment = await assessTargetAdmission(state.zone.target, turnRequestId, activity.toolName);
-        let candidateState = withSource(
-          state,
-          buildCitationSource(null, "user_input", turnRequestId, {
-            requestId: turnRequestId,
-            runId: null,
-            sourceRef: "user target",
-            locator: `request:${turnRequestId}`,
-            excerpt: state.zone.target.value,
-            createdAt: timestamp,
-          }),
-        );
+        let candidateState = state;
         if (
           !hasEvent(candidateState, {
             type: "admit_started",
@@ -586,7 +576,7 @@ function createApsixZoneStore() {
           return;
         }
         const normalizedTarget = state.zone.target.normalizedValue.trim();
-        const zoneId = `apsix-${slugify(normalizedTarget).slice(0, 24) || "zone"}-${timestamp.toString(36)}`;
+        const zoneId = `codex-${slugify(normalizedTarget).slice(0, 24) || "zone"}-${timestamp.toString(36)}`;
         const spawnRequestId = `${zoneId}-spawn-1`;
         const nextActorId = `${zoneId}-actor-1`;
         const runId = runIdFor(zoneId, turnRequestId);
@@ -611,7 +601,7 @@ function createApsixZoneStore() {
             lifecycleState: "admitted",
             phase: "spawn_admitted",
             summary: "Spawn policy admitted one actor and prepared the execution environment.",
-            spawnPolicyVersion: "apsix-spawn-policy-v1",
+            spawnPolicyVersion: "codex-spawn-policy-v1",
             spawnBudgetTotal: 1,
             spawnBudgetUsed: 1,
             environmentStatus: "prepared",
@@ -914,7 +904,7 @@ function createApsixZoneStore() {
             requestId: turnRequestId,
             runId,
             artifactType: "final_output",
-            summary: "Final assistant output captured as an APSIX artifact.",
+            summary: "Final assistant output captured as a Codex artifact.",
             body: buildFinalOutputArtifactBody(assistantOutput),
             citations,
             provenanceSource: "assistant_final",
@@ -949,7 +939,7 @@ function createApsixZoneStore() {
           runId,
           decision: null,
           reasonCode: null,
-          summary: "Execution completed and returned control to the APSIX runtime.",
+          summary: "Execution completed and returned control to the Codex runtime.",
         });
         await commit(nextState);
         return;
@@ -1073,7 +1063,7 @@ function createApsixZoneStore() {
       let nextState = await upsertFinalArtifactForRequest(state, {
         requestId: activeActor.requestId,
         runId: activeActor.runId,
-        summary: "Final assistant output captured as an APSIX artifact.",
+        summary: "Final assistant output captured as a Codex artifact.",
         assistantOutput,
       });
       const verification = await verifyExecutionEnvironment(nextState);
@@ -1227,7 +1217,7 @@ async function assessTargetAdmission(
 
   const workspace = await loadStoredWorkspaceSnapshot();
   const timestamp = Date.now();
-  const citations = [`input:${requestId}`];
+  const citations: string[] = [];
   const sources: ApsixCitationSourceSummary[] = [];
   const referencedPaths = extractWorkspacePathReferences(target.value);
   const missingPaths = referencedPaths.filter(
@@ -1451,7 +1441,7 @@ function createCitationKey(
   kind: ApsixCitationSourceSummary["kind"],
   sourceId: string,
 ): string {
-  return `apsix:${zoneId ?? "pending"}:${kind}:${encodeURIComponent(sourceId)}`;
+  return `codex:${zoneId ?? "pending"}:${kind}:${encodeURIComponent(sourceId)}`;
 }
 
 function citationSourceKindForTool(toolName: string | null): ApsixCitationSourceSummary["kind"] {
@@ -1675,6 +1665,7 @@ function sourceMatchesCitationReference(
   reference: string,
 ): boolean {
   const normalizedReference = reference.trim();
+  const workspaceReference = normalizeWorkspaceCitationReference(normalizedReference);
   if (normalizedReference.length === 0) {
     return false;
   }
@@ -1684,7 +1675,7 @@ function sourceMatchesCitationReference(
   if (source.locator === normalizedReference) {
     return true;
   }
-  if (source.kind === "workspace_doc" && source.locator === normalizedReference) {
+  if (source.kind === "workspace_doc" && (source.locator === normalizedReference || source.locator === workspaceReference)) {
     return true;
   }
   if (normalizedReference.startsWith("tool:")) {
@@ -1694,13 +1685,21 @@ function sourceMatchesCitationReference(
   if (source.kind === "page_observation" && `tool:${source.sourceRef}` === normalizedReference) {
     return true;
   }
-  if (source.kind === "user_input" && source.requestId !== null && `input:${source.requestId}` === normalizedReference) {
-    return true;
-  }
   if (source.kind === "runtime_event" && `event:${source.sourceRef}` === normalizedReference) {
     return true;
   }
   return false;
+}
+
+function normalizeWorkspaceCitationReference(reference: string): string {
+  if (!reference.startsWith("/workspace/")) {
+    return reference;
+  }
+  const lineSuffixIndex = reference.indexOf(":L");
+  if (lineSuffixIndex === -1) {
+    return reference;
+  }
+  return reference.slice(0, lineSuffixIndex);
 }
 
 export const apsixZoneStore = createApsixZoneStore();

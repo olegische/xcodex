@@ -1,4 +1,4 @@
-import { ensureWorkspaceDocument, subscribeWorkspaceDocument } from "./workspace";
+import { ensureWorkspaceDocument, subscribeWorkspaceDocument, upsertWorkspaceDocument } from "./workspace";
 import { loadStoredWorkspaceSnapshot, saveStoredWorkspaceSnapshot, upsertWorkspaceFile } from "../runtime/storage";
 import { normalizeTokensDocument } from "./validators";
 import type { UiTheme, UiTokenMap, UiTokensDocument } from "./types";
@@ -75,7 +75,7 @@ export const DEFAULT_UI_TOKENS: UiTokensDocument = {
 
 export async function ensureUiTokensDocument(): Promise<UiTokensDocument> {
   const content = await ensureWorkspaceDocument(UI_TOKENS_PATH, serializeTokensDocument(DEFAULT_UI_TOKENS));
-  await ensureWorkspaceDocument(UI_TOKENS_GUIDE_PATH, buildTokensGuide());
+  await upsertWorkspaceDocument(UI_TOKENS_GUIDE_PATH, buildTokensGuide());
   const parsed = parseTokensDocument(content);
   if (!parsed.ok) {
     await repairInvalidUiJsonDocument(UI_TOKENS_PATH, `${UI_TOKENS_PATH}.invalid.bak`, content, serializeTokensDocument(DEFAULT_UI_TOKENS));
@@ -136,7 +136,7 @@ function serializeTokensDocument(document: UiTokensDocument): string {
 
 function buildTokensGuide(): string {
   return [
-    "# APSIX Web Tokens",
+    "# WASM Codex Tokens",
     "",
     `Edit \`${UI_TOKENS_PATH}\` to control the base theme palettes.`,
     "",

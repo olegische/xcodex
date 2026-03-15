@@ -1,4 +1,4 @@
-import { ensureWorkspaceDocument, subscribeWorkspaceDocument } from "./workspace";
+import { ensureWorkspaceDocument, subscribeWorkspaceDocument, upsertWorkspaceDocument } from "./workspace";
 import { loadStoredWorkspaceSnapshot, saveStoredWorkspaceSnapshot, upsertWorkspaceFile } from "../runtime/storage";
 import { normalizeViewsDocument } from "./validators";
 import type { UiViewsDocument } from "./types";
@@ -19,7 +19,7 @@ export const DEFAULT_UI_VIEWS: UiViewsDocument = {
 
 export async function ensureUiViewsDocument(): Promise<UiViewsDocument> {
   const content = await ensureWorkspaceDocument(UI_VIEWS_PATH, serializeViewsDocument(DEFAULT_UI_VIEWS));
-  await ensureWorkspaceDocument(UI_VIEWS_GUIDE_PATH, buildViewsGuide());
+  await upsertWorkspaceDocument(UI_VIEWS_GUIDE_PATH, buildViewsGuide());
   return parseViewsDocument(content);
 }
 

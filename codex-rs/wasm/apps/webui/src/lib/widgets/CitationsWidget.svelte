@@ -77,9 +77,6 @@
       const locator = reference.slice(5);
       return source.locator === locator || source.sourceRef === locator;
     }
-    if (reference.startsWith("input:")) {
-      return source.kind === "user_input" && source.requestId === reference.slice(6);
-    }
     if (reference.startsWith("event:")) {
       return source.kind === "runtime_event" && source.sourceRef === reference.slice(6);
     }
@@ -147,7 +144,7 @@
           </div>
         </div>
       {:else}
-        <p class="drawer-empty">No APSIX artifacts have been captured yet.</p>
+        <p class="drawer-empty">No Codex artifacts have been captured yet.</p>
       {/if}
     {:else}
       <div class="citation-browser">

@@ -64,7 +64,7 @@ export function setupAppLifecycle(options?: {
         },
       );
 
-      await runBootStep("zone_control", "Loading APSIX zone control", async () => {
+      await runBootStep("zone_control", "Loading runtime state control", async () => {
         disconnectZoneControl = await apsixZoneStore.initialize();
       });
 
@@ -174,7 +174,7 @@ function logRuntimeActivity(
   }
 
   if (activity.type === "apsixZone") {
-    console.info("[webui] apsix-zone", activity);
+    console.info("[webui] runtime-zone", activity);
     return;
   }
 
@@ -184,7 +184,7 @@ function logRuntimeActivity(
     activity.type === "apsixAnchor" ||
     activity.type === "apsixFreeze"
   ) {
-    console.info("[webui] apsix-runtime", activity);
+    console.info("[webui] runtime-artifact", activity);
     return;
   }
 

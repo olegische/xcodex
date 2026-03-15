@@ -1,4 +1,4 @@
-import { ensureWorkspaceDocument, subscribeWorkspaceDocument } from "./workspace";
+import { ensureWorkspaceDocument, subscribeWorkspaceDocument, upsertWorkspaceDocument } from "./workspace";
 import { normalizeWidgetsDocument } from "./validators";
 import type { UiWidgetsDocument } from "./types";
 
@@ -45,7 +45,7 @@ export const DEFAULT_UI_WIDGETS: UiWidgetsDocument = {
 
 export async function ensureUiWidgetsDocument(): Promise<UiWidgetsDocument> {
   const content = await ensureWorkspaceDocument(UI_WIDGETS_PATH, serializeWidgetsDocument(DEFAULT_UI_WIDGETS));
-  await ensureWorkspaceDocument(UI_WIDGETS_GUIDE_PATH, buildWidgetsGuide());
+  await upsertWorkspaceDocument(UI_WIDGETS_GUIDE_PATH, buildWidgetsGuide());
   return parseWidgetsDocument(content);
 }
 
@@ -69,7 +69,7 @@ function serializeWidgetsDocument(document: UiWidgetsDocument): string {
 
 function buildWidgetsGuide(): string {
   return [
-    "# APSIX Web Widgets",
+    "# WASM Codex Widgets",
     "",
     `Edit \`${UI_WIDGETS_PATH}\` to configure widget variants and defaults.`,
     "",
@@ -91,10 +91,10 @@ function buildWidgetsGuide(): string {
     "- `approvals.compact`",
     "",
     "Additional runtime widgets consume workspace documents directly:",
-    "- `ledger` reads `/workspace/apsix/event-log.json`",
-    "- `remote_mcp` reads `/workspace/apsix/mcp-servers.json`",
-    "- `web_signals` reads `/workspace/apsix/web-signals.json`",
-    "- `agent_swarm` reads `/workspace/apsix/{zone-state,actors,artifacts,anchors}.json`",
+    "- `remote_mcp` reads `/workspace/codex/mcp-servers.json`",
+    "- `web_signals` reads `/workspace/codex/web-signals.json`",
+    "- `workspace_files` reads the current browser workspace snapshot",
+    "- `citations` reads `/workspace/codex/{artifacts,anchors,sources}.json`",
     "",
   ].join("\n");
 }

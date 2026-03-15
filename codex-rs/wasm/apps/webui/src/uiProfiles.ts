@@ -247,7 +247,7 @@ function normalizeUiColorOverrides(value: unknown): UiColorOverrides | undefined
 
 function buildUiProfilesGuide(): string {
   return [
-    "# APSIX Web Profiles",
+    "# WASM Codex Profiles",
     "",
     `Edit \`${UI_PROFILES_PATH}\` to change the app shell live in the browser.`,
     "",

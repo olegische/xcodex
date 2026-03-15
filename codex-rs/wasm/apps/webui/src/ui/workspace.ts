@@ -21,6 +21,20 @@ export async function ensureWorkspaceDocument(path: string, defaultContent: stri
   return defaultContent;
 }
 
+export async function upsertWorkspaceDocument(path: string, content: string): Promise<void> {
+  const workspace = await loadStoredWorkspaceSnapshot();
+  const normalizedPath = normalizeWorkspaceFilePath(path);
+  const existing = workspace.files.find((entry) => entry.path === normalizedPath);
+  if (existing?.content === content) {
+    return;
+  }
+  workspace.files = upsertWorkspaceFile(workspace.files, {
+    path: normalizedPath,
+    content,
+  });
+  await saveStoredWorkspaceSnapshot(workspace);
+}
+
 export function subscribeWorkspaceDocument(listener: () => void): () => void {
   window.addEventListener("codex:workspace-changed", listener);
   return () => {

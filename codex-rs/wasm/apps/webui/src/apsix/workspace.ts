@@ -15,9 +15,10 @@ import type {
   PageRuntimeSummary,
   WorkspaceFileSummary,
 } from "../types";
-import { ensureWorkspaceDocument } from "../ui/workspace";
+import { ensureWorkspaceDocument, upsertWorkspaceDocument } from "../ui/workspace";
 
-export const APSIX_ROOT = "/workspace/apsix";
+const LEGACY_APSIX_ROOT = "/workspace/apsix";
+export const APSIX_ROOT = "/workspace/codex";
 export const APSIX_MANIFEST_PATH = `${APSIX_ROOT}/README.md`;
 export const APSIX_MCP_PATH = `${APSIX_ROOT}/mcp-servers.json`;
 export const APSIX_SIGNALS_PATH = `${APSIX_ROOT}/web-signals.json`;
@@ -153,16 +154,15 @@ const DEFAULT_PAGE_RUNTIME_DOC: {
 };
 
 export async function ensureApsixWorkspaceSeed(): Promise<void> {
+  await removeLegacyApsixWorkspaceDocuments();
+  await removeDeprecatedCodexWorkspaceDocuments();
+  await upsertWorkspaceDocument(APSIX_MANIFEST_PATH, buildManifestDocument());
   await Promise.all([
-    ensureWorkspaceDocument(APSIX_MANIFEST_PATH, buildManifestDocument()),
     ensureWorkspaceDocument(APSIX_MCP_PATH, serializeJson(DEFAULT_REMOTE_MCP_DOC)),
     ensureWorkspaceDocument(APSIX_SIGNALS_PATH, serializeJson(DEFAULT_WEB_SIGNALS_DOC)),
     ensureWorkspaceDocument(APSIX_PAGE_RUNTIME_PATH, serializeJson(DEFAULT_PAGE_RUNTIME_DOC)),
-    ensureWorkspaceDocument(APSIX_ZONE_STATE_PATH, serializeJson(DEFAULT_ZONE_STATE_DOC)),
-    ensureWorkspaceDocument(APSIX_ACTORS_PATH, serializeJson({ actors: [] })),
     ensureWorkspaceDocument(APSIX_ARTIFACTS_PATH, serializeJson({ artifacts: [] })),
     ensureWorkspaceDocument(APSIX_ANCHORS_PATH, serializeJson({ anchors: [] })),
-    ensureWorkspaceDocument(APSIX_EVENT_LOG_PATH, serializeJson({ events: [] })),
     ensureWorkspaceDocument(APSIX_SOURCES_PATH, serializeJson({ sources: [] })),
   ]);
 }
@@ -250,14 +250,14 @@ export async function saveWebSignalSitesSnapshot(snapshot: LiveWebSignalSnapshot
 export function readManifestExcerpt(workspaceFiles: WorkspaceFileSummary[]): string {
   const file = workspaceFiles.find((entry) => entry.path === APSIX_MANIFEST_PATH);
   if (file === undefined) {
-    return "APSIX browser runtime with target-defined zones, anchored artifacts, and replayable state.";
+    return "WASM Codex browser runtime with anchored artifacts, citations, and replayable state.";
   }
   const excerpt = file.content
     .split("\n")
     .filter((line) => line.trim().length > 0 && !line.startsWith("#"))
     .slice(0, 2)
     .join(" ");
-  return excerpt || "APSIX browser runtime with target-defined zones, anchored artifacts, and replayable state.";
+  return excerpt || "WASM Codex browser runtime with anchored artifacts, citations, and replayable state.";
 }
 
 export function readPageRuntime(
@@ -320,24 +320,12 @@ export function readApsixSources(workspaceFiles: WorkspaceFileSummary[]): ApsixC
 export async function saveApsixWorkspaceSnapshot(snapshot: ApsixWorkspaceSnapshot): Promise<void> {
   const workspace = await loadStoredWorkspaceSnapshot();
   workspace.files = upsertWorkspaceFile(workspace.files, {
-    path: APSIX_ZONE_STATE_PATH,
-    content: serializeJson(snapshot.zone),
-  });
-  workspace.files = upsertWorkspaceFile(workspace.files, {
-    path: APSIX_ACTORS_PATH,
-    content: serializeJson({ actors: snapshot.actors }),
-  });
-  workspace.files = upsertWorkspaceFile(workspace.files, {
     path: APSIX_ARTIFACTS_PATH,
     content: serializeJson({ artifacts: snapshot.artifacts }),
   });
   workspace.files = upsertWorkspaceFile(workspace.files, {
     path: APSIX_ANCHORS_PATH,
     content: serializeJson({ anchors: snapshot.anchors }),
-  });
-  workspace.files = upsertWorkspaceFile(workspace.files, {
-    path: APSIX_EVENT_LOG_PATH,
-    content: serializeJson({ events: snapshot.events }),
   });
   workspace.files = upsertWorkspaceFile(workspace.files, {
     path: APSIX_SOURCES_PATH,
@@ -410,30 +398,55 @@ function prettifyServerName(serverName: string): string {
 
 function buildManifestDocument(): string {
   return [
-    "# APSIX Web",
+    "# WASM Codex",
     "",
-    "This workspace is the source of truth for an APSIX browser runtime.",
+    "This workspace is the source of truth for the WASM Codex browser runtime.",
     "",
     "Design constraints:",
-    "- the target defines the zone",
-    "- user-supplied targets remain unvalidated external input",
-    "- spawn may admit a single actor or a larger population",
+    "- user requests drive the runtime state",
+    "- browser and workspace evidence feed citations",
     "- generated artifacts are not authoritative until anchored",
-    "- freeze closes the zone after authoritative outputs exist",
+    "- final assistant output must stay grounded in available evidence",
     "",
     "Primary runtime docs:",
-    `- \`${APSIX_ZONE_STATE_PATH}\` for current zone lifecycle`,
-    `- \`${APSIX_ACTORS_PATH}\` for admitted actors and run posture`,
     `- \`${APSIX_ARTIFACTS_PATH}\` for generated and anchored artifacts`,
     `- \`${APSIX_ANCHORS_PATH}\` for anchor decisions`,
-    `- \`${APSIX_EVENT_LOG_PATH}\` for ordered lifecycle events`,
     `- \`${APSIX_SOURCES_PATH}\` for citation sources and evidence keys`,
     `- \`${APSIX_MCP_PATH}\` for remote MCP capability lanes`,
     `- \`${APSIX_SIGNALS_PATH}\` for AI-readable web signals`,
     `- \`${APSIX_PAGE_RUNTIME_PATH}\` for page state and browser events`,
     "- `/workspace/ui/*.json` for the live shell itself",
     "",
-    "The browser is not a fake desktop. It is one APSIX runtime substrate.",
+    "The browser is not a fake desktop. It is the execution substrate for this Codex runtime.",
     "",
   ].join("\n");
+}
+
+async function removeLegacyApsixWorkspaceDocuments(): Promise<void> {
+  const workspace = await loadStoredWorkspaceSnapshot();
+  const nextFiles = workspace.files.filter((entry) => !entry.path.startsWith(`${LEGACY_APSIX_ROOT}/`));
+  if (nextFiles.length === workspace.files.length) {
+    return;
+  }
+  await saveStoredWorkspaceSnapshot({
+    ...workspace,
+    files: nextFiles,
+  });
+}
+
+async function removeDeprecatedCodexWorkspaceDocuments(): Promise<void> {
+  const deprecatedPaths = new Set([
+    APSIX_ZONE_STATE_PATH,
+    APSIX_ACTORS_PATH,
+    APSIX_EVENT_LOG_PATH,
+  ]);
+  const workspace = await loadStoredWorkspaceSnapshot();
+  const nextFiles = workspace.files.filter((entry) => !deprecatedPaths.has(entry.path));
+  if (nextFiles.length === workspace.files.length) {
+    return;
+  }
+  await saveStoredWorkspaceSnapshot({
+    ...workspace,
+    files: nextFiles,
+  });
 }

@@ -1,4 +1,4 @@
-import { ensureWorkspaceDocument, subscribeWorkspaceDocument } from "./workspace";
+import { ensureWorkspaceDocument, subscribeWorkspaceDocument, upsertWorkspaceDocument } from "./workspace";
 import { normalizeLayoutDocument } from "./validators";
 import type { UiLayoutDocument } from "./types";
 
@@ -28,7 +28,7 @@ export const DEFAULT_UI_LAYOUT: UiLayoutDocument = {
 
 export async function ensureUiLayoutDocument(): Promise<UiLayoutDocument> {
   const content = await ensureWorkspaceDocument(UI_LAYOUT_PATH, serializeLayoutDocument(DEFAULT_UI_LAYOUT));
-  await ensureWorkspaceDocument(UI_LAYOUT_GUIDE_PATH, buildLayoutGuide());
+  await upsertWorkspaceDocument(UI_LAYOUT_GUIDE_PATH, buildLayoutGuide());
   return parseLayoutDocument(content);
 }
 
