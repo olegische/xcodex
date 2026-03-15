@@ -1,7 +1,0 @@
-node_modules/
-dist/
-pkg/
-public/pkg/
-.cargo-target/
-public/xrouter-browser/
-xrouter-browser-pkg/

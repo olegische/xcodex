@@ -91,11 +91,11 @@ log *args:
     if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p codex-state --bin logs_client -- "$@"
 
 wasm-build-runtime app="examples/browser-codex-demo" runtime="wasm":
-    ./wasm-arch/tools/build-web-runtime.sh --app {{app}} --runtime {{runtime}}
+    ./wasm/scripts/build-web-runtime.sh --app {{app}} --runtime {{runtime}}
 
 wasm-webui-build-runtime:
-    ./wasm-arch/tools/build-web-runtime.sh --app apps/webui --runtime wasm
+    ./wasm/scripts/build-web-runtime.sh --app apps/webui --runtime wasm
 
 wasm-webui-dev:
-    ./wasm-arch/tools/build-web-runtime.sh --app apps/webui --runtime wasm
+    ./wasm/scripts/build-web-runtime.sh --app apps/webui --runtime wasm
     cd wasm/apps/webui && npm run dev

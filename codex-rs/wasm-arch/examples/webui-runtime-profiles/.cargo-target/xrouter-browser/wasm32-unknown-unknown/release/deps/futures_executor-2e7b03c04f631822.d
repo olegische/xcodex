@@ -1,9 +1,0 @@
-/Users/olegromanchuk/Projects/browser-codex/codex-rs/wasm/examples/webui-runtime-profiles/.cargo-target/xrouter-browser/wasm32-unknown-unknown/release/deps/futures_executor-2e7b03c04f631822.d: /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/lib.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/enter.rs
-
-/Users/olegromanchuk/Projects/browser-codex/codex-rs/wasm/examples/webui-runtime-profiles/.cargo-target/xrouter-browser/wasm32-unknown-unknown/release/deps/libfutures_executor-2e7b03c04f631822.rlib: /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/lib.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/enter.rs
-
-/Users/olegromanchuk/Projects/browser-codex/codex-rs/wasm/examples/webui-runtime-profiles/.cargo-target/xrouter-browser/wasm32-unknown-unknown/release/deps/libfutures_executor-2e7b03c04f631822.rmeta: /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/lib.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs /Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/enter.rs
-
-/Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/lib.rs:
-/Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/local_pool.rs:
-/Users/olegromanchuk/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/futures-executor-0.3.32/src/enter.rs:

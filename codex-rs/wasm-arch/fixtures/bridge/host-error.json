@@ -1,8 +1,0 @@
-{
-  "code": "unavailable",
-  "message": "host adapter missing",
-  "retryable": false,
-  "data": {
-    "adapter": "git"
-  }
-}
