@@ -2,6 +2,7 @@ use crate::client_common::tools::ResponsesApiTool;
 use crate::client_common::tools::ToolSpec as ClientToolSpec;
 use crate::codex::Session;
 use crate::codex::TurnContext;
+use crate::compat::rmcp::RequestId;
 use crate::connectors;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::FunctionToolOutput;
@@ -15,7 +16,6 @@ use codex_app_server_protocol::McpElicitationSchema;
 use codex_app_server_protocol::McpServerElicitationRequest;
 use codex_app_server_protocol::McpServerElicitationRequestParams;
 use codex_protocol::models::FunctionCallOutputContentItem;
-use rmcp::model::RequestId;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
@@ -163,7 +163,7 @@ pub(crate) async fn handle_tool_suggest(
         .await;
     let user_confirmed = response
         .as_ref()
-        .is_some_and(|response| response.action == codex_rmcp_client::ElicitationAction::Accept);
+        .is_some_and(|response| response.action == crate::compat::rmcp::ElicitationAction::Accept);
 
     // Browser runtime currently lacks a post-install refresh source equivalent
     // to core's native refresh path, so completion is keyed to explicit user

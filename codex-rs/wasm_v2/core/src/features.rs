@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
 
-use codex_otel::SessionTelemetry;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::Event;
 
 use crate::auth::AuthManager;
 use crate::auth::CodexAuth;
+use crate::compat::otel::SessionTelemetry;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Stage {

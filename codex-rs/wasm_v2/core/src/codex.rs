@@ -63,12 +63,6 @@ use codex_hooks::HookPayload;
 use codex_hooks::HookResult;
 use codex_hooks::Hooks;
 use codex_hooks::HooksConfig;
-use codex_network_proxy::NetworkProxy;
-use codex_network_proxy::NetworkProxyAuditMetadata;
-use codex_network_proxy::normalize_host;
-use codex_otel::current_span_trace_id;
-use codex_otel::current_span_w3c_trace_context;
-use codex_otel::set_parent_from_w3c_trace_context;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::ElicitationRequestEvent;
 use codex_protocol::approvals::ExecApprovalRequestSkillMetadata;
@@ -110,8 +104,6 @@ use codex_protocol::request_permissions::RequestPermissionsEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputArgs;
 use codex_protocol::request_user_input::RequestUserInputResponse;
-use codex_rmcp_client::ElicitationResponse;
-use codex_rmcp_client::OAuthCredentialsStoreMode;
 use codex_utils_stream_parser::AssistantTextChunk;
 use codex_utils_stream_parser::AssistantTextStreamParser;
 use codex_utils_stream_parser::ProposedPlanSegment;
@@ -121,12 +113,6 @@ use futures::future::BoxFuture;
 use futures::future::Shared;
 use futures::prelude::*;
 use futures::stream::FuturesOrdered;
-use rmcp::model::ListResourceTemplatesResult;
-use rmcp::model::ListResourcesResult;
-use rmcp::model::PaginatedRequestParams;
-use rmcp::model::ReadResourceRequestParams;
-use rmcp::model::ReadResourceResult;
-use rmcp::model::RequestId;
 use serde_json;
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -155,6 +141,25 @@ use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::codex_thread::ThreadConfigSnapshot;
 use crate::compact::collect_user_messages;
+use crate::compat::network::BlockedRequestObserver;
+use crate::compat::network::NetworkPolicyDecider;
+use crate::compat::network::NetworkProxy;
+use crate::compat::network::NetworkProxyAuditMetadata;
+use crate::compat::network::normalize_host;
+use crate::compat::otel::SessionTelemetry;
+use crate::compat::otel::TelemetryAuthMode;
+use crate::compat::otel::current_span_trace_id;
+use crate::compat::otel::current_span_w3c_trace_context;
+use crate::compat::otel::metrics::names::THREAD_STARTED_METRIC;
+use crate::compat::otel::set_parent_from_w3c_trace_context;
+use crate::compat::rmcp::ElicitationResponse;
+use crate::compat::rmcp::ListResourceTemplatesResult;
+use crate::compat::rmcp::ListResourcesResult;
+use crate::compat::rmcp::OAuthCredentialsStoreMode;
+use crate::compat::rmcp::PaginatedRequestParams;
+use crate::compat::rmcp::ReadResourceRequestParams;
+use crate::compat::rmcp::ReadResourceResult;
+use crate::compat::rmcp::RequestId;
 use crate::config::Config;
 use crate::config::Constrained;
 use crate::config::ConstraintResult;
@@ -343,9 +348,6 @@ use crate::unified_exec::UnifiedExecProcessManager;
 use crate::util::backoff;
 use crate::windows_sandbox::WindowsSandboxLevelExt;
 use codex_async_utils::OrCancelExt;
-use codex_otel::SessionTelemetry;
-use codex_otel::TelemetryAuthMode;
-use codex_otel::metrics::names::THREAD_STARTED_METRIC;
 use codex_protocol::config_types::CollaborationMode;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
@@ -409,8 +411,8 @@ impl Session {
     async fn start_managed_network_proxy(
         spec: &crate::config::NetworkProxySpec,
         sandbox_policy: &SandboxPolicy,
-        network_policy_decider: Option<Arc<dyn codex_network_proxy::NetworkPolicyDecider>>,
-        blocked_request_observer: Option<Arc<dyn codex_network_proxy::BlockedRequestObserver>>,
+        network_policy_decider: Option<Arc<dyn NetworkPolicyDecider>>,
+        blocked_request_observer: Option<Arc<dyn BlockedRequestObserver>>,
         managed_network_requirements_enabled: bool,
         audit_metadata: NetworkProxyAuditMetadata,
     ) -> anyhow::Result<(StartedNetworkProxy, SessionNetworkProxyRuntime)> {

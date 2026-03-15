@@ -5,10 +5,15 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::compat::network::BlockedRequestObserver;
+use crate::compat::network::NetworkPolicyDecider;
+use crate::compat::network::NetworkProxy;
+use crate::compat::network::NetworkProxyAuditMetadata;
+use crate::compat::rmcp::OAuthCredentialsStoreMode;
+
 pub use crate::features::ManagedFeatures;
 pub use codex_config::Constrained;
 pub use codex_config::ConstraintResult;
-use codex_network_proxy::NetworkProxy;
 use codex_protocol::config_types::Personality;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::ServiceTier;
@@ -18,7 +23,6 @@ use codex_protocol::permissions::FileSystemSandboxPolicy;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::SandboxPolicy;
-use codex_rmcp_client::OAuthCredentialsStoreMode;
 use serde_json::Value;
 
 use crate::config::types::McpServerConfig;
@@ -57,10 +61,10 @@ impl NetworkProxySpec {
     pub async fn start_proxy(
         &self,
         _sandbox_policy: &SandboxPolicy,
-        _network_policy_decider: Option<Arc<dyn codex_network_proxy::NetworkPolicyDecider>>,
-        _blocked_request_observer: Option<Arc<dyn codex_network_proxy::BlockedRequestObserver>>,
+        _network_policy_decider: Option<Arc<dyn NetworkPolicyDecider>>,
+        _blocked_request_observer: Option<Arc<dyn BlockedRequestObserver>>,
         _managed_network_requirements_enabled: bool,
-        _audit_metadata: codex_network_proxy::NetworkProxyAuditMetadata,
+        _audit_metadata: NetworkProxyAuditMetadata,
     ) -> anyhow::Result<StartedNetworkProxy> {
         let _ = self;
         Err(anyhow::anyhow!(

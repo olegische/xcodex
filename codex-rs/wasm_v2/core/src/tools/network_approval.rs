@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use crate::compat::network::BlockedRequest;
+use crate::compat::network::BlockedRequestObserver;
+use crate::compat::network::NetworkDecision;
+use crate::compat::network::NetworkPolicyDecider;
+use crate::compat::network::NetworkPolicyRequest;
 use async_trait::async_trait;
-use codex_network_proxy::BlockedRequest;
-use codex_network_proxy::BlockedRequestObserver;
-use codex_network_proxy::NetworkDecision;
-use codex_network_proxy::NetworkPolicyDecider;
-use codex_network_proxy::NetworkPolicyRequest;
 
 #[derive(Clone, Debug, Default)]
 pub struct NetworkApprovalService;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::compat::rmcp::OAuthCredentialsStoreMode;
 
 impl Session {
     pub async fn list_resources(

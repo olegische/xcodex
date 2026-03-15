@@ -1,7 +1,7 @@
 use crate::client_common::tools::ToolSpec;
+use crate::compat::api::ResponseEvent;
 use crate::config::types::Personality;
 use crate::error::Result;
-pub use codex_api::common::ResponseEvent;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::FunctionCallOutputBody;
 use codex_protocol::models::ResponseItem;

@@ -46,14 +46,15 @@ use codex_protocol::protocol::WarningEvent;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
 use codex_protocol::user_input::UserInput;
-use codex_rmcp_client::ElicitationAction;
-use codex_rmcp_client::ElicitationResponse;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::info;
 use tracing::warn;
 
+use crate::compat::rmcp::ElicitationAction;
+use crate::compat::rmcp::ElicitationResponse;
+use crate::compat::rmcp::NumberOrString;
 pub async fn interrupt(sess: &Arc<Session>) {
     sess.interrupt_task().await;
 }
@@ -195,10 +196,8 @@ pub async fn resolve_elicitation(
         meta,
     };
     let request_id = match request_id {
-        ProtocolRequestId::String(value) => {
-            rmcp::model::NumberOrString::String(std::sync::Arc::from(value))
-        }
-        ProtocolRequestId::Integer(value) => rmcp::model::NumberOrString::Number(value),
+        ProtocolRequestId::String(value) => NumberOrString::String(value),
+        ProtocolRequestId::Integer(value) => NumberOrString::Number(value),
     };
     if let Err(err) = sess
         .resolve_elicitation(server_name, request_id, response)

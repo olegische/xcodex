@@ -3,9 +3,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use async_channel::Receiver;
-use codex_api::Provider as ApiProvider;
-use codex_api::RealtimeAudioFrame;
-use codex_api::RealtimeEvent;
 use codex_protocol::protocol::CodexErrorInfo;
 use codex_protocol::protocol::ConversationAudioParams;
 use codex_protocol::protocol::ConversationStartParams;
@@ -19,6 +16,9 @@ use http::HeaderMap;
 use tokio::sync::Mutex;
 
 use crate::codex::Session;
+use crate::compat::api::Provider as ApiProvider;
+use crate::compat::api::RealtimeAudioFrame;
+use crate::compat::api::RealtimeEvent;
 use crate::error::Result as CodexResult;
 
 pub(crate) struct RealtimeConversationManager {

@@ -65,6 +65,7 @@ members = [
     "codex-api",
     "state",
     "wasm/core",
+    "wasm_v2/browser",
     "wasm_v2/core",
     "codex-experimental-api-macros",
     "test-macros",
@@ -283,7 +284,7 @@ textwrap = "0.16.2"
 thiserror = "2.0.17"
 time = "0.3.47"
 tiny_http = "0.12"
-tokio = "1"
+tokio = { version = "1", default-features = false }
 tokio-stream = "0.1.18"
 tokio-test = "0.4"
 tokio-tungstenite = { version = "0.28.0", features = [

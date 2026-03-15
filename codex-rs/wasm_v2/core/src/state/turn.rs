@@ -12,10 +12,11 @@ use codex_protocol::models::PermissionProfile;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputResponse;
-use codex_rmcp_client::ElicitationResponse;
-use rmcp::model::RequestId;
 
 use crate::codex::TurnContext;
+use crate::compat::otel::Timer;
+use crate::compat::rmcp::ElicitationResponse;
+use crate::compat::rmcp::RequestId;
 use crate::protocol::ReviewDecision;
 use crate::protocol::TokenUsage;
 use crate::tasks::SessionTask;
@@ -48,7 +49,7 @@ pub(crate) struct RunningTask {
     pub(crate) cancellation_token: CancellationToken,
     pub(crate) handle: Arc<AbortOnDropHandle<()>>,
     pub(crate) turn_context: Arc<TurnContext>,
-    pub(crate) _timer: Option<codex_otel::Timer>,
+    pub(crate) _timer: Option<Timer>,
 }
 
 impl ActiveTurn {

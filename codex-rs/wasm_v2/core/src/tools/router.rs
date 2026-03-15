@@ -1,5 +1,6 @@
 use crate::codex::Session;
 use crate::codex::TurnContext;
+use crate::compat::rmcp::Tool;
 use crate::function_tool::FunctionCallError;
 use crate::mcp_connection_manager::ToolInfo;
 use crate::sandboxing::SandboxPermissions;
@@ -20,7 +21,6 @@ use codex_protocol::models::SearchToolCallParams;
 use codex_protocol::models::ShellToolCallParams;
 use codex_utils_stream_parser::strip_citations;
 use codex_utils_stream_parser::strip_proposed_plan_blocks;
-use rmcp::model::Tool;
 use std::collections::HashMap;
 use std::sync::Arc;
 

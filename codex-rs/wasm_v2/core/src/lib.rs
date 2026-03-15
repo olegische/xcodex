@@ -12,6 +12,7 @@ mod codex_thread;
 mod commit_attribution;
 pub mod compact;
 pub mod compact_remote;
+mod compat;
 pub mod config;
 pub mod config_loader;
 pub mod connectors;

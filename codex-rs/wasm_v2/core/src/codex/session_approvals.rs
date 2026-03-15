@@ -1,4 +1,6 @@
 use super::*;
+use crate::compat::rmcp::NumberOrString;
+use crate::compat::rmcp::RequestId;
 
 impl Session {
     pub(crate) async fn persist_execpolicy_amendment(
@@ -419,12 +421,10 @@ impl Session {
             );
         }
         let id = match request_id {
-            rmcp::model::NumberOrString::String(value) => {
+            NumberOrString::String(value) => {
                 codex_protocol::mcp::RequestId::String(value.to_string())
             }
-            rmcp::model::NumberOrString::Number(value) => {
-                codex_protocol::mcp::RequestId::Integer(value)
-            }
+            NumberOrString::Number(value) => codex_protocol::mcp::RequestId::Integer(value),
         };
         let event = EventMsg::ElicitationRequest(ElicitationRequestEvent {
             turn_id: params.turn_id,

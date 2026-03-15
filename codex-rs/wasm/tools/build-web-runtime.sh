@@ -3,9 +3,9 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: build-web-runtime.sh --app <apps/webui|examples/browser-chat-demo|examples/webui-runtime-profiles>
+Usage: build-web-runtime.sh --app <apps/webui|examples/browser-chat-demo|examples/webui-runtime-profiles|examples/browser-terminal-demo> [--runtime <wasm|wasm_v2|1|2|v1|v2>]
 
-Builds codex-wasm-core and prepares browser runtime assets for the selected app.
+Builds the selected browser runtime package and prepares web assets for the selected app.
 
 Environment:
   XROUTER_BROWSER_TARBALL  Override xrouter-browser tarball source.
@@ -22,10 +22,15 @@ require_command() {
 }
 
 APP_PATH=""
+RUNTIME_KIND="wasm"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app)
       APP_PATH="${2:-}"
+      shift 2
+      ;;
+    --runtime)
+      RUNTIME_KIND="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -45,6 +50,24 @@ if [[ -z "${APP_PATH}" ]]; then
   usage >&2
   exit 1
 fi
+
+case "${RUNTIME_KIND}" in
+  wasm|1|v1)
+    RUNTIME_KIND="wasm"
+    RUNTIME_CRATE="codex-wasm-core"
+    RUNTIME_WASM_BASENAME="codex_wasm_core"
+    ;;
+  wasm_v2|2|v2)
+    RUNTIME_KIND="wasm_v2"
+    RUNTIME_CRATE="codex-wasm-v2-core"
+    RUNTIME_WASM_BASENAME="codex_wasm_v2_core"
+    ;;
+  *)
+    echo "Unsupported runtime: ${RUNTIME_KIND}" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CODEX_RS_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -77,16 +100,50 @@ fi
 require_command cargo
 require_command wasm-bindgen
 
+if [[ "${RUNTIME_KIND}" == "wasm" ]]; then
+  RUNTIME_CRATE_MANIFEST="${CODEX_RS_ROOT}/wasm/Cargo.toml"
+else
+  RUNTIME_CRATE="codex-wasm-v2-browser"
+  RUNTIME_WASM_BASENAME="codex_wasm_v2_browser"
+  RUNTIME_CRATE_MANIFEST="${CODEX_RS_ROOT}/wasm_v2/browser/Cargo.toml"
+fi
+
+if [[ "${RUNTIME_KIND}" == "wasm_v2" ]] && ! grep -Eq 'crate-type\s*=\s*\[[^]]*"cdylib"' "${RUNTIME_CRATE_MANIFEST}"; then
+  cat >&2 <<EOF
+Runtime '${RUNTIME_KIND}' is selected, but there is no browser export crate yet.
+
+Expected a wasm-bindgen-ready library configuration in:
+  ${RUNTIME_CRATE_MANIFEST}
+
+Today only the legacy 'wasm' runtime can be packaged by this script. The command interface now supports both runtime families so examples do not need to change once the wasm_v2 browser export exists.
+EOF
+  exit 1
+fi
+
 mkdir -p "${OUT_DIR}" "${PUBLIC_OUT_DIR}" "${XROUTER_OUT_DIR}" "${PUBLIC_XROUTER_OUT_DIR}" \
   "${PUBLIC_CURRENT_OUT_DIR}" "${PUBLIC_XROUTER_CURRENT_OUT_DIR}"
 
 cd "${CODEX_RS_ROOT}"
-cargo build -p codex-wasm-core --target wasm32-unknown-unknown --release
+cargo build -p "${RUNTIME_CRATE}" --target wasm32-unknown-unknown --release
+
+RUNTIME_WASM_PATH="${CODEX_RS_ROOT}/target/wasm32-unknown-unknown/release/${RUNTIME_WASM_BASENAME}.wasm"
+if [[ ! -f "${RUNTIME_WASM_PATH}" ]]; then
+  cat >&2 <<EOF
+Selected runtime '${RUNTIME_KIND}' does not currently produce a browser-ready wasm artifact at:
+  ${RUNTIME_WASM_PATH}
+
+The build entrypoint is wired for both runtime families, but '${RUNTIME_KIND}' still needs its own browser export package before this command can finish successfully.
+EOF
+  exit 1
+fi
 
 wasm-bindgen \
-  "${CODEX_RS_ROOT}/target/wasm32-unknown-unknown/release/codex_wasm_core.wasm" \
+  "${RUNTIME_WASM_PATH}" \
   --target web \
   --out-dir "${OUT_DIR}"
+
+RUNTIME_JS_FILE="${RUNTIME_WASM_BASENAME}.js"
+RUNTIME_WASM_BG_FILE="${RUNTIME_WASM_BASENAME}_bg.wasm"
 
 cp -R "${OUT_DIR}/." "${PUBLIC_OUT_DIR}/"
 rm -rf "${PUBLIC_CURRENT_OUT_DIR}"
@@ -96,8 +153,8 @@ cp -R "${OUT_DIR}/." "${PUBLIC_CURRENT_OUT_DIR}/"
 cat > "${PKG_ROOT}/manifest.json" <<EOF
 {
   "buildId": "${BUILD_ID}",
-  "entry": "/pkg/current/codex_wasm_core.js",
-  "wasm": "/pkg/current/codex_wasm_core_bg.wasm"
+  "entry": "/pkg/current/${RUNTIME_JS_FILE}",
+  "wasm": "/pkg/current/${RUNTIME_WASM_BG_FILE}"
 }
 EOF
 
@@ -164,6 +221,7 @@ fi
 
 echo "Built web runtime assets:"
 echo "  app:      ${APP_PATH}"
+echo "  runtime:  ${RUNTIME_KIND}"
 echo "  manifest: ${PKG_ROOT}/manifest.json"
 echo "  output:   ${OUT_DIR}"
 echo "  public:   ${PUBLIC_OUT_DIR}"

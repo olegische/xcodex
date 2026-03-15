@@ -3,6 +3,7 @@ use crate::client_common::tools::ResponsesApiNamespaceTool;
 use crate::client_common::tools::ResponsesApiTool;
 use crate::client_common::tools::ToolSearchOutputTool;
 use crate::client_common::tools::ToolSpec as ClientToolSpec;
+use crate::compat::rmcp::Tool;
 use crate::function_tool::FunctionCallError;
 use crate::mcp_connection_manager::ToolInfo;
 use crate::tools::context::ToolPayload;
@@ -14,9 +15,6 @@ use codex_protocol::models::SearchToolCallParams;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-
-#[cfg(test)]
-use rmcp::model::Tool;
 
 pub(crate) const TOOL_SEARCH_TOOL_NAME: &str = "tool_search";
 pub(crate) const DEFAULT_LIMIT: usize = 8;
@@ -169,7 +167,7 @@ fn serialize_tool_search_output_tools(
 
 fn mcp_tool_to_deferred_openai_tool(
     name: String,
-    tool: rmcp::model::Tool,
+    tool: Tool,
 ) -> Result<ResponsesApiTool, serde_json::Error> {
     let mut input_schema = Value::Object(tool.input_schema.as_ref().clone());
     sanitize_json_schema(&mut input_schema);

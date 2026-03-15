@@ -90,12 +90,12 @@ write-hooks-schema:
 log *args:
     if [ "${1:-}" = "--" ]; then shift; fi; cargo run -p codex-state --bin logs_client -- "$@"
 
-wasm-build-runtime app="apps/webui":
-    ./wasm/tools/build-web-runtime.sh --app {{app}}
+wasm-build-runtime app="apps/webui" runtime="wasm":
+    ./wasm/tools/build-web-runtime.sh --app {{app}} --runtime {{runtime}}
 
 wasm-webui-build-runtime:
-    ./wasm/tools/build-web-runtime.sh --app apps/webui
+    ./wasm/tools/build-web-runtime.sh --app apps/webui --runtime wasm
 
 wasm-webui-dev:
-    ./wasm/tools/build-web-runtime.sh --app apps/webui
+    ./wasm/tools/build-web-runtime.sh --app apps/webui --runtime wasm
     cd wasm/apps/webui && npm run dev

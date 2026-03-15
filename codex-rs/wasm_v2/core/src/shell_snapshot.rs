@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use codex_otel::SessionTelemetry;
 use codex_protocol::ThreadId;
 use tokio::sync::watch;
 
+use crate::compat::otel::SessionTelemetry;
 use crate::shell::Shell;
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use codex_otel::SessionTelemetry;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::config_types::Verbosity as VerbosityConfig;
@@ -13,6 +12,7 @@ use tokio::sync::mpsc;
 use crate::AuthManager;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseStream;
+use crate::compat::otel::SessionTelemetry;
 use crate::error::Result;
 use crate::model_provider_info::ModelProviderInfo;
 

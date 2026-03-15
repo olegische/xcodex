@@ -1,11 +1,14 @@
 use super::*;
+use crate::compat::otel::context_from_w3c_trace_context;
+use crate::compat::otel::current_span_w3c_trace_context;
+use crate::compat::otel::set_parent_from_w3c_trace_context;
 
 impl Codex {
     /// Spawn a new [`Codex`] and initialize the session.
     pub(crate) async fn spawn(args: CodexSpawnArgs) -> CodexResult<CodexSpawnOk> {
         let parent_trace = match args.parent_trace {
             Some(trace) => {
-                if codex_otel::context_from_w3c_trace_context(&trace).is_some() {
+                if context_from_w3c_trace_context(&trace).is_some() {
                     Some(trace)
                 } else {
                     warn!("ignoring invalid thread spawn trace carrier");

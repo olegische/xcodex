@@ -2754,6 +2754,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-wasm-v2-browser"
+version = "0.0.0"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "codex-wasm-v2-core"
 version = "0.0.0"
 dependencies = [

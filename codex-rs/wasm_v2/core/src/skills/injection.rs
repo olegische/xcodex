@@ -10,11 +10,11 @@ use crate::instructions::SkillInstructions;
 use crate::mention_syntax::TOOL_MENTION_SIGIL;
 use crate::mentions::build_skill_name_counts;
 use crate::skills::SkillMetadata;
-use codex_otel::SessionTelemetry;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::user_input::UserInput;
 use tokio::fs;
 
+use crate::compat::otel::SessionTelemetry;
 #[derive(Debug, Default)]
 pub(crate) struct SkillInjections {
     pub(crate) items: Vec<ResponseItem>,

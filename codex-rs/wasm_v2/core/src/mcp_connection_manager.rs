@@ -2,21 +2,24 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::compat::rmcp::ListResourceTemplatesResult;
+use crate::compat::rmcp::ListResourcesResult;
+use crate::compat::rmcp::PaginatedRequestParams;
+use crate::compat::rmcp::ReadResourceRequestParams;
+use crate::compat::rmcp::ReadResourceResult;
+use crate::compat::rmcp::RequestId;
+use crate::compat::rmcp::Resource;
+use crate::compat::rmcp::ResourceTemplate;
+use crate::compat::rmcp::Tool;
 use async_channel::Sender;
 use codex_protocol::mcp::CallToolResult;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::SandboxPolicy;
-use codex_rmcp_client::ElicitationResponse;
-use codex_rmcp_client::OAuthCredentialsStoreMode;
-use rmcp::model::ListResourceTemplatesResult;
-use rmcp::model::ListResourcesResult;
-use rmcp::model::PaginatedRequestParams;
-use rmcp::model::ReadResourceRequestParams;
-use rmcp::model::ReadResourceResult;
-use rmcp::model::RequestId;
 use tokio_util::sync::CancellationToken;
 
+use crate::compat::rmcp::ElicitationResponse;
+use crate::compat::rmcp::OAuthCredentialsStoreMode;
 use crate::config::Constrained;
 use crate::config::types::McpServerConfig;
 use crate::mcp::ToolPluginProvenance;
@@ -34,7 +37,7 @@ pub struct ToolInfo {
     pub server_name: String,
     pub tool_name: String,
     pub tool_namespace: String,
-    pub tool: rmcp::model::Tool,
+    pub tool: Tool,
     pub connector_id: Option<String>,
     pub connector_name: Option<String>,
     pub plugin_display_names: Vec<String>,
@@ -47,8 +50,8 @@ impl Default for ToolInfo {
             server_name: String::new(),
             tool_name: String::new(),
             tool_namespace: String::new(),
-            tool: rmcp::model::Tool {
-                name: String::new().into(),
+            tool: Tool {
+                name: String::new(),
                 description: None,
                 input_schema: Arc::new(serde_json::Map::new()),
                 annotations: None,
@@ -119,13 +122,11 @@ impl McpConnectionManager {
         false
     }
 
-    pub async fn list_all_resources(&self) -> HashMap<String, Vec<rmcp::model::Resource>> {
+    pub async fn list_all_resources(&self) -> HashMap<String, Vec<Resource>> {
         HashMap::new()
     }
 
-    pub async fn list_all_resource_templates(
-        &self,
-    ) -> HashMap<String, Vec<rmcp::model::ResourceTemplate>> {
+    pub async fn list_all_resource_templates(&self) -> HashMap<String, Vec<ResourceTemplate>> {
         HashMap::new()
     }
 

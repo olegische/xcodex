@@ -1,9 +1,9 @@
 use crate::client_common::tools::ResponsesApiTool;
 use crate::client_common::tools::ToolSpec as ClientToolSpec;
+use crate::compat::rmcp::Tool;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::ToolPayload;
 use codex_protocol::mcp::CallToolResult;
-use rmcp::model::Tool;
 use serde_json::Value;
 use std::collections::HashMap;
 

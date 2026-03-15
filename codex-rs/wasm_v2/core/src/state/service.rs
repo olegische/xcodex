@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use codex_hooks::Hooks;
-use codex_otel::SessionTelemetry;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tokio::sync::watch;
@@ -12,6 +11,7 @@ use crate::AuthManager;
 use crate::agent::AgentControl;
 use crate::analytics_client::AnalyticsEventsClient;
 use crate::client::ModelClient;
+use crate::compat::otel::SessionTelemetry;
 use crate::config::StartedNetworkProxy;
 use crate::connectors::DiscoverableAppsProvider;
 use crate::exec_policy::ExecPolicyManager;
