@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::compat::rmcp::ListResourceTemplatesResult;
 use crate::compat::rmcp::ListResourcesResult;
@@ -51,9 +50,9 @@ impl Default for ToolInfo {
             tool_name: String::new(),
             tool_namespace: String::new(),
             tool: Tool {
-                name: String::new(),
+                name: String::new().into(),
                 description: None,
-                input_schema: Arc::new(serde_json::Map::new()),
+                input_schema: serde_json::Map::new().into(),
                 annotations: None,
                 meta: None,
                 output_schema: None,

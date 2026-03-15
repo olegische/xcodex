@@ -1,4 +1,10 @@
 use super::*;
+use crate::compat::hooks::HookEvent;
+use crate::compat::hooks::HookEventAfterAgent;
+use crate::compat::hooks::HookPayload;
+use crate::compat::hooks::HookResult;
+use crate::compat::hooks::SessionStartRequest;
+use crate::compat::hooks::StopRequest;
 
 pub(crate) async fn run_turn(
     sess: Arc<Session>,
@@ -218,7 +224,7 @@ pub(crate) async fn run_turn(
                 | AskForApproval::Reject(_) => "default",
             }
             .to_string();
-            let session_start_request = codex_hooks::SessionStartRequest {
+            let session_start_request = SessionStartRequest {
                 session_id: sess.conversation_id,
                 cwd: turn_context.cwd.clone(),
                 transcript_path: sess.current_rollout_path().await,
@@ -369,7 +375,7 @@ pub(crate) async fn run_turn(
                         | AskForApproval::Reject(_) => "default",
                     }
                     .to_string();
-                    let stop_request = codex_hooks::StopRequest {
+                    let stop_request = StopRequest {
                         session_id: sess.conversation_id,
                         turn_id: turn_context.sub_id.clone(),
                         cwd: turn_context.cwd.clone(),

@@ -196,7 +196,7 @@ pub async fn resolve_elicitation(
         meta,
     };
     let request_id = match request_id {
-        ProtocolRequestId::String(value) => NumberOrString::String(value),
+        ProtocolRequestId::String(value) => NumberOrString::String(value.into()),
         ProtocolRequestId::Integer(value) => NumberOrString::Number(value),
     };
     if let Err(err) = sess

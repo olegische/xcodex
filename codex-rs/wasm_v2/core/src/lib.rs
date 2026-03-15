@@ -81,4 +81,3 @@ pub fn ws_version_from_features(config: &config::Config) -> bool {
 }
 
 pub(crate) use codex_protocol::protocol;
-pub(crate) use codex_shell_command::parse_command;

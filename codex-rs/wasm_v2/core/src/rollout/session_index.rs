@@ -11,7 +11,9 @@ use chrono::Utc;
 use codex_protocol::ThreadId;
 use serde::Deserialize;
 use serde::Serialize;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::io::AsyncBufReadExt;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::io::AsyncWriteExt;
 
 const SESSION_INDEX_FILE: &str = "session_index.jsonl";
@@ -41,17 +43,27 @@ pub async fn append_session_index_entry(
     codex_home: &Path,
     entry: &SessionIndexEntry,
 ) -> std::io::Result<()> {
-    let path = session_index_path(codex_home);
-    let mut file = tokio::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .await?;
-    let mut line = serde_json::to_string(entry).map_err(std::io::Error::other)?;
-    line.push('\n');
-    file.write_all(line.as_bytes()).await?;
-    file.flush().await?;
-    Ok(())
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = codex_home;
+        let _ = entry;
+        return Ok(());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let path = session_index_path(codex_home);
+        let mut file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .await?;
+        let mut line = serde_json::to_string(entry).map_err(std::io::Error::other)?;
+        line.push('\n');
+        file.write_all(line.as_bytes()).await?;
+        file.flush().await?;
+        Ok(())
+    }
 }
 
 pub async fn find_thread_name_by_id(
@@ -73,31 +85,41 @@ pub async fn find_thread_names_by_ids(
     codex_home: &Path,
     thread_ids: &HashSet<ThreadId>,
 ) -> std::io::Result<HashMap<ThreadId, String>> {
-    let path = session_index_path(codex_home);
-    if thread_ids.is_empty() || !path.exists() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = codex_home;
+        let _ = thread_ids;
         return Ok(HashMap::new());
     }
 
-    let file = tokio::fs::File::open(&path).await?;
-    let reader = tokio::io::BufReader::new(file);
-    let mut lines = reader.lines();
-    let mut names = HashMap::with_capacity(thread_ids.len());
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let path = session_index_path(codex_home);
+        if thread_ids.is_empty() || !path.exists() {
+            return Ok(HashMap::new());
+        }
 
-    while let Some(line) = lines.next_line().await? {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
+        let file = tokio::fs::File::open(&path).await?;
+        let reader = tokio::io::BufReader::new(file);
+        let mut lines = reader.lines();
+        let mut names = HashMap::with_capacity(thread_ids.len());
+
+        while let Some(line) = lines.next_line().await? {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Ok(entry) = serde_json::from_str::<SessionIndexEntry>(trimmed) else {
+                continue;
+            };
+            let name = entry.thread_name.trim();
+            if !name.is_empty() && thread_ids.contains(&entry.id) {
+                names.insert(entry.id, name.to_string());
+            }
         }
-        let Ok(entry) = serde_json::from_str::<SessionIndexEntry>(trimmed) else {
-            continue;
-        };
-        let name = entry.thread_name.trim();
-        if !name.is_empty() && thread_ids.contains(&entry.id) {
-            names.insert(entry.id, name.to_string());
-        }
+
+        Ok(names)
     }
-
-    Ok(names)
 }
 
 pub async fn find_thread_id_by_name(

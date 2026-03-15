@@ -23,7 +23,7 @@ pub(crate) struct Provider;
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Debug)]
-pub(crate) enum ResponseEvent {
+pub enum ResponseEvent {
     Created,
     OutputItemDone(codex_protocol::models::ResponseItem),
     OutputItemAdded(codex_protocol::models::ResponseItem),

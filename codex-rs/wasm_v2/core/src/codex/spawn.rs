@@ -336,7 +336,6 @@ impl Codex {
     }
 }
 
-#[cfg(test)]
 pub(crate) fn completed_session_loop_termination() -> SessionLoopTermination {
     futures::future::ready(()).boxed().shared()
 }

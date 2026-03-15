@@ -1,6 +1,7 @@
 use super::*;
 use crate::compat::rmcp::NumberOrString;
 use crate::compat::rmcp::RequestId;
+use crate::compat::shell_command::parse_command;
 
 impl Session {
     pub(crate) async fn persist_execpolicy_amendment(

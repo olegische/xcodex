@@ -1,5 +1,3 @@
-use async_trait::async_trait;
-
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use codex_network_proxy::BlockedRequest;
 #[cfg(not(target_arch = "wasm32"))]
@@ -29,6 +27,14 @@ impl NetworkProxy {
 
     pub(crate) fn socks_addr(&self) -> String {
         String::new()
+    }
+
+    pub(crate) async fn add_allowed_domain(&self, _host: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    pub(crate) async fn add_denied_domain(&self, _host: &str) -> anyhow::Result<()> {
+        Ok(())
     }
 }
 

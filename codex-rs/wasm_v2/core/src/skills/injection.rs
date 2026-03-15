@@ -12,6 +12,7 @@ use crate::mentions::build_skill_name_counts;
 use crate::skills::SkillMetadata;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::user_input::UserInput;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::fs;
 
 use crate::compat::otel::SessionTelemetry;
@@ -38,7 +39,7 @@ pub(crate) async fn build_skill_injections(
     let mut invocations = Vec::new();
 
     for skill in mentioned_skills {
-        match fs::read_to_string(&skill.path_to_skills_md).await {
+        match read_skill_contents(&skill.path_to_skills_md).await {
             Ok(contents) => {
                 emit_skill_injected_metric(otel, skill, "ok");
                 invocations.push(SkillInvocation {
@@ -66,6 +67,19 @@ pub(crate) async fn build_skill_injections(
 
     analytics_client.track_skill_invocations(tracking, invocations);
     result
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn read_skill_contents(path: &PathBuf) -> std::io::Result<String> {
+    fs::read_to_string(path).await
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn read_skill_contents(_path: &PathBuf) -> std::io::Result<String> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "skill file loading is not available in wasm32",
+    ))
 }
 
 fn emit_skill_injected_metric(

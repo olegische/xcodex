@@ -14,6 +14,7 @@ use codex_protocol::protocol::RolloutLine;
 use codex_protocol::protocol::SessionMeta;
 use codex_protocol::protocol::SessionMetaLine;
 use codex_protocol::protocol::SessionSource;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
@@ -182,35 +183,47 @@ impl RolloutRecorder {
     pub(crate) async fn load_rollout_items(
         path: &Path,
     ) -> std::io::Result<(Vec<RolloutItem>, Option<ThreadId>, usize)> {
-        let text = tokio::fs::read_to_string(path).await?;
-        if text.trim().is_empty() {
-            return Err(IoError::other("empty session file"));
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = path;
+            return Err(IoError::new(
+                std::io::ErrorKind::Unsupported,
+                "rollout file loading is not available in wasm32",
+            ));
         }
 
-        let mut items = Vec::new();
-        let mut thread_id = None;
-        let mut parse_errors = 0usize;
-
-        for line in text.lines() {
-            if line.trim().is_empty() {
-                continue;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let text = tokio::fs::read_to_string(path).await?;
+            if text.trim().is_empty() {
+                return Err(IoError::other("empty session file"));
             }
-            match serde_json::from_str::<RolloutLine>(line) {
-                Ok(rollout_line) => {
-                    if let RolloutItem::SessionMeta(session_meta_line) = &rollout_line.item
-                        && thread_id.is_none()
-                    {
-                        thread_id = Some(session_meta_line.meta.id);
+
+            let mut items = Vec::new();
+            let mut thread_id = None;
+            let mut parse_errors = 0usize;
+
+            for line in text.lines() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                match serde_json::from_str::<RolloutLine>(line) {
+                    Ok(rollout_line) => {
+                        if let RolloutItem::SessionMeta(session_meta_line) = &rollout_line.item
+                            && thread_id.is_none()
+                        {
+                            thread_id = Some(session_meta_line.meta.id);
+                        }
+                        items.push(rollout_line.item);
                     }
-                    items.push(rollout_line.item);
-                }
-                Err(_) => {
-                    parse_errors = parse_errors.saturating_add(1);
+                    Err(_) => {
+                        parse_errors = parse_errors.saturating_add(1);
+                    }
                 }
             }
-        }
 
-        Ok((items, thread_id, parse_errors))
+            Ok((items, thread_id, parse_errors))
+        }
     }
 
     pub async fn get_rollout_history(path: &Path) -> std::io::Result<InitialHistory> {
@@ -229,39 +242,52 @@ impl RolloutRecorder {
     }
 
     async fn write_buffered(&self) -> std::io::Result<()> {
-        let (session_meta, items, should_write) = {
+        #[cfg(target_arch = "wasm32")]
+        {
             let mut state = self.state.lock().await;
-            if !state.materialized {
-                return Ok(());
+            if state.materialized {
+                state.buffered_items.clear();
+                state.session_meta = None;
             }
-            let items = std::mem::take(&mut state.buffered_items);
-            let session_meta = state.session_meta.take();
-            let should_write = session_meta.is_some() || !items.is_empty();
-            (session_meta, items, should_write)
-        };
-
-        if !should_write {
             return Ok(());
         }
 
-        if let Some(parent) = self.rollout_path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        let mut file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.rollout_path)
-            .await?;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let (session_meta, items, should_write) = {
+                let mut state = self.state.lock().await;
+                if !state.materialized {
+                    return Ok(());
+                }
+                let items = std::mem::take(&mut state.buffered_items);
+                let session_meta = state.session_meta.take();
+                let should_write = session_meta.is_some() || !items.is_empty();
+                (session_meta, items, should_write)
+            };
 
-        if let Some(session_meta) = session_meta {
-            let item = RolloutItem::SessionMeta(session_meta);
-            write_rollout_item(&mut file, &item).await?;
+            if !should_write {
+                return Ok(());
+            }
+
+            if let Some(parent) = self.rollout_path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+            let mut file = tokio::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.rollout_path)
+                .await?;
+
+            if let Some(session_meta) = session_meta {
+                let item = RolloutItem::SessionMeta(session_meta);
+                write_rollout_item(&mut file, &item).await?;
+            }
+            for item in &items {
+                write_rollout_item(&mut file, item).await?;
+            }
+            file.flush().await?;
+            Ok(())
         }
-        for item in &items {
-            write_rollout_item(&mut file, item).await?;
-        }
-        file.flush().await?;
-        Ok(())
     }
 }
 
@@ -273,6 +299,7 @@ fn rollout_path_for_new_session(config: &Config, conversation_id: ThreadId) -> P
         .join(format!("rollout-{timestamp}-{conversation_id}.jsonl"))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 async fn write_rollout_item(
     file: &mut tokio::fs::File,
     rollout_item: &RolloutItem,

@@ -166,7 +166,7 @@ where
         let Some(path) = config_path_for_layer(layer, config_toml_file) else {
             continue;
         };
-        let contents = match tokio::fs::read_to_string(&path).await {
+        let contents = match read_config_file(&path).await {
             Ok(contents) => contents,
             Err(err) if err.kind() == io::ErrorKind::NotFound => continue,
             Err(err) => {
@@ -186,6 +186,16 @@ where
     }
 
     None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn read_config_file(path: &Path) -> io::Result<String> {
+    tokio::fs::read_to_string(path).await
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn read_config_file(path: &Path) -> io::Result<String> {
+    std::fs::read_to_string(path)
 }
 
 fn config_path_for_layer(layer: &ConfigLayerEntry, config_toml_file: &str) -> Option<PathBuf> {

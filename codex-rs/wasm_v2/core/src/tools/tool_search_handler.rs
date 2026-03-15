@@ -4,6 +4,8 @@ use crate::client_common::tools::ResponsesApiTool;
 use crate::client_common::tools::ToolSearchOutputTool;
 use crate::client_common::tools::ToolSpec as ClientToolSpec;
 use crate::compat::rmcp::Tool;
+use crate::compat::rmcp::clone_tool_input_schema;
+use crate::compat::rmcp::clone_tool_output_schema;
 use crate::function_tool::FunctionCallError;
 use crate::mcp_connection_manager::ToolInfo;
 use crate::tools::context::ToolPayload;
@@ -169,18 +171,16 @@ fn mcp_tool_to_deferred_openai_tool(
     name: String,
     tool: Tool,
 ) -> Result<ResponsesApiTool, serde_json::Error> {
-    let mut input_schema = Value::Object(tool.input_schema.as_ref().clone());
+    let mut input_schema = Value::Object(clone_tool_input_schema(&tool));
     sanitize_json_schema(&mut input_schema);
 
     Ok(ResponsesApiTool {
         name,
-        description: tool.description.unwrap_or_default().to_string(),
+        description: tool.description.clone().unwrap_or_default().to_string(),
         strict: false,
         defer_loading: Some(true),
         parameters: input_schema,
-        output_schema: tool
-            .output_schema
-            .map(|schema| Value::Object(schema.as_ref().clone())),
+        output_schema: clone_tool_output_schema(&tool).map(Value::Object),
     })
 }
 

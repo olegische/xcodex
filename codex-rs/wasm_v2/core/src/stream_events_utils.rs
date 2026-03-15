@@ -132,6 +132,16 @@ async fn save_image_generation_result(call_id: &str, result: &str) -> Result<Pat
         file_stem = "generated_image".to_string();
     }
     let path = default_image_generation_output_dir().join(format!("{file_stem}.png"));
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = path;
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "image file writes are not available in wasm32",
+        )
+        .into());
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     tokio::fs::write(&path, bytes).await?;
     Ok(path)
 }

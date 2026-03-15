@@ -98,41 +98,60 @@ const RULES_DIR_NAME: &str = "rules";
 const RULE_EXTENSION: &str = "rules";
 
 async fn load_exec_policy(config_stack: &ConfigLayerStack) -> Result<Policy, io::Error> {
-    let mut policy_paths = Vec::new();
-    for layer in config_stack.get_layers(ConfigLayerStackOrdering::LowestPrecedenceFirst, false) {
-        if let Some(config_folder) = layer.config_folder() {
-            let policy_dir = config_folder
-                .join(RULES_DIR_NAME)
-                .map_err(io::Error::other)?;
-            policy_paths.extend(collect_policy_files(policy_dir.as_ref()).await?);
-        }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = config_stack;
+        return Ok(Policy::empty());
     }
 
-    let mut parser = PolicyParser::new();
-    for policy_path in &policy_paths {
-        let contents = tokio::fs::read_to_string(policy_path).await?;
-        let identifier = policy_path.to_string_lossy().to_string();
-        parser
-            .parse(&identifier, &contents)
-            .map_err(io::Error::other)?;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut policy_paths = Vec::new();
+        for layer in config_stack.get_layers(ConfigLayerStackOrdering::LowestPrecedenceFirst, false)
+        {
+            if let Some(config_folder) = layer.config_folder() {
+                let policy_dir = config_folder
+                    .join(RULES_DIR_NAME)
+                    .map_err(io::Error::other)?;
+                policy_paths.extend(collect_policy_files(policy_dir.as_ref()).await?);
+            }
+        }
+
+        let mut parser = PolicyParser::new();
+        for policy_path in &policy_paths {
+            let contents = tokio::fs::read_to_string(policy_path).await?;
+            let identifier = policy_path.to_string_lossy().to_string();
+            parser
+                .parse(&identifier, &contents)
+                .map_err(io::Error::other)?;
+        }
+        Ok(parser.build())
     }
-    Ok(parser.build())
 }
 
 async fn collect_policy_files(policy_dir: &Path) -> Result<Vec<PathBuf>, io::Error> {
-    let mut dir = match tokio::fs::read_dir(policy_dir).await {
-        Ok(dir) => dir,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => return Err(err),
-    };
-
-    let mut policy_paths = Vec::new();
-    while let Some(entry) = dir.next_entry().await? {
-        let path = entry.path();
-        if path.extension().is_some_and(|ext| ext == RULE_EXTENSION) {
-            policy_paths.push(path);
-        }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = policy_dir;
+        return Ok(Vec::new());
     }
-    policy_paths.sort();
-    Ok(policy_paths)
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut dir = match tokio::fs::read_dir(policy_dir).await {
+            Ok(dir) => dir,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err),
+        };
+
+        let mut policy_paths = Vec::new();
+        while let Some(entry) = dir.next_entry().await? {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == RULE_EXTENSION) {
+                policy_paths.push(path);
+            }
+        }
+        policy_paths.sort();
+        Ok(policy_paths)
+    }
 }

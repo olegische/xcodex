@@ -1,14 +1,3 @@
-use codex_protocol::ThreadId;
-use codex_protocol::config_types::ReasoningSummary;
-use codex_protocol::models::ResponseItem;
-use codex_protocol::openai_models::ReasoningEffort;
-use codex_protocol::protocol::AskForApproval;
-use codex_protocol::protocol::SandboxPolicy;
-use codex_protocol::protocol::SessionSource;
-use codex_protocol::protocol::W3cTraceContext;
-use codex_protocol::user_input::UserInput;
-use tracing::Span;
-
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use codex_otel::SessionTelemetry;
 #[cfg(not(target_arch = "wasm32"))]
@@ -39,6 +28,16 @@ pub(crate) mod metrics {
 pub(crate) enum TelemetryAuthMode {
     ApiKey,
     Chatgpt,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl fmt::Display for TelemetryAuthMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ApiKey => write!(f, "api_key"),
+            Self::Chatgpt => write!(f, "chatgpt"),
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

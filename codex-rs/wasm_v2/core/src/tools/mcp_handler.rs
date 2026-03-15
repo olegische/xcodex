@@ -1,6 +1,8 @@
 use crate::client_common::tools::ResponsesApiTool;
 use crate::client_common::tools::ToolSpec as ClientToolSpec;
 use crate::compat::rmcp::Tool;
+use crate::compat::rmcp::clone_tool_input_schema;
+use crate::compat::rmcp::clone_tool_output_schema;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::ToolPayload;
 use codex_protocol::mcp::CallToolResult;
@@ -18,11 +20,8 @@ pub(crate) fn mcp_tool_specs(mcp_tools: &HashMap<String, Tool>) -> Vec<ClientToo
                 description: tool.description.clone().unwrap_or_default().to_string(),
                 strict: false,
                 defer_loading: None,
-                parameters: Value::Object((*tool.input_schema).clone()),
-                output_schema: tool
-                    .output_schema
-                    .as_ref()
-                    .map(|schema| Value::Object((**schema).clone())),
+                parameters: Value::Object(clone_tool_input_schema(tool)),
+                output_schema: clone_tool_output_schema(tool).map(Value::Object),
             })
         })
         .collect()

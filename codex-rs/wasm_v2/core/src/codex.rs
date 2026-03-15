@@ -33,7 +33,6 @@ use crate::features::maybe_push_unstable_features_warning;
 use crate::models_manager::collaboration_mode_presets::CollaborationModesConfig;
 use crate::models_manager::manager::ModelsManager;
 use crate::models_manager::manager::RefreshStrategy;
-use crate::parse_command::parse_command;
 use crate::realtime_conversation::RealtimeConversationManager;
 use crate::realtime_conversation::handle_audio as handle_realtime_conversation_audio;
 use crate::realtime_conversation::handle_close as handle_realtime_conversation_close;
@@ -57,12 +56,6 @@ use chrono::Local;
 use chrono::Utc;
 use codex_app_server_protocol::McpServerElicitationRequest;
 use codex_app_server_protocol::McpServerElicitationRequestParams;
-use codex_hooks::HookEvent;
-use codex_hooks::HookEventAfterAgent;
-use codex_hooks::HookPayload;
-use codex_hooks::HookResult;
-use codex_hooks::Hooks;
-use codex_hooks::HooksConfig;
 use codex_protocol::ThreadId;
 use codex_protocol::approvals::ElicitationRequestEvent;
 use codex_protocol::approvals::ExecApprovalRequestSkillMetadata;
@@ -138,9 +131,12 @@ use crate::ModelProviderInfo;
 use crate::client::ModelClient;
 use crate::client::ModelClientSession;
 use crate::client_common::Prompt;
-use crate::client_common::ResponseEvent;
 use crate::codex_thread::ThreadConfigSnapshot;
 use crate::compact::collect_user_messages;
+use crate::compat::api::ResponseEvent;
+use crate::compat::hooks::Hooks;
+use crate::compat::hooks::HooksConfig;
+use crate::compat::hooks::SessionStartSource;
 use crate::compat::network::BlockedRequestObserver;
 use crate::compat::network::NetworkPolicyDecider;
 use crate::compat::network::NetworkProxy;
@@ -159,7 +155,6 @@ use crate::compat::rmcp::OAuthCredentialsStoreMode;
 use crate::compat::rmcp::PaginatedRequestParams;
 use crate::compat::rmcp::ReadResourceRequestParams;
 use crate::compat::rmcp::ReadResourceResult;
-use crate::compat::rmcp::RequestId;
 use crate::config::Config;
 use crate::config::Constrained;
 use crate::config::ConstraintResult;
@@ -1124,10 +1119,8 @@ impl Session {
         sess.schedule_startup_prewarm(session_configuration.base_instructions.clone())
             .await;
         let session_start_source = match &initial_history {
-            InitialHistory::Resumed(_) => codex_hooks::SessionStartSource::Resume,
-            InitialHistory::New | InitialHistory::Forked(_) => {
-                codex_hooks::SessionStartSource::Startup
-            }
+            InitialHistory::Resumed(_) => SessionStartSource::Resume,
+            InitialHistory::New | InitialHistory::Forked(_) => SessionStartSource::Startup,
         };
 
         // record_initial_history can emit events. We record only after the SessionConfiguredEvent is emitted.

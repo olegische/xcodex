@@ -22,9 +22,7 @@ chrono = { workspace = true, features = ["serde"] }
 codex-app-server-protocol = { workspace = true }
 codex-async-utils = { workspace = true }
 codex-config = { workspace = true }
-codex-hooks = { workspace = true }
 codex-protocol = { workspace = true }
-codex-shell-command = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
 codex-utils-readiness = { workspace = true }
 codex-utils-home-dir = { workspace = true }
@@ -46,9 +44,11 @@ codex-execpolicy = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 codex-api = { workspace = true }
+codex-hooks = { workspace = true }
 codex-network-proxy = { workspace = true }
 codex-otel = { workspace = true }
 codex-rmcp-client = { workspace = true }
+codex-shell-command = { workspace = true }
 rmcp = { workspace = true, default-features = false, features = [
     "base64",
     "macros",

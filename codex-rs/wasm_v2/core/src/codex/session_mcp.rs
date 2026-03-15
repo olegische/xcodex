@@ -1,4 +1,5 @@
 use super::*;
+use crate::compat::hooks::SessionStartSource;
 use crate::compat::rmcp::OAuthCredentialsStoreMode;
 
 impl Session {
@@ -85,9 +86,7 @@ impl Session {
         recorder.map(|recorder| recorder.rollout_path().to_path_buf())
     }
 
-    pub(crate) async fn take_pending_session_start_source(
-        &self,
-    ) -> Option<codex_hooks::SessionStartSource> {
+    pub(crate) async fn take_pending_session_start_source(&self) -> Option<SessionStartSource> {
         let mut state = self.state.lock().await;
         state.take_pending_session_start_source()
     }

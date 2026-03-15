@@ -1,10 +1,3 @@
-use codex_protocol::protocol::McpAuthStatus;
-use serde::Deserialize;
-use serde::Serialize;
-use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
-
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use codex_rmcp_client::ElicitationAction;
 #[cfg(not(target_arch = "wasm32"))]
@@ -90,6 +83,16 @@ pub(crate) enum NumberOrString {
 }
 
 #[cfg(target_arch = "wasm32")]
+impl fmt::Display for NumberOrString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::String(value) => write!(f, "{value}"),
+            Self::Number(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 pub(crate) type RequestId = NumberOrString;
 
 #[cfg(target_arch = "wasm32")]
@@ -97,10 +100,10 @@ pub(crate) type RequestId = NumberOrString;
 pub(crate) struct Tool {
     pub(crate) name: String,
     pub(crate) description: Option<String>,
-    pub(crate) input_schema: Arc<JsonObject>,
+    pub(crate) input_schema: JsonObject,
     pub(crate) annotations: Option<Value>,
     pub(crate) meta: Option<Value>,
-    pub(crate) output_schema: Option<Arc<JsonObject>>,
+    pub(crate) output_schema: Option<JsonObject>,
     pub(crate) icons: Option<Vec<Value>>,
     pub(crate) title: Option<String>,
     pub(crate) execution: Option<String>,
@@ -146,4 +149,24 @@ pub(crate) struct ListResourceTemplatesResult {
     pub(crate) resource_templates: Vec<ResourceTemplate>,
     pub(crate) next_cursor: Option<String>,
     pub(crate) meta: Option<HashMap<String, Value>>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn clone_tool_input_schema(tool: &Tool) -> JsonObject {
+    (*tool.input_schema).clone()
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn clone_tool_input_schema(tool: &Tool) -> JsonObject {
+    tool.input_schema.clone()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn clone_tool_output_schema(tool: &Tool) -> Option<JsonObject> {
+    tool.output_schema.as_ref().map(|schema| (**schema).clone())
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn clone_tool_output_schema(tool: &Tool) -> Option<JsonObject> {
+    tool.output_schema.clone()
 }
