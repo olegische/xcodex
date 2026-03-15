@@ -134,7 +134,7 @@ pub(crate) async fn run_sampling_request(
                 )
                 .await;
             }
-            tokio::time::sleep(delay).await;
+            crate::time::sleep(delay).await;
         } else {
             return Err(err);
         }

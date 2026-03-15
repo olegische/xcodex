@@ -1,6 +1,8 @@
 import { DEFAULT_CODEX_CONFIG, DEFAULT_DEMO_INSTRUCTIONS, THREAD_ID, TURN_PREFIX, XROUTER_PROVIDER_OPTIONS } from "./constants";
+import { createAppServerBrowserRuntime } from "./app-server";
 import { loadRuntimeModule } from "./assets";
 import { createBrowserRuntimeHost } from "./host";
+import { discoverModelsForConfig } from "./model-discovery";
 import { buildOutputFromDispatch, assertRuntimeDispatch, snapshotToTranscript } from "./transcript";
 import {
   clearStoredAuthState,
@@ -12,9 +14,8 @@ import {
   saveStoredAuthState,
   saveStoredCodexConfig,
 } from "./storage";
-import { activeProviderApiKey, formatError, getActiveProvider, materializeCodexConfig, normalizeCodexConfig, normalizeDemoInstructions, normalizeHostValue } from "./utils";
+import { activeProviderApiKey, formatError, getActiveProvider, materializeCodexConfig, normalizeCodexConfig, normalizeDemoInstructions } from "./utils";
 import type {
-  Account,
   AuthState,
   BrowserRuntime,
   CodexCompatibleConfig,
@@ -46,25 +47,11 @@ export function createInitialState(): DemoState {
 
 export async function loadRuntime(): Promise<BrowserRuntime> {
   const wasm = await loadRuntimeModule();
-  return new wasm.WasmBrowserRuntime(createBrowserRuntimeHost());
-}
-
-export async function hydrateState(runtime: BrowserRuntime): Promise<Partial<DemoState>> {
-  const authState = normalizeHostValue(await runtime.loadAuthState()) as AuthState | null;
-  const codexConfig = await loadStoredCodexConfig();
-  const demoInstructions = await loadStoredDemoInstructions();
-  await deleteStoredSession(THREAD_ID);
-  return {
-    authState,
-    codexConfig,
-    demoInstructions,
-    transcript: [],
-    runtime,
-  };
+  return createAppServerBrowserRuntime(wasm, createBrowserRuntimeHost());
 }
 
 export async function saveProviderConfig(
-  runtime: BrowserRuntime,
+  runtime: BrowserRuntime | null,
   codexConfig: CodexCompatibleConfig,
 ): Promise<{ authState: AuthState | null; codexConfig: CodexCompatibleConfig }> {
   void runtime;
@@ -89,7 +76,7 @@ export async function saveProviderConfig(
   };
 }
 
-export async function clearAuth(runtime: BrowserRuntime): Promise<{
+export async function clearAuth(runtime: BrowserRuntime | null): Promise<{
   authState: AuthState | null;
   codexConfig: CodexCompatibleConfig;
 }> {
@@ -99,24 +86,6 @@ export async function clearAuth(runtime: BrowserRuntime): Promise<{
   return {
     authState: await loadStoredAuthState(),
     codexConfig: structuredClone(DEFAULT_CODEX_CONFIG),
-  };
-}
-
-export async function readAccount(
-  runtime: BrowserRuntime,
-): Promise<{ account: Account | null; requiresOpenaiAuth: boolean }> {
-  return normalizeHostValue(await runtime.readAccount({ refreshToken: false })) as {
-    account: Account | null;
-    requiresOpenaiAuth: boolean;
-  };
-}
-
-export async function listModels(
-  runtime: BrowserRuntime,
-): Promise<{ data: ModelPreset[]; nextCursor: string | null }> {
-  return normalizeHostValue(await runtime.listModels({ cursor: null, limit: 20 })) as {
-    data: ModelPreset[];
-    nextCursor: string | null;
   };
 }
 
@@ -139,26 +108,26 @@ export async function runChatTurn(
   }
   await ensureThread(runtime);
   const turnId = `${TURN_PREFIX}-${turnCounter}`;
-  const dispatch = normalizeHostValue(
-    await runtime.runTurn({
-      threadId: THREAD_ID,
-      turnId,
-      input: [
-        {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text: message }],
-        },
-      ],
-      modelPayload: {
-        mode: "chat",
-        model: codexConfig.model.trim(),
-        authState,
-        account,
-        baseInstructions: demoInstructions.baseInstructions,
+  const dispatch = await runtime.runTurn({
+    threadId: THREAD_ID,
+    turnId,
+    input: [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: message }],
       },
-    }),
-  ) as RuntimeDispatch;
+    ],
+    modelPayload: {
+      mode: "chat",
+      model: codexConfig.model.trim(),
+      authState,
+      account,
+      baseInstructions: demoInstructions.baseInstructions,
+      reasoningEffort: codexConfig.modelReasoningEffort,
+      personality: codexConfig.personality,
+    },
+  });
 
   assertRuntimeDispatch(dispatch);
   return {
@@ -176,52 +145,42 @@ export async function resetThread(): Promise<void> {
 export async function bootstrapWebUi(): Promise<WebUiBootstrap> {
   console.info("[webui] bootstrap:start");
   const baseState = createInitialState();
-  const runtime = await loadRuntime();
-  const hydrated = await hydrateState(runtime);
+  const hydrated = await hydrateState();
   const state: DemoState = {
     ...baseState,
     ...hydrated,
-    runtime,
-    status: "Runtime ready.",
+    status: "Runtime bootstrap ready.",
     isError: false,
   };
-  const accountResult = await readAccount(runtime);
-  const modelResult = await listModels(runtime);
-  const nextState: DemoState = {
+  const nextState = await syncBootstrapState(state).catch((error) => ({
     ...state,
-    account: accountResult.account,
-    requiresOpenaiAuth: accountResult.requiresOpenaiAuth,
-    models: modelResult.data,
-    codexConfig: {
-      ...state.codexConfig,
-      model: selectModelId(modelResult.data, state.codexConfig.model),
-    },
-  };
+    runtime: null,
+    models: [],
+    status: `Router bootstrap pending: ${formatError(error)}`,
+    isError: true,
+  }));
   return {
-    runtime,
+    runtime: nextState.runtime,
     state: nextState,
     providerDraft: draftFromConfig(nextState.codexConfig),
   };
 }
 
-export async function refreshAccountAndModels(runtime: BrowserRuntime, state: DemoState): Promise<DemoState> {
-  const [accountResult, modelResult] = await Promise.all([readAccount(runtime), listModels(runtime)]);
+export async function refreshAccountAndModels(
+  runtime: BrowserRuntime | null,
+  state: DemoState,
+): Promise<DemoState> {
+  void runtime;
+  const nextState = await syncBootstrapState(state);
   return {
-    ...state,
-    account: accountResult.account,
-    requiresOpenaiAuth: accountResult.requiresOpenaiAuth,
-    models: modelResult.data,
-    codexConfig: {
-      ...state.codexConfig,
-      model: selectModelId(modelResult.data, state.codexConfig.model),
-    },
+    ...nextState,
     status: "Account and models refreshed.",
     isError: false,
   };
 }
 
 export async function refreshAccountAndModelsFromDraft(
-  runtime: BrowserRuntime,
+  runtime: BrowserRuntime | null,
   state: DemoState,
   draft: ProviderDraft,
 ): Promise<{ state: DemoState; providerDraft: ProviderDraft }> {
@@ -240,7 +199,7 @@ export async function refreshAccountAndModelsFromDraft(
 }
 
 export async function saveDraftProviderConfig(
-  runtime: BrowserRuntime,
+  runtime: BrowserRuntime | null,
   state: DemoState,
   draft: ProviderDraft,
 ): Promise<{ state: DemoState; providerDraft: ProviderDraft }> {
@@ -259,13 +218,14 @@ export async function saveDraftProviderConfig(
 }
 
 export async function clearSavedAuth(
-  runtime: BrowserRuntime,
+  runtime: BrowserRuntime | null,
   state: DemoState,
 ): Promise<{ state: DemoState; providerDraft: ProviderDraft }> {
   const cleared = await clearAuth(runtime);
   return {
     state: {
       ...state,
+      runtime: null,
       authState: cleared.authState,
       codexConfig: cleared.codexConfig,
       account: null,
@@ -384,7 +344,7 @@ function selectModelId(models: ModelPreset[], currentModel: string): string {
 }
 
 async function ensureThread(runtime: BrowserRuntime): Promise<void> {
-  const existing = await runtime.resumeThread({ threadId: THREAD_ID }).then(normalizeHostValue).catch(() => null);
+  const existing = await runtime.resumeThread({ threadId: THREAD_ID }).catch(() => null);
   if (existing !== null) {
     return;
   }
@@ -395,6 +355,61 @@ async function ensureThread(runtime: BrowserRuntime): Promise<void> {
       terminal: true,
     },
   });
+}
+
+async function hydrateState(): Promise<Partial<DemoState>> {
+  const [authState, codexConfig, demoInstructions] = await Promise.all([
+    loadStoredAuthState(),
+    loadStoredCodexConfig(),
+    loadStoredDemoInstructions(),
+    deleteStoredSession(THREAD_ID),
+  ]);
+  return {
+    authState,
+    codexConfig,
+    demoInstructions,
+    transcript: [],
+    runtime: null,
+  };
+}
+
+async function syncBootstrapState(state: DemoState): Promise<DemoState> {
+  const provider = getActiveProvider(state.codexConfig);
+  const apiKey = activeProviderApiKey(state.codexConfig);
+  const requiresOpenaiAuth = provider.providerKind === "openai" && apiKey.length === 0;
+  const account =
+    state.authState === null
+      ? null
+      : {
+          email: null,
+          planType: state.authState.chatgptPlanType,
+          chatgptAccountId: state.authState.chatgptAccountId,
+          authMode: state.authState.authMode,
+        };
+  const modelResult =
+    apiKey.length === 0
+      ? { data: [], nextCursor: null as string | null }
+      : await discoverModelsForConfig(state.codexConfig);
+  const codexConfig = {
+    ...state.codexConfig,
+    model: selectModelId(modelResult.data, state.codexConfig.model),
+  };
+  const runtime = codexConfig.model.length > 0 ? await loadRuntime() : null;
+
+  return {
+    ...state,
+    runtime,
+    account,
+    requiresOpenaiAuth,
+    models: modelResult.data,
+    codexConfig,
+    status:
+      apiKey.length === 0
+        ? "Waiting for router API key."
+        : runtime === null
+          ? "Select a model to enter the terminal."
+          : "Runtime ready.",
+  };
 }
 
 export { formatError };

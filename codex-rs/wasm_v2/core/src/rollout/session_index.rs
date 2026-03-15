@@ -7,7 +7,6 @@ use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
 
-use chrono::Utc;
 use codex_protocol::ThreadId;
 use serde::Deserialize;
 use serde::Serialize;
@@ -34,7 +33,7 @@ pub async fn append_thread_name(
     let entry = SessionIndexEntry {
         id: thread_id,
         thread_name: name.to_string(),
-        updated_at: Utc::now().to_rfc3339(),
+        updated_at: crate::time::now_rfc3339(),
     };
     append_session_index_entry(codex_home, &entry).await
 }

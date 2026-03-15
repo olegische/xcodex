@@ -2,6 +2,8 @@ use super::*;
 use crate::CodexAuth;
 use crate::compat::hooks::Hooks;
 use crate::compat::hooks::HooksConfig;
+use crate::compat::otel::current_span_w3c_trace_context;
+use crate::compat::rmcp::OAuthCredentialsStoreMode;
 use crate::config::ConfigBuilder;
 use crate::config::test_config;
 use crate::config_loader::ConfigLayerStack;
@@ -51,6 +53,7 @@ use crate::tasks::SessionTask;
 use crate::tasks::SessionTaskContext;
 use crate::tools::ToolRouter;
 use crate::tools::browser_host::UnavailableHostFs;
+use crate::tools::browser_host::UnavailableModelTransportHost;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolCall;
 use crate::tools::context::ToolInvocation;
@@ -2103,6 +2106,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
         AgentControl,
         Arc::new(UnavailableHostFs),
         Arc::new(UnavailableDiscoverableAppsProvider),
+        Arc::new(UnavailableModelTransportHost),
     )
     .await;
 
@@ -2132,6 +2136,7 @@ async fn spawn_browser_codex_preserves_browser_host_providers() {
         parent_trace: None,
         browser_fs: Arc::new(RecordingHostFs),
         discoverable_apps_provider: Arc::new(RecordingDiscoverableAppsProvider),
+        model_transport_host: Arc::new(UnavailableModelTransportHost),
     })
     .await
     .expect("spawn browser codex");
@@ -2292,6 +2297,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
             config.features.enabled(Feature::EnableRequestCompression),
             config.features.enabled(Feature::RuntimeMetrics),
             Session::build_model_client_beta_features_header(config.as_ref()),
+            Arc::new(UnavailableModelTransportHost),
         ),
         code_mode_service: crate::tools::code_mode::CodeModeService::new(
             config.js_repl_node_path.clone(),
@@ -2933,6 +2939,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
             config.features.enabled(Feature::EnableRequestCompression),
             config.features.enabled(Feature::RuntimeMetrics),
             Session::build_model_client_beta_features_header(config.as_ref()),
+            Arc::new(UnavailableModelTransportHost),
         ),
         code_mode_service: crate::tools::code_mode::CodeModeService::new(
             config.js_repl_node_path.clone(),

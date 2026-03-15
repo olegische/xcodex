@@ -1,5 +1,6 @@
 use super::*;
 use crate::UnavailableHostFs;
+use crate::UnavailableModelTransportHost;
 use crate::config_loader::ConfigLayerEntry;
 use crate::config_loader::ConfigRequirements;
 use crate::config_loader::ConfigRequirementsToml;
@@ -311,6 +312,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         parent_trace: None,
         browser_fs: Arc::new(UnavailableHostFs),
         discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
+        model_transport_host: Arc::new(UnavailableModelTransportHost),
     })
     .await
     .expect("spawn guardian subagent");

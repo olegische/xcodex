@@ -424,7 +424,7 @@ pub(crate) async fn run_turn(
                             session_id: sess.conversation_id,
                             cwd: turn_context.cwd.clone(),
                             client: turn_context.app_server_client_name.clone(),
-                            triggered_at: chrono::Utc::now(),
+                            triggered_at: crate::time::now_utc(),
                             hook_event: HookEvent::AfterAgent {
                                 event: HookEventAfterAgent {
                                     thread_id: sess.conversation_id,

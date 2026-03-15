@@ -3,13 +3,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::Utc;
 use codex_protocol::ThreadId;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::ResumedHistory;
 use codex_protocol::protocol::RolloutItem;
+#[cfg(not(target_arch = "wasm32"))]
 use codex_protocol::protocol::RolloutLine;
 use codex_protocol::protocol::SessionMeta;
 use codex_protocol::protocol::SessionMetaLine;
@@ -102,7 +102,7 @@ impl RolloutRecorder {
                     meta: SessionMeta {
                         id: conversation_id,
                         forked_from_id,
-                        timestamp: Utc::now().to_rfc3339(),
+                        timestamp: crate::time::now_rfc3339(),
                         cwd: config.codex_home.clone(),
                         originator: "wasm_v2".to_string(),
                         cli_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -292,7 +292,7 @@ impl RolloutRecorder {
 }
 
 fn rollout_path_for_new_session(config: &Config, conversation_id: ThreadId) -> PathBuf {
-    let timestamp = Utc::now().format("%Y-%m-%dT%H-%M-%S");
+    let timestamp = crate::time::now_utc().format("%Y-%m-%dT%H-%M-%S");
     config
         .codex_home
         .join(SESSIONS_SUBDIR)
@@ -305,7 +305,7 @@ async fn write_rollout_item(
     rollout_item: &RolloutItem,
 ) -> std::io::Result<()> {
     let line = RolloutLine {
-        timestamp: Utc::now().to_rfc3339(),
+        timestamp: crate::time::now_rfc3339(),
         item: rollout_item.clone(),
     };
     let mut json = serde_json::to_string(&line).map_err(IoError::other)?;

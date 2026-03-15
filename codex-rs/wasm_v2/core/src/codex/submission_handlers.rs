@@ -55,6 +55,7 @@ use tracing::warn;
 use crate::compat::rmcp::ElicitationAction;
 use crate::compat::rmcp::ElicitationResponse;
 use crate::compat::rmcp::NumberOrString;
+use crate::compat::task;
 pub async fn interrupt(sess: &Arc<Session>) {
     sess.interrupt_task().await;
 }
@@ -151,7 +152,7 @@ pub async fn run_user_shell_command(sess: &Arc<Session>, sub_id: String, command
         sess.active_turn_context_and_cancellation_token().await
     {
         let session = Arc::clone(sess);
-        tokio::spawn(async move {
+        task::spawn_detached(async move {
             execute_user_shell_command(
                 session,
                 turn_context,
@@ -285,7 +286,7 @@ pub async fn dynamic_tool_response(sess: &Arc<Session>, id: String, response: Dy
 pub async fn add_to_history(sess: &Arc<Session>, config: &Arc<Config>, text: String) {
     let id = sess.conversation_id;
     let config = Arc::clone(config);
-    tokio::spawn(async move {
+    task::spawn_detached(async move {
         if let Err(e) = crate::message_history::append_entry(&text, &id, &config).await {
             warn!("failed to append to message history: {e}");
         }
@@ -302,7 +303,7 @@ pub async fn get_history_entry_request(
     let config = Arc::clone(config);
     let sess_clone = Arc::clone(sess);
 
-    tokio::spawn(async move {
+    task::spawn_detached(async move {
         let entries = crate::message_history::lookup(&log_id.to_string(), offset as i64, &config)
             .await
             .unwrap_or_default();

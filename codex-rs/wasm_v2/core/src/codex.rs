@@ -51,8 +51,6 @@ use crate::util::error_or_panic;
 use crate::ws_version_from_features;
 use async_channel::Receiver;
 use async_channel::Sender;
-use chrono::Local;
-use chrono::Utc;
 use codex_app_server_protocol::McpServerElicitationRequest;
 use codex_app_server_protocol::McpServerElicitationRequestParams;
 use codex_protocol::ThreadId;
@@ -111,7 +109,6 @@ use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::debug;
@@ -144,13 +141,11 @@ use crate::compat::network::normalize_host;
 use crate::compat::otel::SessionTelemetry;
 use crate::compat::otel::TelemetryAuthMode;
 use crate::compat::otel::current_span_trace_id;
-use crate::compat::otel::current_span_w3c_trace_context;
 use crate::compat::otel::metrics::names::THREAD_STARTED_METRIC;
 use crate::compat::otel::set_parent_from_w3c_trace_context;
 use crate::compat::rmcp::ElicitationResponse;
 use crate::compat::rmcp::ListResourceTemplatesResult;
 use crate::compat::rmcp::ListResourcesResult;
-use crate::compat::rmcp::OAuthCredentialsStoreMode;
 use crate::compat::rmcp::PaginatedRequestParams;
 use crate::compat::rmcp::ReadResourceRequestParams;
 use crate::compat::rmcp::ReadResourceResult;
@@ -204,6 +199,7 @@ use plan_mode::handle_assistant_item_done_in_plan_mode;
 pub(super) use plan_mode::realtime_text_for_event;
 use prompt::build_prompt;
 use review::spawn_review_thread;
+#[cfg(test)]
 pub(crate) use run_turn::collect_explicit_app_ids_from_skill_items;
 pub(crate) use run_turn::filter_codex_apps_mcp_tools;
 pub(crate) use run_turn::filter_connectors_for_input;
@@ -219,8 +215,11 @@ use session::TurnSkillsContext;
 use session::local_time_context;
 use skills::errors_to_info;
 use skills::skills_to_info;
+#[cfg(test)]
 pub(crate) use spawn::completed_session_loop_termination;
+#[cfg(test)]
 pub(crate) use spawn::session_loop_termination_from_handle;
+#[cfg(test)]
 pub(crate) use submission::submission_dispatch_span;
 use submission::submission_loop;
 pub(crate) use submission_handlers as handlers;
@@ -236,6 +235,7 @@ pub use types::SteerInputError;
 use crate::exec_policy::ExecPolicyUpdateError;
 use crate::feedback_tags;
 use crate::file_watcher::FileWatcher;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::file_watcher::FileWatcherEvent;
 use crate::git_info::get_git_repo_root;
 use crate::instructions::UserInstructions;
@@ -475,10 +475,14 @@ impl Session {
         self.out_of_band_elicitation_paused.send_replace(paused);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn start_file_watcher_listener(self: &Arc<Self>) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn start_file_watcher_listener(self: &Arc<Self>) {
         let mut rx = self.services.file_watcher.subscribe();
         let weak_sess = Arc::downgrade(self);
-        tokio::spawn(async move {
+        crate::compat::task::spawn_detached(async move {
             loop {
                 match rx.recv().await {
                     Ok(FileWatcherEvent::SkillsChanged { .. }) => {
@@ -606,6 +610,7 @@ impl Session {
         agent_control: AgentControl,
         browser_fs: Arc<dyn crate::HostFs>,
         discoverable_apps_provider: Arc<dyn crate::DiscoverableAppsProvider>,
+        model_transport_host: Arc<dyn crate::ModelTransportHost>,
     ) -> anyhow::Result<Arc<Self>> {
         debug!(
             "Configuring session: model={}; provider={:?}",
@@ -617,6 +622,16 @@ impl Session {
                 "zsh fork feature enabled, but `zsh_path` is not configured; set `zsh_path` in config.toml"
             ));
         }
+        #[cfg(target_arch = "wasm32")]
+        if !session_configuration.cwd.is_absolute()
+            && !session_configuration.cwd.to_string_lossy().starts_with('/')
+        {
+            return Err(anyhow::anyhow!(
+                "cwd is not absolute: {:?}",
+                session_configuration.cwd
+            ));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         if !session_configuration.cwd.is_absolute() {
             return Err(anyhow::anyhow!(
                 "cwd is not absolute: {:?}",
@@ -995,6 +1010,7 @@ impl Session {
                 config.features.enabled(Feature::EnableRequestCompression),
                 config.features.enabled(Feature::RuntimeMetrics),
                 Self::build_model_client_beta_features_header(config.as_ref()),
+                model_transport_host,
             ),
             code_mode_service: crate::tools::code_mode::CodeModeService::new(
                 config.js_repl_node_path.clone(),

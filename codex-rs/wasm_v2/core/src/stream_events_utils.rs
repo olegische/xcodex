@@ -2,7 +2,9 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
+#[cfg(not(target_arch = "wasm32"))]
 use base64::Engine;
+#[cfg(not(target_arch = "wasm32"))]
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use codex_protocol::config_types::ModeKind;
 use codex_protocol::items::TurnItem;
@@ -113,6 +115,7 @@ fn response_input_to_response_item(input: &ResponseInputItem) -> Option<Response
 }
 
 async fn save_image_generation_result(call_id: &str, result: &str) -> Result<PathBuf> {
+    #[cfg(not(target_arch = "wasm32"))]
     let bytes = BASE64_STANDARD
         .decode(result.trim().as_bytes())
         .map_err(|err| {
@@ -134,7 +137,7 @@ async fn save_image_generation_result(call_id: &str, result: &str) -> Result<Pat
     let path = default_image_generation_output_dir().join(format!("{file_stem}.png"));
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = path;
+        let _ = (path, result);
         return Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "image file writes are not available in wasm32",
@@ -142,8 +145,10 @@ async fn save_image_generation_result(call_id: &str, result: &str) -> Result<Pat
         .into());
     }
     #[cfg(not(target_arch = "wasm32"))]
-    tokio::fs::write(&path, bytes).await?;
-    Ok(path)
+    {
+        tokio::fs::write(&path, bytes).await?;
+        Ok(path)
+    }
 }
 
 pub(crate) async fn record_completed_response_item(

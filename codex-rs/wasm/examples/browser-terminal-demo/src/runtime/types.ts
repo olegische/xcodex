@@ -226,7 +226,7 @@ export type ProviderDraft = {
 };
 
 export type WebUiBootstrap = {
-  runtime: BrowserRuntime;
+  runtime: BrowserRuntime | null;
   state: DemoState;
   providerDraft: ProviderDraft;
 };
@@ -239,7 +239,7 @@ export type SendTurnResult = {
 
 export type RuntimeModule = {
   default(input?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module): Promise<void>;
-  WasmBrowserRuntime: new (host: BrowserRuntimeHost) => BrowserRuntime;
+  WasmBrowserRuntime: new (host: BrowserRuntimeHost) => WasmProtocolRuntime;
 };
 
 export type XrouterRuntimeModule = {
@@ -262,47 +262,31 @@ export type XrouterBrowserClient = {
 };
 
 export type BrowserRuntimeHost = {
-  loadSession(threadId: string): Promise<SessionSnapshot | null>;
-  loadInstructions(threadId: string): Promise<InstructionSnapshot | null>;
-  saveSession(snapshot: SessionSnapshot): Promise<void>;
-  loadAuthState(): Promise<AuthState | null>;
-  saveAuthState(authState: AuthState): Promise<void>;
-  clearAuthState(): Promise<void>;
-  readAccount(request: { refreshToken: boolean }): Promise<JsonValue>;
-  listModels(request: { cursor: string | null; limit: number | null }): Promise<JsonValue>;
-  refreshAuth(context: JsonValue): Promise<JsonValue>;
+  loadBootstrap(request: unknown): Promise<{
+    codexHome: string;
+    cwd?: string | null;
+    model?: string | null;
+    modelProviderId?: string | null;
+    modelProvider?: JsonValue;
+    reasoningEffort?: string | null;
+    personality?: string | null;
+    baseInstructions?: string | null;
+    developerInstructions?: string | null;
+    userInstructions?: string | null;
+    apiKey?: string | null;
+    ephemeral?: boolean;
+  }>;
   readFile(request: JsonValue): Promise<JsonValue>;
   listDir(request: JsonValue): Promise<JsonValue>;
   search(request: JsonValue): Promise<JsonValue>;
-  writeFile(request: JsonValue): Promise<JsonValue>;
   applyPatch(request: JsonValue): Promise<JsonValue>;
-  updatePlan(request: JsonValue): Promise<void>;
-  requestUserInput(request: JsonValue): Promise<JsonValue>;
-  listTools(): Promise<HostToolSpec[]>;
-  invokeTool(request: JsonValue): Promise<JsonValue>;
-  cancelTool(callId: string): Promise<void>;
-  emitNotification(notification: JsonValue): Promise<void>;
-  startModelTurn(request: JsonValue): Promise<JsonValue>;
-  cancelModelTurn(requestId: string): Promise<void>;
+  listDiscoverableApps?(request: JsonValue): Promise<JsonValue>;
+  runModelTurn?(request: JsonValue): Promise<JsonValue>;
 };
 
-export type HostToolSpec = {
-  toolName: string;
-  toolNamespace: string | null;
-  description: string;
-  inputSchema: JsonValue;
+export type WasmProtocolRuntime = {
+  send(message: JsonValue): Promise<JsonValue>;
+  nextMessage(): Promise<JsonValue>;
+  runtimeInfo(): JsonValue;
+  contractVersion(): string;
 };
-
-export type ActiveModelRequest =
-  | {
-      kind: "xrouter";
-      requestId: string;
-      cancel: () => void;
-      isCancelled: () => boolean;
-    }
-  | {
-      kind: "responses";
-      requestId: string;
-      cancel: () => void;
-      isCancelled: () => boolean;
-    };

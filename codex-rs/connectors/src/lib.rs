@@ -3,6 +3,7 @@ use std::future::Future;
 use std::sync::LazyLock;
 use std::sync::Mutex as StdMutex;
 use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 
 use codex_app_server_protocol::AppBranding;
@@ -39,6 +40,7 @@ impl AllConnectorsCacheKey {
 #[derive(Clone)]
 struct CachedAllConnectors {
     key: AllConnectorsCacheKey,
+    #[cfg(not(target_arch = "wasm32"))]
     expires_at: Instant,
     connectors: Vec<AppInfo>,
 }
@@ -75,8 +77,17 @@ pub fn cached_all_connectors(cache_key: &AllConnectorsCacheKey) -> Option<Vec<Ap
     let mut cache_guard = ALL_CONNECTORS_CACHE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = cache_key;
+        *cache_guard = None;
+        return None;
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     let now = Instant::now();
 
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(cached) = cache_guard.as_ref() {
         if now < cached.expires_at && cached.key == *cache_key {
             return Some(cached.connectors.clone());
@@ -135,11 +146,21 @@ fn write_cached_all_connectors(cache_key: AllConnectorsCacheKey, connectors: &[A
     let mut cache_guard = ALL_CONNECTORS_CACHE
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    *cache_guard = Some(CachedAllConnectors {
-        key: cache_key,
-        expires_at: Instant::now() + CONNECTORS_CACHE_TTL,
-        connectors: connectors.to_vec(),
-    });
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = cache_key;
+        let _ = connectors;
+        *cache_guard = None;
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        *cache_guard = Some(CachedAllConnectors {
+            key: cache_key,
+            expires_at: Instant::now() + CONNECTORS_CACHE_TTL,
+            connectors: connectors.to_vec(),
+        });
+    }
 }
 
 async fn list_directory_connectors<F, Fut>(fetch_page: &mut F) -> anyhow::Result<Vec<DirectoryApp>>

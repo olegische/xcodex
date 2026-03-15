@@ -6,7 +6,7 @@ use crate::codex::TurnContext;
 pub struct TurnTimingState;
 
 impl TurnTimingState {
-    pub(crate) async fn mark_turn_started(&self, _started_at: std::time::Instant) {}
+    pub(crate) async fn mark_turn_started(&self, _started_at: crate::time::Instant) {}
 }
 
 pub async fn record_turn_ttfm_metric(_turn_context: &TurnContext, _item: &TurnItem) {}

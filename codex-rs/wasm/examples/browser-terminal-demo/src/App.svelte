@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount } from "svelte";
+  import XtermTerminal from "./lib/XtermTerminal.svelte";
 
   import { collaborationStore } from "./stores/collaboration";
   import {
@@ -22,6 +23,7 @@
     type ProviderDraft,
     type RuntimeActivity,
   } from "./runtime";
+  import { buildStatusLines } from "./runtime/status-board";
 
   const activityLimit = 80;
 
@@ -35,9 +37,9 @@
   let pendingUserText: string | null = null;
   let activeRequestId: string | null = null;
   let runtimeActivities: RuntimeActivity[] = [];
-  let terminalViewport: HTMLDivElement | null = null;
   let approvalAnswers: Record<string, string> = {};
   let approvalRequestId: string | null = null;
+  let settingsOpen = false;
 
   state = createInitialState();
   providerDraft = draftFromConfig(state.codexConfig);
@@ -45,12 +47,28 @@
   $: collaborationState = $collaborationStore;
   $: currentApproval = collaborationState.currentRequest;
   $: promptDisabled = state.runtime === null || running;
-  $: setupRequired = !booting && providerDraft.apiKey.trim().length === 0;
+  $: setupRequired = !booting && (providerDraft.apiKey.trim().length === 0 || state.runtime === null);
+  $: selectedModelLabel =
+    providerDraft.model.trim() ||
+    state.codexConfig.model ||
+    state.models.find((model) => model.isDefault)?.id ||
+    state.models[0]?.id ||
+    "no-model";
+  $: if (setupRequired) {
+    settingsOpen = true;
+  }
   $: visibleTranscript = pendingUserText === null
     ? state.transcript
     : [...state.transcript, { role: "user" as const, text: pendingUserText }];
   $: activityLines = runtimeActivities.slice(-12).map(formatActivityLine);
-  $: void scrollTerminal();
+  $: statusLines = buildStatusLines({
+    state,
+    runtimeActivities,
+    running,
+    activeRequestId,
+    pendingPrompt: prompt,
+    approvalCount: currentApproval === null ? 0 : 1,
+  });
   $: if (currentApproval?.id !== approvalRequestId) {
     approvalRequestId = currentApproval?.id ?? null;
     approvalAnswers = {};
@@ -159,9 +177,6 @@
   }
 
   async function handleSaveConfig() {
-    if (state.runtime === null) {
-      return;
-    }
     try {
       const saved = await saveDraftProviderConfig(state.runtime, state, providerDraft);
       state = saved.state;
@@ -176,9 +191,6 @@
   }
 
   async function handleRefreshModels() {
-    if (state.runtime === null) {
-      return;
-    }
     try {
       const refreshed = await refreshAccountAndModelsFromDraft(state.runtime, state, providerDraft);
       state = refreshed.state;
@@ -193,9 +205,6 @@
   }
 
   async function handleClearAuth() {
-    if (state.runtime === null) {
-      return;
-    }
     try {
       const cleared = await clearSavedAuth(state.runtime, state);
       state = cleared.state;
@@ -245,14 +254,6 @@
       value: approvalAnswers[question.id] ?? "",
     }));
     collaborationStore.submitCurrentAnswer(answers);
-  }
-
-  async function scrollTerminal() {
-    await tick();
-    terminalViewport?.scrollTo({
-      top: terminalViewport.scrollHeight,
-      behavior: "smooth",
-    });
   }
 
   function formatBootError(error: unknown): string {
@@ -311,27 +312,13 @@
 </svelte:head>
 
 <div class="terminal-app">
-  <header class="terminal-header">
-    <div>
-      <p class="eyebrow">Codex WASM</p>
-      <h1>Browser Terminal Demo</h1>
-    </div>
-    <div class="status-cluster">
-      <span class:error={state.isError} class="status-pill">
-        {booting ? "booting" : running ? "running" : "ready"}
-      </span>
-      <span class="status-pill dim">{transportLabel(providerDraft)}</span>
-      <span class="status-pill dim">{state.codexConfig.model || "no-model"}</span>
-    </div>
-  </header>
-
-  <div class="terminal-frame">
-    {#if setupRequired}
+  {#if setupRequired}
+    <div class="terminal-frame">
       <div class="setup-screen">
         <div class="terminal-meta">
           <span>router: required</span>
-          <span>status: waiting for api key</span>
-          <span>models: load after auth</span>
+          <span>status: {state.status}</span>
+          <span>models: {state.models.length === 0 ? "load after auth" : state.models.length}</span>
         </div>
 
         <div class="setup-panel">
@@ -384,90 +371,126 @@
           </div>
 
           <div class="panel-actions">
-            <button type="button" on:click={handleSaveConfig} disabled={state.runtime === null || running || providerDraft.apiKey.trim().length === 0}>
+            <button type="button" on:click={handleSaveConfig} disabled={running || providerDraft.apiKey.trim().length === 0}>
               continue
             </button>
           </div>
         </div>
       </div>
-    {:else}
-      <div class="terminal-meta">
-        <span>status: {state.status}</span>
-        <span>account: {state.account?.authMode ?? "api-key"}</span>
-        <span>tools: {CONNECTED_TOOL_NAMES.join(", ")}</span>
-      </div>
+    </div>
+  {:else}
+    <div class="workspace-shell">
+      <button
+        type="button"
+        class="floating-settings-button"
+        on:click={() => {
+          settingsOpen = !settingsOpen;
+        }}
+      >
+        settings
+      </button>
 
-      <div bind:this={terminalViewport} class="terminal-viewport">
-        <div class="terminal-block">
-          <div class="terminal-line system">
-            <span class="prompt-mark">::</span>
-            <span>Codex browser runtime booted from `ai-aware-web` wrapper.</span>
+      <aside class="terminal-sidebar">
+        <div class="sidebar-panel-header">
+          <div>
+            <p class="app-kicker">Browser Runtime</p>
+            <h2>Codex Browser Terminal</h2>
           </div>
+          <button
+            type="button"
+            class="header-button"
+            on:click={() => {
+              settingsOpen = !settingsOpen;
+            }}
+          >
+            settings
+          </button>
+        </div>
 
-          {#each visibleTranscript as entry}
-            <div class={`terminal-line ${entry.role}`}>
-              <span class="prompt-mark">{entry.role === "user" ? "$" : entry.role === "assistant" ? ">" : "@"}</span>
-              <pre>{entry.text}</pre>
+        <div class="sidebar-header">runtime</div>
+        {#each statusLines as line}
+          <div class="terminal-line status">
+            <span class="prompt-mark">%</span>
+            <pre>{line}</pre>
+          </div>
+        {/each}
+
+        <div class="sidebar-header">activity</div>
+        {#if activityLines.length === 0}
+          <div class="terminal-line activity">
+            <span class="prompt-mark">#</span>
+            <pre>idle</pre>
+          </div>
+        {:else}
+          {#each activityLines as line}
+            <div class="terminal-line activity">
+              <span class="prompt-mark">#</span>
+              <pre>{line}</pre>
             </div>
           {/each}
+        {/if}
 
-          {#if running && liveAssistantText.length > 0}
-            <div class="terminal-line assistant live">
-              <span class="prompt-mark">&gt;</span>
-              <pre>{liveAssistantText}</pre>
-            </div>
-          {/if}
-
-          {#if activityLines.length > 0}
-            <div class="terminal-section-label">runtime activity</div>
-            {#each activityLines as line}
-              <div class="terminal-line activity">
-                <span class="prompt-mark">#</span>
-                <pre>{line}</pre>
-              </div>
-            {/each}
-          {/if}
+        <div class="sidebar-header">session</div>
+        <div class="terminal-line status">
+          <span class="prompt-mark">%</span>
+          <pre>status       {state.status}</pre>
         </div>
-      </div>
+        <div class="terminal-line status">
+          <span class="prompt-mark">%</span>
+          <pre>account      {state.account?.authMode ?? "api-key"}</pre>
+        </div>
+        <div class="terminal-line status">
+          <span class="prompt-mark">%</span>
+          <pre>tools        {CONNECTED_TOOL_NAMES.length}</pre>
+        </div>
+      </aside>
 
-      <div class="terminal-composer">
-        <label class="composer-label" for="prompt">prompt</label>
-        <textarea
-          id="prompt"
-          bind:value={prompt}
-          class="prompt-input"
-          disabled={promptDisabled}
-          rows="4"
-          placeholder={booting ? "Booting runtime…" : "Ask Codex to inspect, patch, plan, or read workspace files."}
-          on:keydown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-              event.preventDefault();
-              void handleSendTurn();
-            }
+      <section class="terminal-surface">
+        <div class="terminal-viewport">
+          <div class="terminal-block">
+            <XtermTerminal
+              transcript={visibleTranscript}
+              liveAssistantText={liveAssistantText}
+              {running}
+              disabled={promptDisabled}
+              model={selectedModelLabel}
+              cwd="~/workspace"
+              on:draftchange={(event) => {
+                prompt = event.detail.value;
+              }}
+              on:submit={(event) => {
+                prompt = event.detail.value;
+                void handleSendTurn();
+              }}
+              on:cancel={() => {
+                void handleStopTurn();
+              }}
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  {/if}
+
+  {#if settingsOpen}
+    <aside class="settings-drawer">
+      <div class="settings-drawer-header">
+        <div>
+          <p class="app-kicker">Runtime Config</p>
+          <h2>Router and model settings</h2>
+        </div>
+        <button
+          type="button"
+          class="header-button"
+          on:click={() => {
+            settingsOpen = false;
           }}
-        />
-        <div class="composer-actions">
-          <button class="ghost" type="button" on:click={handleResetThread} disabled={state.runtime === null || running}>
-            reset
-          </button>
-          <button class="ghost" type="button" on:click={handleRefreshModels} disabled={state.runtime === null || running}>
-            refresh
-          </button>
-          <button class="ghost" type="button" on:click={handleStopTurn} disabled={!running || activeRequestId === null}>
-            stop
-          </button>
-          <button type="button" on:click={handleSendTurn} disabled={promptDisabled || prompt.trim().length === 0}>
-            send
-          </button>
-        </div>
+        >
+          close
+        </button>
       </div>
-    {/if}
-  </div>
 
-  <section class="terminal-panels">
-    {#if !setupRequired}
-    <details class="terminal-panel" open>
-      <summary>runtime config</summary>
+      <div class="terminal-panel settings-panel">
       <div class="panel-grid">
         <label>
           <span>xrouter provider</span>
@@ -505,7 +528,15 @@
 
         <label>
           <span>model</span>
-          <input bind:value={providerDraft.model} disabled={running} list="model-options" />
+          <select bind:value={providerDraft.model} disabled={running}>
+            {#if state.models.length === 0}
+              <option value="">No models loaded</option>
+            {:else}
+              {#each state.models as model}
+                <option value={model.id}>{model.displayName}</option>
+              {/each}
+            {/if}
+          </select>
         </label>
 
         <label>
@@ -529,26 +560,19 @@
         </label>
       </div>
 
-      <datalist id="model-options">
-        {#each state.models as model}
-          <option value={model.id}>{model.displayName}</option>
-        {/each}
-      </datalist>
-
       <div class="panel-actions">
-        <button class="ghost" type="button" on:click={handleClearAuth} disabled={state.runtime === null || running}>
+        <button class="ghost" type="button" on:click={handleClearAuth} disabled={running}>
           clear auth
         </button>
-        <button type="button" on:click={handleSaveConfig} disabled={state.runtime === null || running}>
+        <button type="button" on:click={handleSaveConfig} disabled={running}>
           save config
         </button>
       </div>
-    </details>
-    {/if}
+      </div>
 
-    {#if currentApproval !== null}
-      <details class="terminal-panel approval-panel" open>
-        <summary>approval required</summary>
+      {#if currentApproval !== null}
+        <details class="terminal-panel approval-panel" open>
+          <summary>approval required</summary>
         {#each currentApproval.questions as question}
           <div class="approval-question">
             <p>{question.question}</p>
@@ -578,7 +602,8 @@
             submit answers
           </button>
         </div>
-      </details>
-    {/if}
-  </section>
+        </details>
+      {/if}
+    </aside>
+  {/if}
 </div>

@@ -29,6 +29,7 @@ pub async fn spawn_browser_codex(args: BrowserCodexSpawnArgs) -> CodexResult<Cod
         parent_trace,
         browser_fs,
         discoverable_apps_provider,
+        model_transport_host,
     } = args;
 
     let auth_manager = AuthManager::from_auth(config.codex_home.clone(), auth);
@@ -65,6 +66,7 @@ pub async fn spawn_browser_codex(args: BrowserCodexSpawnArgs) -> CodexResult<Cod
         parent_trace,
         browser_fs,
         discoverable_apps_provider,
+        model_transport_host,
     })
     .await
 }

@@ -1,19 +1,19 @@
 use std::sync::Arc;
-use std::time::Instant;
 
 use futures::FutureExt;
 use tokio::sync::RwLock;
 use tokio_util::either::Either;
 use tokio_util::sync::CancellationToken;
-use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
 use tracing::instrument;
 use tracing::trace_span;
 
 use crate::codex::Session;
 use crate::codex::TurnContext;
+use crate::compat::task;
 use crate::error::CodexErr;
 use crate::function_tool::FunctionCallError;
+use crate::time::Instant;
 use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::context::ToolCall;
 use crate::tools::context::ToolPayload;
@@ -74,37 +74,36 @@ impl ToolCallRuntime {
             aborted = false,
         );
 
-        let handle: AbortOnDropHandle<Result<ResponseInputItem, FunctionCallError>> =
-            AbortOnDropHandle::new(tokio::spawn(async move {
-                tokio::select! {
-                    _ = cancellation_token.cancelled() => {
-                        let secs = started.elapsed().as_secs_f32().max(0.1);
-                        dispatch_span.record("aborted", true);
-                        Ok(Self::aborted_response(&call, secs))
-                    },
-                    res = async {
-                        let _guard = if supports_parallel {
-                            Either::Left(lock.read().await)
-                        } else {
-                            Either::Right(lock.write().await)
-                        };
+        let handle = task::spawn_task(async move {
+            tokio::select! {
+                _ = cancellation_token.cancelled() => {
+                    let secs = started.elapsed().as_secs_f32().max(0.1);
+                    dispatch_span.record("aborted", true);
+                    Ok(Self::aborted_response(&call, secs))
+                },
+                res = async {
+                    let _guard = if supports_parallel {
+                        Either::Left(lock.read().await)
+                    } else {
+                        Either::Right(lock.write().await)
+                    };
 
-                        router
-                            .dispatch_tool_call(
-                                session,
-                                turn,
-                                tracker,
-                                call.clone(),
-                                crate::tools::router::ToolCallSource::Direct,
-                            )
-                            .instrument(dispatch_span.clone())
-                            .await
-                    } => res,
-                }
-            }));
+                    router
+                        .dispatch_tool_call(
+                            session,
+                            turn,
+                            tracker,
+                            call.clone(),
+                            crate::tools::router::ToolCallSource::Direct,
+                        )
+                        .instrument(dispatch_span.clone())
+                        .await
+                } => res,
+            }
+        });
 
         async move {
-            match handle.await {
+            match handle.join().await {
                 Ok(Ok(response)) => Ok(response),
                 Ok(Err(FunctionCallError::Fatal(message))) => Err(CodexErr::Fatal(message)),
                 Ok(Err(other)) => Err(CodexErr::Fatal(other.to_string())),

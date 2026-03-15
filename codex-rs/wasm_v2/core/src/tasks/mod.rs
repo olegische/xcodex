@@ -7,13 +7,11 @@ mod user_shell;
 
 use std::sync::Arc;
 use std::time::Duration;
-use std::time::Instant;
 
 use async_trait::async_trait;
 use tokio::select;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
-use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
 use tracing::info_span;
 use tracing::warn;
@@ -22,6 +20,7 @@ use crate::AuthManager;
 use crate::codex::Session;
 use crate::codex::TurnContext;
 use crate::compat::otel::metrics::names::TURN_E2E_DURATION_METRIC;
+use crate::compat::task;
 use crate::contextual_user_message::TURN_ABORTED_OPEN_TAG;
 use crate::event_mapping::parse_turn_item;
 use crate::models_manager::manager::ModelsManager;
@@ -34,6 +33,7 @@ use crate::protocol::TurnCompleteEvent;
 use crate::state::ActiveTurn;
 use crate::state::RunningTask;
 use crate::state::TaskKind;
+use crate::time::Instant;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseInputItem;
@@ -132,7 +132,7 @@ impl Session {
                 turn.id = %turn_context.sub_id,
                 model = %turn_context.model_info.slug,
             );
-            tokio::spawn(
+            task::spawn_task(
                 async move {
                     let ctx_for_finish = Arc::clone(&ctx);
                     let last_agent_message = task_for_run
@@ -154,10 +154,11 @@ impl Session {
                 .instrument(task_span),
             )
         };
+        let abort_handle = handle.abort_handle();
 
         let running_task = RunningTask {
             done,
-            handle: Arc::new(AbortOnDropHandle::new(handle)),
+            handle: abort_handle,
             kind: task_kind,
             task,
             cancellation_token,
@@ -274,7 +275,7 @@ impl Session {
 
         select! {
             _ = task.done.notified() => {}
-            _ = tokio::time::sleep(Duration::from_millis(GRACEFULL_INTERRUPTION_TIMEOUT_MS)) => {
+            _ = crate::time::sleep(Duration::from_millis(GRACEFULL_INTERRUPTION_TIMEOUT_MS)) => {
                 warn!("task {sub_id} didn't complete gracefully after {GRACEFULL_INTERRUPTION_TIMEOUT_MS}ms");
             }
         }

@@ -14,9 +14,21 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [dependencies]
+anyhow = { workspace = true }
+async-channel = { workspace = true }
+async-trait = { workspace = true }
+console_error_panic_hook = "0.1.7"
+codex-app-server-protocol = { workspace = true }
+codex-protocol = { workspace = true }
+codex-wasm-v2-core = { path = "../core" }
 js-sys = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde-wasm-bindgen = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true, features = ["console"] }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

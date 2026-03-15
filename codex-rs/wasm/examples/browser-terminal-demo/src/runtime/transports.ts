@@ -1,8 +1,11 @@
+import OpenAI from "openai";
 import { emitRuntimeActivity, registerActiveModelRequest, unregisterActiveModelRequest } from "./activity";
 import { loadXrouterRuntime } from "./assets";
 import { assistantTextFromResponseItem, isCompletedEvent, isOutputItemDoneEvent } from "./transcript";
 import { activeProviderApiKey, createHostError, getActiveProvider, isAbortError, modelIdToDisplayName, normalizeDiscoveredModels, normalizeHostValue } from "./utils";
 import type { CodexCompatibleConfig, JsonValue, ModelPreset, XrouterBrowserClient } from "./types";
+
+const deltaLogState = new Map<string, { count: number; announcedStreaming: boolean; textParts: string[] }>();
 
 export async function discoverProviderModels(
   codexConfig: CodexCompatibleConfig,
@@ -56,6 +59,7 @@ export async function runResponsesApiTurn(params: {
   baseUrl: string;
   apiKey: string;
   requestBody: Record<string, unknown>;
+  extraHeaders: Record<string, string> | null;
 }): Promise<JsonValue> {
   const abortController = new AbortController();
   let cancelled = false;
@@ -68,86 +72,65 @@ export async function runResponsesApiTurn(params: {
     },
     isCancelled: () => cancelled,
   });
+  const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
 
-  const response = await sendJsonRequestWithFallback({
-    urls: candidateApiUrls(params.baseUrl, "responses"),
-    method: "POST",
-    apiKey: params.apiKey,
-    signal: abortController.signal,
-    body: params.requestBody,
-    fallbackMessage: "responses request failed",
-  }).catch((error) => {
-    unregisterActiveModelRequest(params.requestId);
+  try {
+    // The official OpenAI SDK is the source of truth for the Responses API wire contract.
+    // The browser host should forward the request body as-is instead of remapping it locally.
+    const client = new OpenAI({
+      apiKey: params.apiKey,
+      baseURL: firstResponsesApiUrl(params.baseUrl),
+      defaultHeaders: params.extraHeaders ?? undefined,
+      dangerouslyAllowBrowser: true,
+    });
+
+    const stream = await client.responses.create(params.requestBody as never, {
+      signal: abortController.signal,
+    });
+
+    for await (const event of stream as AsyncIterable<Record<string, unknown>>) {
+      const outputTextDelta = extractOutputTextDelta(event);
+      if (outputTextDelta !== null) {
+        logStreamDelta(params.requestId, outputTextDelta);
+        emitRuntimeActivity({ type: "delta", requestId: params.requestId, text: outputTextDelta });
+        modelEvents.push({
+          type: "delta",
+          requestId: params.requestId,
+          payload: { outputTextDelta },
+        });
+      }
+      const outputItem = extractOutputItemDone(event);
+      if (outputItem !== null) {
+        modelEvents.push({ type: "outputItemDone", requestId: params.requestId, item: outputItem });
+      }
+      if (event.type === "error") {
+        logStreamFailure(params.requestId, extractOpenAiEventMessage(event));
+        emitRuntimeActivity({
+          type: "error",
+          requestId: params.requestId,
+          message: extractOpenAiEventMessage(event),
+        });
+        throw createHostError("openaiError", extractOpenAiEventMessage(event));
+      }
+      if (event.type === "response.completed") {
+        break;
+      }
+      if (cancelled) {
+        throw createHostError("cancelled", "model turn cancelled");
+      }
+    }
+  } catch (error) {
     if (cancelled || isAbortError(error)) {
       throw createHostError("cancelled", "model turn cancelled");
     }
     throw error;
-  });
-
-  if (response.body === null) {
-    unregisterActiveModelRequest(params.requestId);
-    throw createHostError("unavailable", "responses request did not return a stream body");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read().catch((error) => {
-        if (cancelled || isAbortError(error)) {
-          throw createHostError("cancelled", "model turn cancelled");
-        }
-        throw error;
-      });
-      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-
-      const segments = buffer.split("\n\n");
-      buffer = segments.pop() ?? "";
-
-      for (const segment of segments) {
-        const data = readSseData(segment);
-        if (data === null || data === "[DONE]") {
-          continue;
-        }
-        let eventPayload: Record<string, unknown>;
-        try {
-          eventPayload = JSON.parse(data) as Record<string, unknown>;
-        } catch {
-          continue;
-        }
-        const outputTextDelta = extractOutputTextDelta(eventPayload);
-        if (outputTextDelta !== null) {
-          emitRuntimeActivity({ type: "delta", requestId: params.requestId, text: outputTextDelta });
-          modelEvents.push({
-            type: "delta",
-            requestId: params.requestId,
-            payload: { outputTextDelta },
-          });
-        }
-        const outputItem = extractOutputItemDone(eventPayload);
-        if (outputItem !== null) {
-          modelEvents.push({ type: "outputItemDone", requestId: params.requestId, item: outputItem });
-        }
-        if (eventPayload.type === "error") {
-          emitRuntimeActivity({
-            type: "error",
-            requestId: params.requestId,
-            message: extractOpenAiEventMessage(eventPayload),
-          });
-          throw createHostError("openaiError", extractOpenAiEventMessage(eventPayload));
-        }
-      }
-      if (done) {
-        break;
-      }
-    }
   } finally {
     unregisterActiveModelRequest(params.requestId);
   }
 
+  logStreamCompleted(params.requestId, collectAssistantTextFromModelEvents(modelEvents), {
+    provider: "responses",
+  });
   modelEvents.push({ type: "completed", requestId: params.requestId });
   emitRuntimeActivity({ type: "completed", requestId: params.requestId, finishReason: null });
   return modelEvents;
@@ -157,6 +140,7 @@ export async function runXrouterTurn(params: {
   requestId: string;
   codexConfig: CodexCompatibleConfig;
   requestBody: Record<string, unknown>;
+  extraHeaders: Record<string, string> | null;
   responseInputItems: JsonValue[] | null;
 }): Promise<JsonValue> {
   const client = await createXrouterClient(params.codexConfig);
@@ -222,6 +206,7 @@ export async function runXrouterTurn(params: {
       }
 
       if (payload.type === "output_text_delta" && typeof payload.delta === "string") {
+        logStreamDelta(params.requestId, payload.delta);
         emitRuntimeActivity({ type: "delta", requestId: params.requestId, text: payload.delta });
         modelEvents.push({
           type: "delta",
@@ -257,6 +242,14 @@ export async function runXrouterTurn(params: {
           requestId: params.requestId,
           finishReason: typeof payload.finish_reason === "string" ? payload.finish_reason : null,
         });
+        logStreamCompleted(
+          params.requestId,
+          collectAssistantTextFromItems(normalizedOutputItems),
+          {
+            provider: "xrouter",
+            finishReason: typeof payload.finish_reason === "string" ? payload.finish_reason : null,
+          },
+        );
         modelEvents.push({ type: "completed", requestId: params.requestId });
         return;
       }
@@ -271,13 +264,19 @@ export async function runXrouterTurn(params: {
           "unavailable",
           typeof payload.message === "string" ? payload.message : "xrouter request failed",
         );
+        logStreamFailure(
+          params.requestId,
+          typeof payload.message === "string" ? payload.message : "xrouter request failed",
+        );
       }
     });
   } catch (error) {
     unregisterActiveModelRequest(params.requestId);
     if (cancelled || isAbortError(error)) {
+      logStreamFailure(params.requestId, "model turn cancelled");
       throw createHostError("cancelled", "model turn cancelled");
     }
+    logStreamFailure(params.requestId, formatUnknownError(error));
     throw error;
   } finally {
     unregisterActiveModelRequest(params.requestId);
@@ -287,12 +286,114 @@ export async function runXrouterTurn(params: {
     throw streamError;
   }
   if (cancelled) {
+    logStreamFailure(params.requestId, "model turn cancelled");
     throw createHostError("cancelled", "model turn cancelled");
   }
   if (!modelEvents.some((event) => isCompletedEvent(event, params.requestId))) {
+    logStreamCompleted(params.requestId, collectAssistantTextFromModelEvents(modelEvents), {
+      provider: "xrouter",
+      completedEvent: false,
+    });
     modelEvents.push({ type: "completed", requestId: params.requestId });
   }
   return modelEvents;
+}
+
+function firstResponsesApiUrl(baseUrl: string): string {
+  return candidateApiUrls(baseUrl, "responses")[0] ?? `${baseUrl.replace(/\/+$/, "")}/responses`;
+}
+
+function logStreamDelta(requestId: string, text: string) {
+  const state = deltaLogState.get(requestId) ?? {
+    count: 0,
+    announcedStreaming: false,
+    textParts: [],
+  };
+  state.count += 1;
+  state.textParts.push(text);
+  if (state.count <= 5) {
+    console.info("[webui] runtime-delta", {
+      requestId,
+      chunk: state.count,
+      text,
+    });
+  } else if (!state.announcedStreaming) {
+    state.announcedStreaming = true;
+    console.info("[webui] runtime-delta", {
+      requestId,
+      status: "waiting-for-complete-response",
+      chunksSeen: state.count,
+    });
+  }
+  deltaLogState.set(requestId, state);
+}
+
+function logStreamCompleted(
+  requestId: string,
+  finalText: string | null,
+  extra: Record<string, unknown>,
+) {
+  const state = deltaLogState.get(requestId);
+  console.info("[webui] runtime-delta", {
+    requestId,
+    status: "response-received",
+    chunksSeen: state?.count ?? 0,
+  });
+  console.info("[webui] runtime-response", {
+    requestId,
+    ...extra,
+    finalText,
+  });
+  deltaLogState.delete(requestId);
+}
+
+function logStreamFailure(requestId: string, message: string) {
+  const state = deltaLogState.get(requestId);
+  console.warn("[webui] runtime-response:error", {
+    requestId,
+    message,
+    chunksSeen: state?.count ?? 0,
+    partialText: state?.textParts.join("") ?? "",
+  });
+  deltaLogState.delete(requestId);
+}
+
+function collectAssistantTextFromModelEvents(modelEvents: JsonValue[]): string | null {
+  return collectAssistantTextFromItems(
+    modelEvents.flatMap((event) => {
+      if (
+        event !== null &&
+        typeof event === "object" &&
+        !Array.isArray(event) &&
+        event.type === "outputItemDone" &&
+        "item" in event
+      ) {
+        return [event.item as JsonValue];
+      }
+      return [];
+    }),
+  );
+}
+
+function collectAssistantTextFromItems(items: JsonValue[]): string | null {
+  const parts = items.flatMap((item) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      return [];
+    }
+    const text = assistantTextFromResponseItem(item as Record<string, unknown>);
+    return text === null ? [] : [text];
+  });
+  if (parts.length > 0) {
+    return parts.join("\n\n");
+  }
+  return null;
+}
+
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 async function createXrouterClient(codexConfig: CodexCompatibleConfig): Promise<XrouterBrowserClient> {

@@ -2757,12 +2757,22 @@ dependencies = [
 name = "codex-wasm-v2-browser"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
+ "async-channel",
+ "async-trait",
+ "codex-app-server-protocol",
+ "codex-protocol",
+ "codex-wasm-v2-core",
+ "console_error_panic_hook",
  "js-sys",
+ "pretty_assertions",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
+ "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -2795,6 +2805,7 @@ dependencies = [
  "http 1.4.0",
  "iana-time-zone",
  "image",
+ "js-sys",
  "opentelemetry",
  "opentelemetry_sdk",
  "pretty_assertions",
@@ -2813,6 +2824,9 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -2919,6 +2933,16 @@ dependencies = [
  "libc",
  "once_cell",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
 ]
 
 [[package]]

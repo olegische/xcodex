@@ -5,7 +5,6 @@ use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
-use tokio_util::task::AbortOnDropHandle;
 
 use codex_protocol::dynamic_tools::DynamicToolResponse;
 use codex_protocol::models::PermissionProfile;
@@ -17,6 +16,7 @@ use crate::codex::TurnContext;
 use crate::compat::otel::Timer;
 use crate::compat::rmcp::ElicitationResponse;
 use crate::compat::rmcp::RequestId;
+use crate::compat::task::TaskAbortHandle;
 use crate::protocol::ReviewDecision;
 use crate::protocol::TokenUsage;
 use crate::tasks::SessionTask;
@@ -47,7 +47,7 @@ pub(crate) struct RunningTask {
     pub(crate) kind: TaskKind,
     pub(crate) task: Arc<dyn SessionTask>,
     pub(crate) cancellation_token: CancellationToken,
-    pub(crate) handle: Arc<AbortOnDropHandle<()>>,
+    pub(crate) handle: TaskAbortHandle,
     pub(crate) turn_context: Arc<TurnContext>,
     pub(crate) _timer: Option<Timer>,
 }

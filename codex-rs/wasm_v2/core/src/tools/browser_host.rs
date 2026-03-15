@@ -125,6 +125,77 @@ impl HostFs for UnavailableHostFs {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserModelRequest {
+    // This is only a thin host envelope around the official Responses API payload.
+    // `request_body` should stay aligned with the upstream OpenAI request contract.
+    pub request_id: String,
+    pub request_body: Value,
+    pub transport_options: Option<BrowserTransportOptions>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserTransportOptions {
+    pub conversation_id: Option<String>,
+    pub session_source: Option<String>,
+    pub extra_headers: Option<Value>,
+    pub use_websocket: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum BrowserModelEvent {
+    // These variants are a bridge envelope for browser transport events.
+    // Field casing must remain camelCase to match the TS host wire contract.
+    Started {
+        request_id: String,
+    },
+    Delta {
+        request_id: String,
+        payload: BrowserModelDeltaPayload,
+    },
+    OutputItemDone {
+        request_id: String,
+        item: codex_protocol::models::ResponseItem,
+    },
+    Completed {
+        request_id: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserModelDeltaPayload {
+    pub output_text_delta: String,
+}
+
+#[async_trait]
+pub trait ModelTransportHost: Send + Sync {
+    async fn run_model_turn(
+        &self,
+        request: BrowserModelRequest,
+    ) -> HostResult<Vec<BrowserModelEvent>>;
+}
+
+#[derive(Debug, Default)]
+pub struct UnavailableModelTransportHost;
+
+#[async_trait]
+impl ModelTransportHost for UnavailableModelTransportHost {
+    async fn run_model_turn(
+        &self,
+        _request: BrowserModelRequest,
+    ) -> HostResult<Vec<BrowserModelEvent>> {
+        Err(unavailable_host_error("run_model_turn"))
+    }
+}
+
 fn unavailable_host_error(tool_name: &str) -> HostError {
     HostError {
         code: HostErrorCode::Unavailable,

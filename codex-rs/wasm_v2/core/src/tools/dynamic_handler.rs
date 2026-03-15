@@ -12,9 +12,10 @@ use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::protocol::DynamicToolCallResponseEvent;
 use codex_protocol::protocol::EventMsg;
 use serde_json::Value;
-use std::time::Instant;
 use tokio::sync::oneshot;
 use tracing::warn;
+
+use crate::time::Instant;
 
 pub(crate) fn dynamic_tool_specs(dynamic_tools: &[DynamicToolSpec]) -> Vec<ClientToolSpec> {
     dynamic_tools

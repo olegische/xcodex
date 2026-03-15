@@ -1,13 +1,7 @@
-use codex_protocol::models::PermissionProfile;
-use codex_protocol::models::ResponseItem;
-use codex_protocol::protocol::TurnContextItem;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use tokio::task::JoinHandle;
-
 use crate::codex::PreviousTurnSettings;
 use crate::codex::SessionConfiguration;
 use crate::compat::hooks::SessionStartSource;
+use crate::compat::task::SpawnedTask;
 use crate::context_manager::ContextManager;
 use crate::error::Result as CodexResult;
 use crate::protocol::RateLimitSnapshot;
@@ -15,6 +9,11 @@ use crate::protocol::TokenUsage;
 use crate::protocol::TokenUsageInfo;
 use crate::tasks::RegularTask;
 use crate::truncate::TruncationPolicy;
+use codex_protocol::models::PermissionProfile;
+use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::TurnContextItem;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 pub struct SessionState {
     pub(crate) session_configuration: SessionConfiguration,
@@ -24,7 +23,7 @@ pub struct SessionState {
     pub(crate) dependency_env: HashMap<String, String>,
     pub(crate) mcp_dependency_prompted: HashSet<String>,
     previous_turn_settings: Option<PreviousTurnSettings>,
-    pub(crate) startup_regular_task: Option<JoinHandle<CodexResult<RegularTask>>>,
+    pub(crate) startup_regular_task: Option<SpawnedTask<CodexResult<RegularTask>>>,
     pub(crate) active_connector_selection: HashSet<String>,
     pub(crate) pending_session_start_source: Option<SessionStartSource>,
     granted_permissions: Option<PermissionProfile>,
@@ -167,13 +166,13 @@ impl SessionState {
         self.dependency_env.clone()
     }
 
-    pub(crate) fn set_startup_regular_task(&mut self, task: JoinHandle<CodexResult<RegularTask>>) {
+    pub(crate) fn set_startup_regular_task(&mut self, task: SpawnedTask<CodexResult<RegularTask>>) {
         self.startup_regular_task = Some(task);
     }
 
     pub(crate) fn take_startup_regular_task(
         &mut self,
-    ) -> Option<JoinHandle<CodexResult<RegularTask>>> {
+    ) -> Option<SpawnedTask<CodexResult<RegularTask>>> {
         self.startup_regular_task.take()
     }
 

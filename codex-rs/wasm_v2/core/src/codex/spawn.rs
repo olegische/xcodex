@@ -2,6 +2,7 @@ use super::*;
 use crate::compat::otel::context_from_w3c_trace_context;
 use crate::compat::otel::current_span_w3c_trace_context;
 use crate::compat::otel::set_parent_from_w3c_trace_context;
+use crate::compat::task::SpawnedTask;
 
 impl Codex {
     /// Spawn a new [`Codex`] and initialize the session.
@@ -48,6 +49,7 @@ impl Codex {
             parent_trace: _,
             browser_fs,
             discoverable_apps_provider,
+            model_transport_host,
         } = args;
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
@@ -221,6 +223,7 @@ impl Codex {
             agent_control,
             browser_fs,
             discoverable_apps_provider,
+            model_transport_host,
         )
         .instrument(session_init_span)
         .await
@@ -231,7 +234,7 @@ impl Codex {
         let thread_id = session.conversation_id;
 
         let session_for_loop = Arc::clone(&session);
-        let session_loop_handle = tokio::spawn(async move {
+        let session_loop_handle = crate::compat::task::spawn_task(async move {
             submission_loop(session_for_loop, config, rx_sub)
                 .instrument(info_span!("session_loop", thread_id = %thread_id))
                 .await;
@@ -345,10 +348,10 @@ pub(crate) fn completed_session_loop_termination() -> SessionLoopTermination {
 }
 
 pub(crate) fn session_loop_termination_from_handle(
-    handle: JoinHandle<()>,
+    handle: SpawnedTask<()>,
 ) -> SessionLoopTermination {
     async move {
-        let _ = handle.await;
+        let _ = handle.join().await;
     }
     .boxed()
     .shared()

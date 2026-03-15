@@ -1,9 +1,8 @@
-import type { ActiveModelRequest, RuntimeActivity } from "./types";
+import type { RuntimeActivity } from "./types";
 
 let xrouterModulePromise: Promise<import("./types").XrouterRuntimeModule> | null = null;
 const runtimeActivityListeners = new Set<(activity: RuntimeActivity) => void>();
-const activeModelRequests = new Map<string, ActiveModelRequest>();
-
+const activeModelCancels = new Map<string, () => void>();
 export function getXrouterModulePromise() {
   return xrouterModulePromise;
 }
@@ -25,18 +24,21 @@ export function subscribeRuntimeActivity(listener: (activity: RuntimeActivity) =
   };
 }
 
-export function registerActiveModelRequest(request: ActiveModelRequest) {
-  activeModelRequests.set(request.requestId, request);
+export function registerActiveModelRequest(request: {
+  requestId: string;
+  cancel: () => void;
+}) {
+  activeModelCancels.set(request.requestId, request.cancel);
 }
 
 export function unregisterActiveModelRequest(requestId: string) {
-  activeModelRequests.delete(requestId);
+  activeModelCancels.delete(requestId);
 }
 
 export function cancelActiveModelRequests(requestId: string) {
-  for (const [activeRequestId, activeRequest] of activeModelRequests.entries()) {
+  for (const [activeRequestId, cancel] of activeModelCancels.entries()) {
     if (activeRequestId === requestId || activeRequestId.startsWith(`${requestId}:`)) {
-      activeRequest.cancel();
+      cancel();
     }
   }
 }

@@ -193,7 +193,7 @@ impl Session {
             state.take_startup_regular_task()
         };
         let startup_regular_task = startup_regular_task?;
-        match startup_regular_task.await {
+        match startup_regular_task.join().await {
             Ok(Ok(regular_task)) => Some(regular_task),
             Ok(Err(err)) => {
                 warn!("startup websocket prewarm setup failed: {err:#}");
@@ -208,10 +208,9 @@ impl Session {
 
     pub(crate) async fn schedule_startup_prewarm(self: &Arc<Self>, base_instructions: String) {
         let sess = Arc::clone(self);
-        let startup_regular_task: JoinHandle<CodexResult<RegularTask>> =
-            tokio::spawn(
-                async move { sess.schedule_startup_prewarm_inner(base_instructions).await },
-            );
+        let startup_regular_task = crate::compat::task::spawn_task(async move {
+            sess.schedule_startup_prewarm_inner(base_instructions).await
+        });
         let mut state = self.state.lock().await;
         state.set_startup_regular_task(startup_regular_task);
     }

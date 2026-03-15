@@ -28,6 +28,14 @@ function mapNotificationToActivity(event: RuntimeEvent): RuntimeActivity | null 
   }
 
   switch (event.method) {
+    case "turn/started":
+      return mapTurnStarted(params);
+    case "turn/completed":
+      return mapTurnCompleted(params);
+    case "item/agentMessage/delta":
+      return mapAgentMessageDelta(params);
+    case "item/plan/delta":
+      return mapPlanDelta(params);
     case "item/started":
       return mapItemStarted(params);
     case "item/completed":
@@ -37,6 +45,58 @@ function mapNotificationToActivity(event: RuntimeEvent): RuntimeActivity | null 
     default:
       return null;
   }
+}
+
+function mapTurnStarted(params: Record<string, unknown>): RuntimeActivity | null {
+  const turn =
+    params.turn !== null && typeof params.turn === "object" && !Array.isArray(params.turn)
+      ? (params.turn as Record<string, unknown>)
+      : null;
+  if (turn === null || typeof turn.id !== "string") {
+    return null;
+  }
+  return {
+    type: "turnStart",
+    requestId: turn.id,
+    model: "active-turn",
+  };
+}
+
+function mapTurnCompleted(params: Record<string, unknown>): RuntimeActivity | null {
+  const turn =
+    params.turn !== null && typeof params.turn === "object" && !Array.isArray(params.turn)
+      ? (params.turn as Record<string, unknown>)
+      : null;
+  if (turn === null || typeof turn.id !== "string") {
+    return null;
+  }
+  return {
+    type: "completed",
+    requestId: turn.id,
+    finishReason: typeof turn.status === "string" ? turn.status : null,
+  };
+}
+
+function mapAgentMessageDelta(params: Record<string, unknown>): RuntimeActivity | null {
+  if (typeof params.turnId !== "string" || typeof params.delta !== "string") {
+    return null;
+  }
+  return {
+    type: "delta",
+    requestId: params.turnId,
+    text: params.delta,
+  };
+}
+
+function mapPlanDelta(params: Record<string, unknown>): RuntimeActivity | null {
+  if (typeof params.delta !== "string") {
+    return null;
+  }
+  return {
+    type: "planUpdate",
+    explanation: params.delta,
+    plan: [],
+  };
 }
 
 function mapItemStarted(params: Record<string, unknown>): RuntimeActivity | null {

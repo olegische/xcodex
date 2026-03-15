@@ -6,12 +6,14 @@ use std::sync::Arc;
 use codex_execpolicy::Decision;
 use codex_execpolicy::Evaluation;
 use codex_execpolicy::Policy;
+#[cfg(not(target_arch = "wasm32"))]
 use codex_execpolicy::PolicyParser;
 use codex_protocol::approvals::ExecPolicyAmendment;
 use codex_protocol::protocol::AskForApproval;
 use thiserror::Error;
 
 use crate::config_loader::ConfigLayerStack;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::config_loader::ConfigLayerStackOrdering;
 
 #[derive(Debug)]
