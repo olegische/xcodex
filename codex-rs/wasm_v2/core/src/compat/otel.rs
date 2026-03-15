@@ -1,3 +1,27 @@
+#[cfg(target_arch = "wasm32")]
+use std::fmt;
+
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::ThreadId;
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::config_types::ReasoningSummary;
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::models::ResponseItem;
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::openai_models::ReasoningEffort;
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::protocol::AskForApproval;
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::protocol::SandboxPolicy;
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::protocol::SessionSource;
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::protocol::W3cTraceContext;
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::user_input::UserInput;
+#[cfg(target_arch = "wasm32")]
+use tracing::Span;
+
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use codex_otel::SessionTelemetry;
 #[cfg(not(target_arch = "wasm32"))]

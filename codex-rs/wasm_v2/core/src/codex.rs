@@ -45,7 +45,6 @@ use crate::stream_events_utils::handle_output_item_done;
 use crate::stream_events_utils::raw_assistant_output_text_from_item;
 use crate::stream_events_utils::record_completed_response_item;
 use crate::terminal;
-use crate::tools::browser_host::UnavailableHostFs;
 use crate::truncate::TruncationPolicy;
 use crate::turn_metadata::TurnMetadataState;
 use crate::util::error_or_panic;
@@ -172,6 +171,7 @@ use crate::error::Result as CodexResult;
 use crate::exec::StreamOutput;
 use codex_config::CONFIG_TOML_FILE;
 
+mod browser_runtime;
 mod plan_mode;
 mod prompt;
 mod review;
@@ -193,6 +193,7 @@ mod spawn;
 mod submission;
 pub(crate) mod submission_handlers;
 mod types;
+pub use browser_runtime::spawn_browser_codex;
 use plan_mode::AssistantMessageStreamParsers;
 use plan_mode::ParsedAssistantTextDelta;
 use plan_mode::PlanModeStreamState;
@@ -223,6 +224,7 @@ pub(crate) use spawn::session_loop_termination_from_handle;
 pub(crate) use submission::submission_dispatch_span;
 use submission::submission_loop;
 pub(crate) use submission_handlers as handlers;
+pub use types::BrowserCodexSpawnArgs;
 use types::CodexSpawnArgs;
 use types::CodexSpawnOk;
 use types::INITIAL_SUBMIT_ID;
@@ -231,7 +233,6 @@ use types::SUBMISSION_CHANNEL_CAPACITY;
 use types::SessionLoopTermination;
 pub use types::SteerInputError;
 
-use crate::connectors::UnavailableDiscoverableAppsProvider;
 use crate::exec_policy::ExecPolicyUpdateError;
 use crate::feedback_tags;
 use crate::file_watcher::FileWatcher;
@@ -603,6 +604,8 @@ impl Session {
         mcp_manager: Arc<McpManager>,
         file_watcher: Arc<FileWatcher>,
         agent_control: AgentControl,
+        browser_fs: Arc<dyn crate::HostFs>,
+        discoverable_apps_provider: Arc<dyn crate::DiscoverableAppsProvider>,
     ) -> anyhow::Result<Arc<Self>> {
         debug!(
             "Configuring session: model={}; provider={:?}",
@@ -996,8 +999,8 @@ impl Session {
             code_mode_service: crate::tools::code_mode::CodeModeService::new(
                 config.js_repl_node_path.clone(),
             ),
-            browser_fs: Arc::new(UnavailableHostFs),
-            discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
+            browser_fs,
+            discoverable_apps_provider,
         };
         let js_repl = Arc::new(JsReplHandle::with_node_path(
             config.js_repl_node_path.clone(),

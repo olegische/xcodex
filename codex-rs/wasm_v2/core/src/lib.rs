@@ -69,9 +69,28 @@ pub mod windows_sandbox;
 pub use auth::AuthManager;
 pub use auth::CodexAuth;
 pub use client_common::Prompt;
+pub use codex::BrowserCodexSpawnArgs;
+pub use codex::spawn_browser_codex;
+pub use connectors::DiscoverableAppsProvider;
+pub use connectors::UnavailableDiscoverableAppsProvider;
 pub use mcp_connection_manager::SandboxState;
 pub use model_provider_info::ModelProviderInfo;
 pub use tools::ToolRouter;
+pub use tools::browser_host::ApplyPatchRequest;
+pub use tools::browser_host::ApplyPatchResponse;
+pub use tools::browser_host::HostError;
+pub use tools::browser_host::HostErrorCode;
+pub use tools::browser_host::HostFileEntry;
+pub use tools::browser_host::HostFs;
+pub use tools::browser_host::HostResult;
+pub use tools::browser_host::ListDirRequest;
+pub use tools::browser_host::ListDirResponse;
+pub use tools::browser_host::ReadFileRequest;
+pub use tools::browser_host::ReadFileResponse;
+pub use tools::browser_host::SearchMatch;
+pub use tools::browser_host::SearchRequest;
+pub use tools::browser_host::SearchResponse;
+pub use tools::browser_host::UnavailableHostFs;
 pub use tools::format_exec_output_str;
 
 pub fn ws_version_from_features(config: &config::Config) -> bool {

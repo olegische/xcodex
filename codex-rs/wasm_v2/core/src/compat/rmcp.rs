@@ -1,3 +1,17 @@
+#[cfg(target_arch = "wasm32")]
+use std::collections::HashMap;
+#[cfg(target_arch = "wasm32")]
+use std::fmt;
+
+#[cfg(target_arch = "wasm32")]
+use codex_protocol::protocol::McpAuthStatus;
+#[cfg(target_arch = "wasm32")]
+use serde::Deserialize;
+#[cfg(target_arch = "wasm32")]
+use serde::Serialize;
+#[cfg(target_arch = "wasm32")]
+use serde_json::Value;
+
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use codex_rmcp_client::ElicitationAction;
 #[cfg(not(target_arch = "wasm32"))]

@@ -1,4 +1,7 @@
 use super::*;
+use crate::connectors::DiscoverableAppsProvider;
+use crate::tools::browser_host::HostFs;
+use codex_protocol::openai_models::ModelsResponse;
 
 #[derive(Debug, PartialEq)]
 pub enum SteerInputError {
@@ -47,6 +50,23 @@ pub(crate) struct CodexSpawnArgs {
     pub(crate) metrics_service_name: Option<String>,
     pub(crate) inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
     pub(crate) parent_trace: Option<W3cTraceContext>,
+    pub(crate) browser_fs: Arc<dyn HostFs>,
+    pub(crate) discoverable_apps_provider: Arc<dyn DiscoverableAppsProvider>,
+}
+
+pub struct BrowserCodexSpawnArgs {
+    pub config: Config,
+    pub auth: Option<CodexAuth>,
+    pub model_catalog: Option<ModelsResponse>,
+    pub conversation_history: InitialHistory,
+    pub session_source: SessionSource,
+    pub dynamic_tools: Vec<DynamicToolSpec>,
+    pub persist_extended_history: bool,
+    pub metrics_service_name: Option<String>,
+    pub inherited_shell_snapshot: Option<Arc<ShellSnapshot>>,
+    pub parent_trace: Option<W3cTraceContext>,
+    pub browser_fs: Arc<dyn HostFs>,
+    pub discoverable_apps_provider: Arc<dyn DiscoverableAppsProvider>,
 }
 
 pub(crate) const INITIAL_SUBMIT_ID: &str = "";

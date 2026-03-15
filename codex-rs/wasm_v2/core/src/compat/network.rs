@@ -1,3 +1,6 @@
+#[cfg(target_arch = "wasm32")]
+use async_trait::async_trait;
+
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) use codex_network_proxy::BlockedRequest;
 #[cfg(not(target_arch = "wasm32"))]

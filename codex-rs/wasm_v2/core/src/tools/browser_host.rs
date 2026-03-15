@@ -5,7 +5,7 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum HostErrorCode {
+pub enum HostErrorCode {
     NotFound,
     PermissionDenied,
     InvalidInput,
@@ -18,85 +18,85 @@ pub(crate) enum HostErrorCode {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct HostError {
-    pub(crate) code: HostErrorCode,
-    pub(crate) message: String,
-    pub(crate) retryable: bool,
-    pub(crate) data: Option<Value>,
+pub struct HostError {
+    pub code: HostErrorCode,
+    pub message: String,
+    pub retryable: bool,
+    pub data: Option<Value>,
 }
 
-pub(crate) type HostResult<T> = Result<T, HostError>;
+pub type HostResult<T> = Result<T, HostError>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct HostFileEntry {
-    pub(crate) path: String,
-    pub(crate) is_dir: bool,
-    pub(crate) size_bytes: Option<u64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ReadFileRequest {
-    pub(crate) path: String,
+pub struct HostFileEntry {
+    pub path: String,
+    pub is_dir: bool,
+    pub size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ReadFileResponse {
-    pub(crate) path: String,
-    pub(crate) content: String,
+pub struct ReadFileRequest {
+    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ListDirRequest {
-    pub(crate) path: String,
-    pub(crate) recursive: bool,
+pub struct ReadFileResponse {
+    pub path: String,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ListDirResponse {
-    pub(crate) entries: Vec<HostFileEntry>,
+pub struct ListDirRequest {
+    pub path: String,
+    pub recursive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SearchRequest {
-    pub(crate) path: String,
-    pub(crate) query: String,
-    pub(crate) case_sensitive: bool,
+pub struct ListDirResponse {
+    pub entries: Vec<HostFileEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SearchMatch {
-    pub(crate) path: String,
-    pub(crate) line_number: u32,
-    pub(crate) line: String,
+pub struct SearchRequest {
+    pub path: String,
+    pub query: String,
+    pub case_sensitive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SearchResponse {
-    pub(crate) matches: Vec<SearchMatch>,
+pub struct SearchMatch {
+    pub path: String,
+    pub line_number: u32,
+    pub line: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ApplyPatchRequest {
-    pub(crate) patch: String,
+pub struct SearchResponse {
+    pub matches: Vec<SearchMatch>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ApplyPatchResponse {
-    pub(crate) files_changed: Vec<String>,
+pub struct ApplyPatchRequest {
+    pub patch: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyPatchResponse {
+    pub files_changed: Vec<String>,
 }
 
 #[async_trait]
-pub(crate) trait HostFs: Send + Sync {
+pub trait HostFs: Send + Sync {
     async fn read_file(&self, request: ReadFileRequest) -> HostResult<ReadFileResponse>;
     async fn list_dir(&self, request: ListDirRequest) -> HostResult<ListDirResponse>;
     async fn search(&self, request: SearchRequest) -> HostResult<SearchResponse>;
@@ -104,7 +104,7 @@ pub(crate) trait HostFs: Send + Sync {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct UnavailableHostFs;
+pub struct UnavailableHostFs;
 
 #[async_trait]
 impl HostFs for UnavailableHostFs {

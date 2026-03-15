@@ -140,6 +140,13 @@ impl AuthManager {
         self.auth.read().ok().and_then(|auth| auth.clone())
     }
 
+    pub fn from_auth(codex_home: PathBuf, auth: Option<CodexAuth>) -> Arc<Self> {
+        Arc::new(Self {
+            _codex_home: codex_home,
+            auth: RwLock::new(auth),
+        })
+    }
+
     pub async fn auth(&self) -> Option<CodexAuth> {
         self.auth_cached()
     }

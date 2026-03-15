@@ -1,7 +1,9 @@
 use super::*;
+use crate::UnavailableHostFs;
 use crate::config_loader::ConfigLayerEntry;
 use crate::config_loader::ConfigRequirements;
 use crate::config_loader::ConfigRequirementsToml;
+use crate::connectors::UnavailableDiscoverableAppsProvider;
 use crate::exec::ExecParams;
 use crate::exec_policy::ExecPolicyManager;
 use crate::features::Feature;
@@ -307,6 +309,8 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         metrics_service_name: None,
         inherited_shell_snapshot: None,
         parent_trace: None,
+        browser_fs: Arc::new(UnavailableHostFs),
+        discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
     })
     .await
     .expect("spawn guardian subagent");

@@ -15,6 +15,7 @@ use crate::mcp_connection_manager::ToolInfo;
 use crate::models_manager::model_info;
 use crate::shell::default_user_shell;
 use crate::tools::format_exec_output_str;
+use async_trait::async_trait;
 
 use codex_protocol::ThreadId;
 use codex_protocol::models::FunctionCallOutputBody;
@@ -88,6 +89,73 @@ use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+#[derive(Debug)]
+struct RecordingHostFs;
+
+#[async_trait]
+impl crate::HostFs for RecordingHostFs {
+    async fn read_file(
+        &self,
+        request: crate::ReadFileRequest,
+    ) -> crate::HostResult<crate::ReadFileResponse> {
+        Ok(crate::ReadFileResponse {
+            path: request.path,
+            content: "browser-host".to_string(),
+        })
+    }
+
+    async fn list_dir(
+        &self,
+        _request: crate::ListDirRequest,
+    ) -> crate::HostResult<crate::ListDirResponse> {
+        Ok(crate::ListDirResponse {
+            entries: Vec::new(),
+        })
+    }
+
+    async fn search(
+        &self,
+        _request: crate::SearchRequest,
+    ) -> crate::HostResult<crate::SearchResponse> {
+        Ok(crate::SearchResponse {
+            matches: Vec::new(),
+        })
+    }
+
+    async fn apply_patch(
+        &self,
+        _request: crate::ApplyPatchRequest,
+    ) -> crate::HostResult<crate::ApplyPatchResponse> {
+        Ok(crate::ApplyPatchResponse {
+            files_changed: vec!["file.txt".to_string()],
+        })
+    }
+}
+
+#[derive(Debug)]
+struct RecordingDiscoverableAppsProvider;
+
+#[async_trait]
+impl crate::DiscoverableAppsProvider for RecordingDiscoverableAppsProvider {
+    async fn list_discoverable_apps(&self) -> anyhow::Result<Vec<AppInfo>> {
+        Ok(vec![AppInfo {
+            id: "demo-app".to_string(),
+            name: "Demo App".to_string(),
+            description: Some("discoverable".to_string()),
+            logo_url: None,
+            logo_url_dark: None,
+            distribution_channel: None,
+            branding: None,
+            app_metadata: None,
+            labels: None,
+            install_url: Some("https://chatgpt.com/apps/demo/demo-app".to_string()),
+            is_accessible: false,
+            is_enabled: false,
+            plugin_display_names: Vec::new(),
+        }])
+    }
+}
 use std::sync::Once;
 use std::time::Duration as StdDuration;
 
@@ -2033,6 +2101,8 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
         mcp_manager,
         Arc::new(FileWatcher::noop()),
         AgentControl,
+        Arc::new(UnavailableHostFs),
+        Arc::new(UnavailableDiscoverableAppsProvider),
     )
     .await;
 
@@ -2042,6 +2112,56 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
     };
     let msg = format!("{err:#}");
     assert!(msg.contains("zsh fork feature enabled, but `zsh_path` is not configured"));
+}
+
+#[tokio::test]
+async fn spawn_browser_codex_preserves_browser_host_providers() {
+    let tempdir = tempfile::tempdir().expect("create temp dir");
+    let config = build_test_config(tempdir.path()).await;
+
+    let CodexSpawnOk { codex, .. } = spawn_browser_codex(BrowserCodexSpawnArgs {
+        config,
+        auth: Some(CodexAuth::from_api_key("browser-key")),
+        model_catalog: None,
+        conversation_history: InitialHistory::New,
+        session_source: SessionSource::Exec,
+        dynamic_tools: Vec::new(),
+        persist_extended_history: false,
+        metrics_service_name: None,
+        inherited_shell_snapshot: None,
+        parent_trace: None,
+        browser_fs: Arc::new(RecordingHostFs),
+        discoverable_apps_provider: Arc::new(RecordingDiscoverableAppsProvider),
+    })
+    .await
+    .expect("spawn browser codex");
+
+    let read_file = codex
+        .session
+        .services
+        .browser_fs
+        .read_file(crate::ReadFileRequest {
+            path: "/workspace/file.txt".to_string(),
+        })
+        .await
+        .expect("read file from injected browser host");
+    let discoverable_apps = codex
+        .session
+        .services
+        .discoverable_apps_provider
+        .list_discoverable_apps()
+        .await
+        .expect("discoverable apps from injected provider");
+
+    assert_eq!(
+        read_file,
+        crate::ReadFileResponse {
+            path: "/workspace/file.txt".to_string(),
+            content: "browser-host".to_string(),
+        }
+    );
+    assert_eq!(discoverable_apps.len(), 1);
+    assert_eq!(discoverable_apps[0].id, "demo-app");
 }
 
 // todo: use online model info

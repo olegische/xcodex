@@ -9,7 +9,7 @@ use crate::config::Config;
 use crate::plugins::AppConnectorId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct AppToolPolicy {
+pub struct AppToolPolicy {
     pub enabled: bool,
 }
 
@@ -106,12 +106,12 @@ pub fn with_app_enabled_state(mut connectors: Vec<AppInfo>, _config: &Config) ->
 }
 
 #[async_trait]
-pub(crate) trait DiscoverableAppsProvider: Send + Sync {
+pub trait DiscoverableAppsProvider: Send + Sync {
     async fn list_discoverable_apps(&self) -> anyhow::Result<Vec<AppInfo>>;
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct UnavailableDiscoverableAppsProvider;
+pub struct UnavailableDiscoverableAppsProvider;
 
 #[async_trait]
 impl DiscoverableAppsProvider for UnavailableDiscoverableAppsProvider {
@@ -120,7 +120,7 @@ impl DiscoverableAppsProvider for UnavailableDiscoverableAppsProvider {
     }
 }
 
-pub(crate) async fn list_tool_suggest_discoverable_tools(
+pub async fn list_tool_suggest_discoverable_tools(
     provider: Arc<dyn DiscoverableAppsProvider>,
     accessible_connectors: &[AppInfo],
 ) -> anyhow::Result<Vec<AppInfo>> {
