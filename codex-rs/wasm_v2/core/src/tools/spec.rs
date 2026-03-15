@@ -1,4 +1,5 @@
 use codex_protocol::openai_models::ModelInfo;
+use codex_protocol::protocol::SessionSource;
 use serde_json::Value;
 use serde_json::json;
 
@@ -251,20 +252,6 @@ impl BrowserBuiltinTool {
     }
 }
 
-pub fn browser_builtin_tool_specs() -> Vec<ToolSpec> {
-    [
-        BrowserBuiltinTool::ReadFile,
-        BrowserBuiltinTool::ListDir,
-        BrowserBuiltinTool::GrepFiles,
-        BrowserBuiltinTool::ApplyPatch,
-        BrowserBuiltinTool::UpdatePlan,
-        BrowserBuiltinTool::RequestUserInput,
-    ]
-    .into_iter()
-    .map(BrowserBuiltinTool::spec)
-    .collect()
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct ToolsConfig {
     pub js_repl_tools_only: bool,
@@ -273,6 +260,8 @@ pub struct ToolsConfig {
     pub allow_login_shell: bool,
     pub search_tool: bool,
     pub tool_suggest: bool,
+    pub request_user_input: bool,
+    pub default_mode_request_user_input: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -286,8 +275,19 @@ pub struct ToolsConfigParams<'a> {
 
 impl ToolsConfig {
     pub fn new(params: &ToolsConfigParams<'_>) -> Self {
+        let request_user_input = !matches!(params.session_source, SessionSource::SubAgent(_));
         Self {
             web_search_mode: params.web_search_mode,
+            search_tool: params.features.enabled(crate::features::Feature::Apps),
+            tool_suggest: params.features.enabled(crate::features::Feature::Apps)
+                && params
+                    .features
+                    .enabled(crate::features::Feature::ToolSuggest),
+            request_user_input,
+            default_mode_request_user_input: request_user_input
+                && params
+                    .features
+                    .enabled(crate::features::Feature::DefaultModeRequestUserInput),
             ..Self::default()
         }
     }
@@ -307,6 +307,31 @@ impl ToolsConfig {
     }
 }
 
+pub fn browser_builtin_tool_specs(config: &ToolsConfig) -> Vec<ToolSpec> {
+    let mut tools = vec![
+        BrowserBuiltinTool::ReadFile,
+        BrowserBuiltinTool::ListDir,
+        BrowserBuiltinTool::GrepFiles,
+        BrowserBuiltinTool::ApplyPatch,
+        BrowserBuiltinTool::UpdatePlan,
+    ];
+    if config.request_user_input {
+        tools.push(BrowserBuiltinTool::RequestUserInput);
+    }
+    tools
+        .into_iter()
+        .map(|tool| match tool {
+            BrowserBuiltinTool::RequestUserInput => ToolSpec {
+                description: crate::tools::browser_builtin::request_user_input_tool_description(
+                    config.default_mode_request_user_input,
+                ),
+                ..tool.spec()
+            },
+            _ => tool.spec(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,10 +339,13 @@ mod tests {
 
     #[test]
     fn browser_builtin_specs_expose_expected_tools() {
-        let tool_names = browser_builtin_tool_specs()
-            .into_iter()
-            .map(|spec| spec.tool_name)
-            .collect::<Vec<_>>();
+        let tool_names = browser_builtin_tool_specs(&ToolsConfig {
+            request_user_input: true,
+            ..ToolsConfig::default()
+        })
+        .into_iter()
+        .map(|spec| spec.tool_name)
+        .collect::<Vec<_>>();
 
         assert_eq!(
             tool_names,
@@ -330,5 +358,132 @@ mod tests {
                 "request_user_input".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn browser_builtin_specs_omit_request_user_input_for_subagents() {
+        let tool_names = browser_builtin_tool_specs(&ToolsConfig {
+            request_user_input: false,
+            ..ToolsConfig::default()
+        })
+        .into_iter()
+        .map(|spec| spec.tool_name)
+        .collect::<Vec<_>>();
+
+        assert_eq!(
+            tool_names,
+            vec![
+                "read_file".to_string(),
+                "list_dir".to_string(),
+                "grep_files".to_string(),
+                "apply_patch".to_string(),
+                "update_plan".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn request_user_input_description_reflects_default_mode_flag() {
+        let default_description = browser_builtin_tool_specs(&ToolsConfig {
+            request_user_input: true,
+            default_mode_request_user_input: false,
+            ..ToolsConfig::default()
+        })
+        .into_iter()
+        .find(|spec| spec.tool_name == "request_user_input")
+        .map(|spec| spec.description)
+        .unwrap_or_else(|| unreachable!("request_user_input should be present"));
+
+        let enabled_description = browser_builtin_tool_specs(&ToolsConfig {
+            request_user_input: true,
+            default_mode_request_user_input: true,
+            ..ToolsConfig::default()
+        })
+        .into_iter()
+        .find(|spec| spec.tool_name == "request_user_input")
+        .map(|spec| spec.description)
+        .unwrap_or_else(|| unreachable!("request_user_input should be present"));
+
+        assert_eq!(
+            default_description,
+            crate::tools::browser_builtin::request_user_input_tool_description(false)
+        );
+        assert_eq!(
+            enabled_description,
+            crate::tools::browser_builtin::request_user_input_tool_description(true)
+        );
+    }
+
+    #[test]
+    fn tools_config_enables_default_mode_request_user_input_from_feature_flag() {
+        let model_info =
+            crate::models_manager::manager::ModelsManager::construct_model_info_offline_for_tests(
+                "gpt-5-codex",
+                &crate::config::Config::default(),
+            );
+        let available_models = Vec::new();
+        let mut features = crate::features::ManagedFeatures::default();
+        let _ = features.enable(crate::features::Feature::DefaultModeRequestUserInput);
+        let config = ToolsConfig::new(&ToolsConfigParams {
+            model_info: &model_info,
+            available_models: &available_models,
+            features: &features,
+            web_search_mode: None,
+            session_source: SessionSource::Cli,
+        });
+
+        assert_eq!(config.request_user_input, true);
+        assert_eq!(config.default_mode_request_user_input, true);
+    }
+
+    #[test]
+    fn tools_config_enables_search_tool_from_apps_feature_flag() {
+        let model_info =
+            crate::models_manager::manager::ModelsManager::construct_model_info_offline_for_tests(
+                "gpt-5-codex",
+                &crate::config::Config::default(),
+            );
+        let available_models = Vec::new();
+        let mut features = crate::features::ManagedFeatures::default();
+        let _ = features.enable(crate::features::Feature::Apps);
+        let config = ToolsConfig::new(&ToolsConfigParams {
+            model_info: &model_info,
+            available_models: &available_models,
+            features: &features,
+            web_search_mode: None,
+            session_source: SessionSource::Cli,
+        });
+
+        assert_eq!(config.search_tool, true);
+    }
+
+    #[test]
+    fn tools_config_enables_tool_suggest_only_with_apps_and_tool_suggest_flags() {
+        let model_info =
+            crate::models_manager::manager::ModelsManager::construct_model_info_offline_for_tests(
+                "gpt-5-codex",
+                &crate::config::Config::default(),
+            );
+        let available_models = Vec::new();
+        let mut features = crate::features::ManagedFeatures::default();
+        let _ = features.enable(crate::features::Feature::ToolSuggest);
+        let without_apps = ToolsConfig::new(&ToolsConfigParams {
+            model_info: &model_info,
+            available_models: &available_models,
+            features: &features,
+            web_search_mode: None,
+            session_source: SessionSource::Cli,
+        });
+        assert!(!without_apps.tool_suggest);
+
+        let _ = features.enable(crate::features::Feature::Apps);
+        let with_apps = ToolsConfig::new(&ToolsConfigParams {
+            model_info: &model_info,
+            available_models: &available_models,
+            features: &features,
+            web_search_mode: None,
+            session_source: SessionSource::Cli,
+        });
+        assert!(with_apps.tool_suggest);
     }
 }

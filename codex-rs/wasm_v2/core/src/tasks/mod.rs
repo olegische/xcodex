@@ -1,4 +1,8 @@
+mod compact;
+mod ghost_snapshot;
 mod regular;
+mod review;
+mod undo;
 mod user_shell;
 
 use std::sync::Arc;
@@ -21,7 +25,6 @@ use crate::contextual_user_message::TURN_ABORTED_OPEN_TAG;
 use crate::event_mapping::parse_turn_item;
 use crate::models_manager::manager::ModelsManager;
 use crate::protocol::EventMsg;
-use crate::protocol::ExitedReviewModeEvent;
 use crate::protocol::RolloutItem;
 use crate::protocol::TokenUsage;
 use crate::protocol::TurnAbortReason;
@@ -37,94 +40,17 @@ use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::user_input::UserInput;
 
+pub(crate) use compact::CompactTask;
+pub(crate) use ghost_snapshot::GhostSnapshotTask;
 pub use regular::RegularTask;
+pub(crate) use review::ReviewTask;
+pub(crate) use undo::UndoTask;
 pub(crate) use user_shell::UserShellCommandMode;
 pub(crate) use user_shell::UserShellCommandTask;
 pub(crate) use user_shell::execute_user_shell_command;
 
 const GRACEFULL_INTERRUPTION_TIMEOUT_MS: u64 = 100;
 const TURN_ABORTED_INTERRUPTED_GUIDANCE: &str = "The user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify current state before retrying.";
-
-#[derive(Clone, Debug, Default)]
-pub struct CompactTask;
-
-#[derive(Clone, Debug, Default)]
-pub struct GhostSnapshotTask;
-
-#[derive(Clone, Debug, Default)]
-pub struct ReviewTask;
-
-#[derive(Clone, Debug, Default)]
-pub struct UndoTask;
-
-impl GhostSnapshotTask {
-    pub fn new<T>(_token: T) -> Self {
-        Self
-    }
-}
-
-impl ReviewTask {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[async_trait]
-impl SessionTask for ReviewTask {
-    fn kind(&self) -> TaskKind {
-        TaskKind::Review
-    }
-
-    fn span_name(&self) -> &'static str {
-        "session_task.review"
-    }
-
-    async fn abort(&self, session: Arc<SessionTaskContext>, ctx: Arc<TurnContext>) {
-        session
-            .clone_session()
-            .send_event(
-                ctx.as_ref(),
-                EventMsg::ExitedReviewMode(ExitedReviewModeEvent {
-                    review_output: None,
-                }),
-            )
-            .await;
-    }
-}
-
-impl CompactTask {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl UndoTask {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[async_trait]
-impl SessionTask for UndoTask {
-    fn kind(&self) -> TaskKind {
-        TaskKind::Regular
-    }
-
-    fn span_name(&self) -> &'static str {
-        "session_task.undo"
-    }
-}
-
-#[async_trait]
-impl SessionTask for CompactTask {
-    fn kind(&self) -> TaskKind {
-        TaskKind::Compact
-    }
-
-    fn span_name(&self) -> &'static str {
-        "session_task.compact"
-    }
-}
 
 #[derive(Clone)]
 pub(crate) struct SessionTaskContext {
@@ -384,16 +310,5 @@ impl Session {
             reason,
         });
         self.send_event(task.turn_context.as_ref(), event).await;
-    }
-}
-
-#[async_trait]
-impl SessionTask for GhostSnapshotTask {
-    fn kind(&self) -> TaskKind {
-        TaskKind::Compact
-    }
-
-    fn span_name(&self) -> &'static str {
-        "session_task.ghost_snapshot"
     }
 }

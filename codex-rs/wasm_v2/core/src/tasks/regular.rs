@@ -3,12 +3,19 @@ use std::sync::Mutex;
 use crate::client::ModelClient;
 use crate::client::ModelClientSession;
 use crate::client_common::Prompt;
+use crate::codex::TurnContext;
+use crate::codex::run_turn;
+use crate::error::Result as CodexResult;
 use crate::state::TaskKind;
-use crate::tasks::SessionTask;
 use async_trait::async_trait;
 use codex_protocol::user_input::UserInput;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
+use tracing::trace_span;
+
+use super::SessionTask;
+use super::SessionTaskContext;
 
 pub struct RegularTask {
     prewarmed_session: Mutex<Option<ModelClientSession>>,
@@ -24,12 +31,34 @@ impl Default for RegularTask {
 
 impl RegularTask {
     pub(crate) async fn with_startup_prewarm(
-        _model_client: ModelClient,
-        _prompt: Prompt,
-        _turn_context: Arc<crate::codex::TurnContext>,
-        _turn_metadata_header: Option<String>,
-    ) -> crate::error::Result<Self> {
-        Ok(Self::default())
+        model_client: ModelClient,
+        prompt: Prompt,
+        turn_context: Arc<TurnContext>,
+        turn_metadata_header: Option<String>,
+    ) -> CodexResult<Self> {
+        let mut client_session = model_client.new_session();
+        client_session
+            .prewarm_websocket(
+                &prompt,
+                &turn_context.model_info,
+                &turn_context.session_telemetry,
+                turn_context.reasoning_effort,
+                turn_context.reasoning_summary,
+                turn_context.config.service_tier,
+                turn_metadata_header.as_deref(),
+            )
+            .await?;
+
+        Ok(Self {
+            prewarmed_session: Mutex::new(Some(client_session)),
+        })
+    }
+
+    async fn take_prewarmed_session(&self) -> Option<ModelClientSession> {
+        self.prewarmed_session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
@@ -40,17 +69,28 @@ impl SessionTask for RegularTask {
     }
 
     fn span_name(&self) -> &'static str {
-        "session_task.regular"
+        "session_task.turn"
     }
 
     async fn run(
         self: Arc<Self>,
-        _session: Arc<crate::tasks::SessionTaskContext>,
-        _ctx: Arc<crate::codex::TurnContext>,
-        _input: Vec<UserInput>,
-        _cancellation_token: CancellationToken,
+        session: Arc<SessionTaskContext>,
+        ctx: Arc<TurnContext>,
+        input: Vec<UserInput>,
+        cancellation_token: CancellationToken,
     ) -> Option<String> {
-        let _ = self;
-        None
+        let sess = session.clone_session();
+        let run_turn_span = trace_span!("run_turn");
+        sess.set_server_reasoning_included(false).await;
+        let prewarmed_client_session = self.take_prewarmed_session().await;
+        run_turn(
+            sess,
+            ctx,
+            input,
+            prewarmed_client_session,
+            cancellation_token,
+        )
+        .instrument(run_turn_span)
+        .await
     }
 }

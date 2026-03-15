@@ -1,30 +1,160 @@
+use std::sync::Arc;
+use std::time::Instant;
+
+use futures::FutureExt;
+use tokio::sync::RwLock;
+use tokio_util::either::Either;
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::AbortOnDropHandle;
+use tracing::Instrument;
+use tracing::instrument;
+use tracing::trace_span;
 
-use crate::tools::context::ToolOutput;
+use crate::codex::Session;
+use crate::codex::TurnContext;
+use crate::error::CodexErr;
+use crate::function_tool::FunctionCallError;
+use crate::tools::context::SharedTurnDiffTracker;
+use crate::tools::context::ToolCall;
+use crate::tools::context::ToolPayload;
+use crate::tools::router::ToolRouter;
+use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::FunctionCallOutputPayload;
+use codex_protocol::models::ResponseInputItem;
 
-#[derive(Clone, Debug, Default)]
-pub struct ToolCallRuntime;
+#[derive(Clone)]
+pub struct ToolCallRuntime {
+    router: Arc<ToolRouter>,
+    session: Arc<Session>,
+    turn_context: Arc<TurnContext>,
+    tracker: SharedTurnDiffTracker,
+    parallel_execution: Arc<RwLock<()>>,
+}
 
 impl ToolCallRuntime {
     pub fn new(
-        _router: std::sync::Arc<crate::tools::router::ToolRouter>,
-        _session: std::sync::Arc<crate::codex::Session>,
-        _turn: std::sync::Arc<crate::codex::TurnContext>,
-        _tracker: crate::tools::context::SharedTurnDiffTracker,
+        router: Arc<ToolRouter>,
+        session: Arc<Session>,
+        turn_context: Arc<TurnContext>,
+        tracker: SharedTurnDiffTracker,
     ) -> Self {
-        Self
+        Self {
+            router,
+            session,
+            turn_context,
+            tracker,
+            parallel_execution: Arc::new(RwLock::new(())),
+        }
     }
 
-    pub async fn handle_tool_call(
-        &self,
-        call: crate::tools::context::ToolCall,
-        _cancellation_token: CancellationToken,
-    ) -> crate::error::Result<codex_protocol::models::ResponseInputItem> {
-        let payload = call.payload.clone();
-        Ok(crate::tools::context::FunctionToolOutput::from_text(
-            format!("tool {} is not implemented in wasm_v2 yet", call.tool_name),
-            Some(false),
-        )
-        .to_response_item(&call.call_id, &payload))
+    #[instrument(level = "trace", skip_all)]
+    pub fn handle_tool_call(
+        self,
+        call: ToolCall,
+        cancellation_token: CancellationToken,
+    ) -> futures::future::BoxFuture<'static, crate::error::Result<ResponseInputItem>> {
+        if cancellation_token.is_cancelled() {
+            return async move { Ok(Self::aborted_response(&call, 0.1)) }.boxed();
+        }
+
+        let supports_parallel = self.router.tool_supports_parallel(&call.tool_name);
+
+        let router = Arc::clone(&self.router);
+        let session = Arc::clone(&self.session);
+        let turn = Arc::clone(&self.turn_context);
+        let tracker = Arc::clone(&self.tracker);
+        let lock = Arc::clone(&self.parallel_execution);
+        let started = Instant::now();
+
+        let dispatch_span = trace_span!(
+            "dispatch_tool_call",
+            otel.name = call.tool_name.as_str(),
+            tool_name = call.tool_name.as_str(),
+            call_id = call.call_id.as_str(),
+            aborted = false,
+        );
+
+        let handle: AbortOnDropHandle<Result<ResponseInputItem, FunctionCallError>> =
+            AbortOnDropHandle::new(tokio::spawn(async move {
+                tokio::select! {
+                    _ = cancellation_token.cancelled() => {
+                        let secs = started.elapsed().as_secs_f32().max(0.1);
+                        dispatch_span.record("aborted", true);
+                        Ok(Self::aborted_response(&call, secs))
+                    },
+                    res = async {
+                        let _guard = if supports_parallel {
+                            Either::Left(lock.read().await)
+                        } else {
+                            Either::Right(lock.write().await)
+                        };
+
+                        router
+                            .dispatch_tool_call(
+                                session,
+                                turn,
+                                tracker,
+                                call.clone(),
+                                crate::tools::router::ToolCallSource::Direct,
+                            )
+                            .instrument(dispatch_span.clone())
+                            .await
+                    } => res,
+                }
+            }));
+
+        async move {
+            match handle.await {
+                Ok(Ok(response)) => Ok(response),
+                Ok(Err(FunctionCallError::Fatal(message))) => Err(CodexErr::Fatal(message)),
+                Ok(Err(other)) => Err(CodexErr::Fatal(other.to_string())),
+                Err(err) => Err(CodexErr::Fatal(format!(
+                    "tool task failed to receive: {err:?}"
+                ))),
+            }
+        }
+        .boxed()
+    }
+}
+
+impl ToolCallRuntime {
+    fn aborted_response(call: &ToolCall, secs: f32) -> ResponseInputItem {
+        match &call.payload {
+            ToolPayload::Custom { .. } => ResponseInputItem::CustomToolCallOutput {
+                call_id: call.call_id.clone(),
+                output: FunctionCallOutputPayload {
+                    body: FunctionCallOutputBody::Text(Self::abort_message(call, secs)),
+                    ..Default::default()
+                },
+            },
+            ToolPayload::ToolSearch { .. } => ResponseInputItem::ToolSearchOutput {
+                call_id: call.call_id.clone(),
+                status: "completed".to_string(),
+                execution: "client".to_string(),
+                tools: Vec::new(),
+            },
+            ToolPayload::Mcp { .. } => ResponseInputItem::McpToolCallOutput {
+                call_id: call.call_id.clone(),
+                output: codex_protocol::mcp::CallToolResult::from_error_text(Self::abort_message(
+                    call, secs,
+                )),
+            },
+            _ => ResponseInputItem::FunctionCallOutput {
+                call_id: call.call_id.clone(),
+                output: FunctionCallOutputPayload {
+                    body: FunctionCallOutputBody::Text(Self::abort_message(call, secs)),
+                    ..Default::default()
+                },
+            },
+        }
+    }
+
+    fn abort_message(call: &ToolCall, secs: f32) -> String {
+        match call.tool_name.as_str() {
+            "shell" | "container.exec" | "local_shell" | "shell_command" | "unified_exec" => {
+                format!("Wall time: {secs:.1} seconds\naborted by user")
+            }
+            _ => format!("aborted by user after {secs:.1}s"),
+        }
     }
 }

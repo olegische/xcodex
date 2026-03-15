@@ -1,3 +1,4 @@
+pub mod citations;
 pub mod prompts;
 
 use std::sync::Arc;

@@ -27,6 +27,7 @@ use codex_protocol::protocol::SandboxPolicy;
 use codex_protocol::request_permissions::PermissionGrantScope;
 use tracing::Span;
 
+use crate::connectors::UnavailableDiscoverableAppsProvider;
 use crate::protocol::CompactedItem;
 use crate::protocol::CreditsSnapshot;
 use crate::protocol::InitialHistory;
@@ -46,7 +47,9 @@ use crate::state::TaskKind;
 use crate::tasks::SessionTask;
 use crate::tasks::SessionTaskContext;
 use crate::tools::ToolRouter;
+use crate::tools::browser_host::UnavailableHostFs;
 use crate::tools::context::FunctionToolOutput;
+use crate::tools::context::ToolCall;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolPayload;
 use crate::tools::handlers::ShellHandler;
@@ -88,6 +91,8 @@ use std::time::Duration as StdDuration;
 
 #[path = "codex_tests_guardian.rs"]
 mod guardian_tests;
+#[path = "codex_tests_tool_suggest.rs"]
+mod tool_suggest_tests;
 
 use codex_protocol::models::function_call_output_content_items_to_text;
 
@@ -1960,7 +1965,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
         config.codex_home.clone(),
         auth_manager.clone(),
         None,
-        CollaborationModesConfig::default(),
+        CollaborationModesConfig::from_features(&config.features),
     ));
     let model = ModelsManager::get_model_offline_for_tests(config.model.as_deref());
     let model_info = ModelsManager::construct_model_info_offline_for_tests(model.as_str(), &config);
@@ -2049,7 +2054,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         config.codex_home.clone(),
         auth_manager.clone(),
         None,
-        CollaborationModesConfig::default(),
+        CollaborationModesConfig::from_features(&config.features),
     ));
     let agent_control = AgentControl;
     let exec_policy = ExecPolicyManager::default();
@@ -2169,6 +2174,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         code_mode_service: crate::tools::code_mode::CodeModeService::new(
             config.js_repl_node_path.clone(),
         ),
+        browser_fs: Arc::new(UnavailableHostFs),
+        discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
     };
     let js_repl = Arc::new(JsReplHandle::with_node_path(
         config.js_repl_node_path.clone(),
@@ -2688,7 +2695,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         config.codex_home.clone(),
         auth_manager.clone(),
         None,
-        CollaborationModesConfig::default(),
+        CollaborationModesConfig::from_features(&config.features),
     ));
     let agent_control = AgentControl;
     let exec_policy = ExecPolicyManager::default();
@@ -2808,6 +2815,8 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         code_mode_service: crate::tools::code_mode::CodeModeService::new(
             config.js_repl_node_path.clone(),
         ),
+        browser_fs: Arc::new(UnavailableHostFs),
+        discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
     };
     let js_repl = Arc::new(JsReplHandle::with_node_path(
         config.js_repl_node_path.clone(),
@@ -3265,6 +3274,95 @@ async fn handle_output_item_done_skips_image_save_message_when_save_fails() {
     let history = session.clone_history().await;
     assert_eq!(history.raw_items(), &[item]);
     assert!(!expected_saved_path.exists());
+}
+
+#[tokio::test]
+async fn handle_output_item_done_emits_started_before_completed_for_first_agent_message() {
+    let (session, turn_context, rx) = make_session_and_context_with_rx().await;
+    let session = Arc::new(session);
+    let turn_context = Arc::new(turn_context);
+    let item = ResponseItem::Message {
+        id: Some("msg-1".to_string()),
+        role: "assistant".to_string(),
+        content: vec![ContentItem::OutputText {
+            text: "hello <oai-mem-citation>doc</oai-mem-citation>world".to_string(),
+        }],
+        end_turn: None,
+        phase: None,
+    };
+
+    let mut ctx = HandleOutputCtx {
+        sess: Arc::clone(&session),
+        turn_context: Arc::clone(&turn_context),
+        tool_runtime: test_tool_runtime(Arc::clone(&session), Arc::clone(&turn_context)),
+        cancellation_token: CancellationToken::new(),
+    };
+    let result = handle_output_item_done(&mut ctx, item.clone(), None)
+        .await
+        .expect("assistant message should succeed");
+
+    assert_eq!(result.last_agent_message, Some("hello world".to_string()));
+
+    let first = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+        .await
+        .expect("expected item started event")
+        .expect("channel open");
+    assert!(matches!(
+        first.msg,
+        EventMsg::ItemStarted(ItemStartedEvent {
+            item: TurnItem::AgentMessage(_),
+            ..
+        })
+    ));
+
+    let second = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+        .await
+        .expect("expected item completed event")
+        .expect("channel open");
+    assert!(matches!(
+        second.msg,
+        EventMsg::ItemCompleted(ItemCompletedEvent {
+            item: TurnItem::AgentMessage(_),
+            ..
+        })
+    ));
+}
+
+#[tokio::test]
+async fn tool_call_runtime_returns_aborted_response_when_token_is_already_cancelled() {
+    let (session, turn_context) = make_session_and_context().await;
+    let runtime = test_tool_runtime(Arc::new(session), Arc::new(turn_context));
+    let cancellation_token = CancellationToken::new();
+    cancellation_token.cancel();
+
+    let response = runtime
+        .handle_tool_call(
+            ToolCall {
+                tool_name: "read_file".to_string(),
+                tool_namespace: None,
+                call_id: "call-1".to_string(),
+                payload: ToolPayload::Function {
+                    arguments: serde_json::json!({
+                        "file_path": "/workspace/src/lib.rs",
+                    })
+                    .to_string(),
+                },
+            },
+            cancellation_token,
+        )
+        .await
+        .expect("cancelled tool call should resolve to a model-visible response");
+
+    match response {
+        ResponseInputItem::FunctionCallOutput { call_id, output } => {
+            assert_eq!(call_id, "call-1");
+            let text = output
+                .text_content()
+                .expect("function output should contain text");
+            assert!(text.starts_with("aborted by user after "));
+        }
+        other => panic!("expected function_call_output, got {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -4003,6 +4101,147 @@ async fn fatal_tool_error_stops_turn_and_reports_error() {
             assert_eq!(message, "tool shell invoked with incompatible payload");
         }
         other => panic!("expected FunctionCallError::Fatal, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn dynamic_tool_dispatch_emits_request_and_returns_response() {
+    let dynamic_tool = DynamicToolSpec {
+        name: "dynamic_test".to_string(),
+        description: "Test dynamic tool".to_string(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "value": { "type": "string" }
+            },
+            "required": ["value"],
+            "additionalProperties": false
+        }),
+    };
+    let (session, turn_context, rx) =
+        make_session_and_context_with_dynamic_tools_and_rx(vec![dynamic_tool]).await;
+    *session.active_turn.lock().await = Some(ActiveTurn::default());
+    let router = ToolRouter::from_config(
+        &turn_context.tools_config,
+        crate::tools::router::ToolRouterParams {
+            mcp_tools: None,
+            app_tools: None,
+            discoverable_tools: None,
+            dynamic_tools: turn_context.dynamic_tools.as_slice(),
+        },
+    );
+    let call = ToolCall {
+        tool_name: "dynamic_test".to_string(),
+        tool_namespace: None,
+        call_id: "call-1".to_string(),
+        payload: ToolPayload::Function {
+            arguments: r#"{"value":"ok"}"#.to_string(),
+        },
+    };
+    let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+    let session_for_response = Arc::clone(&session);
+    tokio::spawn(async move {
+        loop {
+            let event = rx.recv().await.expect("dynamic tool request event");
+            if let EventMsg::DynamicToolCallRequest(request) = event.msg {
+                assert_eq!(request.call_id, "call-1");
+                assert_eq!(request.tool, "dynamic_test");
+                handlers::dynamic_tool_response(
+                    &session_for_response,
+                    request.call_id,
+                    DynamicToolResponse {
+                        content_items: vec![
+                            codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem::InputText {
+                                text: "dynamic ok".to_string(),
+                            },
+                        ],
+                        success: true,
+                    },
+                )
+                .await;
+                break;
+            }
+        }
+    });
+
+    let response = router
+        .dispatch_tool_call(
+            Arc::clone(&session),
+            Arc::clone(&turn_context),
+            tracker,
+            call,
+            ToolCallSource::Direct,
+        )
+        .await
+        .expect("dynamic tool should succeed");
+
+    match response {
+        ResponseInputItem::FunctionCallOutput { call_id, output } => {
+            assert_eq!(call_id, "call-1");
+            assert_eq!(output.success, Some(true));
+            assert_eq!(output.body.to_text().as_deref(), Some("dynamic ok"));
+        }
+        other => panic!("expected function call output, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn mcp_tool_dispatch_returns_mcp_output_item() {
+    let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
+    let mut mcp_tools = std::collections::HashMap::new();
+    mcp_tools.insert(
+        "mcp__test__echo".to_string(),
+        rmcp::model::Tool {
+            name: "mcp__test__echo".to_string().into(),
+            description: Some("Test MCP tool".to_string().into()),
+            input_schema: std::sync::Arc::new(serde_json::Map::from_iter([(
+                "type".to_string(),
+                serde_json::Value::String("object".to_string()),
+            )])),
+            annotations: None,
+            meta: None,
+            output_schema: None,
+            icons: None,
+            title: None,
+            execution: None,
+        },
+    );
+    let router = ToolRouter::from_config(
+        &turn_context.tools_config,
+        crate::tools::router::ToolRouterParams {
+            mcp_tools: Some(mcp_tools),
+            app_tools: None,
+            discoverable_tools: None,
+            dynamic_tools: turn_context.dynamic_tools.as_slice(),
+        },
+    );
+    let tracker = Arc::new(tokio::sync::Mutex::new(TurnDiffTracker::new()));
+    let response = router
+        .dispatch_tool_call(
+            Arc::clone(&session),
+            Arc::clone(&turn_context),
+            tracker,
+            ToolCall {
+                tool_name: "mcp__test__echo".to_string(),
+                tool_namespace: None,
+                call_id: "call-mcp-1".to_string(),
+                payload: ToolPayload::Mcp {
+                    server: "test".to_string(),
+                    tool: "echo".to_string(),
+                    raw_arguments: r#"{"value":"ok"}"#.to_string(),
+                },
+            },
+            ToolCallSource::Direct,
+        )
+        .await
+        .expect("mcp tool should return output");
+
+    match response {
+        ResponseInputItem::McpToolCallOutput { call_id, output } => {
+            assert_eq!(call_id, "call-mcp-1");
+            assert_eq!(output.is_error, Some(true));
+        }
+        other => panic!("expected mcp tool call output, got {other:?}"),
     }
 }
 

@@ -13,6 +13,7 @@ use crate::agent::AgentControl;
 use crate::analytics_client::AnalyticsEventsClient;
 use crate::client::ModelClient;
 use crate::config::StartedNetworkProxy;
+use crate::connectors::DiscoverableAppsProvider;
 use crate::exec_policy::ExecPolicyManager;
 use crate::file_watcher::FileWatcher;
 use crate::mcp::McpManager;
@@ -24,6 +25,7 @@ use crate::shell::Shell;
 use crate::shell_snapshot::ShellSnapshot;
 use crate::skills::SkillsManager;
 use crate::state_db::StateDbHandle;
+use crate::tools::browser_host::HostFs;
 use crate::tools::code_mode::CodeModeService;
 use crate::tools::network_approval::NetworkApprovalService;
 use crate::tools::sandboxing::ApprovalStore;
@@ -57,4 +59,6 @@ pub(crate) struct SessionServices {
     pub(crate) state_db: Option<StateDbHandle>,
     pub(crate) model_client: ModelClient,
     pub(crate) code_mode_service: CodeModeService,
+    pub(crate) browser_fs: Arc<dyn HostFs>,
+    pub(crate) discoverable_apps_provider: Arc<dyn DiscoverableAppsProvider>,
 }

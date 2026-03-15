@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
 
+use async_trait::async_trait;
 pub use codex_app_server_protocol::AppInfo;
 
-use crate::CodexAuth;
 use crate::config::Config;
 use crate::plugins::AppConnectorId;
 
@@ -103,12 +105,52 @@ pub fn with_app_enabled_state(mut connectors: Vec<AppInfo>, _config: &Config) ->
     connectors
 }
 
-pub(crate) async fn list_tool_suggest_discoverable_tools_with_auth(
-    _config: &Config,
-    _auth: Option<&CodexAuth>,
-    _accessible_connectors: &[AppInfo],
+#[async_trait]
+pub(crate) trait DiscoverableAppsProvider: Send + Sync {
+    async fn list_discoverable_apps(&self) -> anyhow::Result<Vec<AppInfo>>;
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct UnavailableDiscoverableAppsProvider;
+
+#[async_trait]
+impl DiscoverableAppsProvider for UnavailableDiscoverableAppsProvider {
+    async fn list_discoverable_apps(&self) -> anyhow::Result<Vec<AppInfo>> {
+        Ok(Vec::new())
+    }
+}
+
+pub(crate) async fn list_tool_suggest_discoverable_tools(
+    provider: Arc<dyn DiscoverableAppsProvider>,
+    accessible_connectors: &[AppInfo],
 ) -> anyhow::Result<Vec<AppInfo>> {
-    Ok(Vec::new())
+    let directory_connectors = provider.list_discoverable_apps().await?;
+    Ok(filter_tool_suggest_discoverable_tools(
+        directory_connectors,
+        accessible_connectors,
+    ))
+}
+
+fn filter_tool_suggest_discoverable_tools(
+    directory_connectors: Vec<AppInfo>,
+    accessible_connectors: &[AppInfo],
+) -> Vec<AppInfo> {
+    let accessible_connector_ids: HashSet<&str> = accessible_connectors
+        .iter()
+        .filter(|connector| connector.is_accessible && connector.is_enabled)
+        .map(|connector| connector.id.as_str())
+        .collect();
+
+    let mut connectors = directory_connectors
+        .into_iter()
+        .filter(|connector| !accessible_connector_ids.contains(connector.id.as_str()))
+        .collect::<Vec<_>>();
+    connectors.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    connectors
 }
 
 pub(crate) fn codex_app_tool_is_enabled(

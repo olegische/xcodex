@@ -11,6 +11,7 @@ pub struct ResolvedReviewRequest {
 
 const UNCOMMITTED_PROMPT: &str = "Review the current code changes (staged, unstaged, and untracked files) and provide prioritized findings.";
 const BASE_BRANCH_PROMPT: &str = "Review the code changes against the base branch '{baseBranch}'. Provide prioritized, actionable findings.";
+const COMMIT_PROMPT_WITH_TITLE: &str = "Review the code changes introduced by commit {sha} (\"{title}\"). Provide prioritized, actionable findings.";
 const COMMIT_PROMPT: &str =
     "Review the code changes introduced by commit {sha}. Provide prioritized, actionable findings.";
 
@@ -36,7 +37,15 @@ pub fn review_prompt(target: &ReviewTarget, _cwd: &Path) -> anyhow::Result<Strin
         ReviewTarget::BaseBranch { branch } => {
             Ok(BASE_BRANCH_PROMPT.replace("{baseBranch}", branch))
         }
-        ReviewTarget::Commit { sha, .. } => Ok(COMMIT_PROMPT.replace("{sha}", sha)),
+        ReviewTarget::Commit { sha, title } => {
+            if let Some(title) = title {
+                Ok(COMMIT_PROMPT_WITH_TITLE
+                    .replace("{sha}", sha)
+                    .replace("{title}", title))
+            } else {
+                Ok(COMMIT_PROMPT.replace("{sha}", sha))
+            }
+        }
         ReviewTarget::Custom { instructions } => {
             let prompt = instructions.trim();
             if prompt.is_empty() {
@@ -60,5 +69,55 @@ pub fn user_facing_hint(target: &ReviewTarget) -> String {
             }
         }
         ReviewTarget::Custom { instructions } => instructions.trim().to_string(),
+    }
+}
+
+impl From<ResolvedReviewRequest> for ReviewRequest {
+    fn from(resolved: ResolvedReviewRequest) -> Self {
+        ReviewRequest {
+            target: resolved.target,
+            user_facing_hint: Some(resolved.user_facing_hint),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use std::path::Path;
+
+    #[test]
+    fn commit_prompt_includes_title_when_present() {
+        let prompt = review_prompt(
+            &ReviewTarget::Commit {
+                sha: "abcdef123456".to_string(),
+                title: Some("Fix browser review flow".to_string()),
+            },
+            Path::new("."),
+        )
+        .expect("prompt");
+
+        assert_eq!(
+            prompt,
+            "Review the code changes introduced by commit abcdef123456 (\"Fix browser review flow\"). Provide prioritized, actionable findings."
+        );
+    }
+
+    #[test]
+    fn resolved_review_request_round_trips_to_review_request() {
+        let resolved = ResolvedReviewRequest {
+            target: ReviewTarget::UncommittedChanges,
+            prompt: "prompt".to_string(),
+            user_facing_hint: "current changes".to_string(),
+        };
+
+        assert_eq!(
+            ReviewRequest::from(resolved),
+            ReviewRequest {
+                target: ReviewTarget::UncommittedChanges,
+                user_facing_hint: Some("current changes".to_string()),
+            }
+        );
     }
 }

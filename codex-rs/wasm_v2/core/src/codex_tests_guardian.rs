@@ -278,7 +278,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         config.codex_home.clone(),
         auth_manager.clone(),
         None,
-        CollaborationModesConfig::default(),
+        CollaborationModesConfig::from_features(&config.features),
     ));
     let plugins_manager = Arc::new(PluginsManager::new(config.codex_home.clone()));
     let skills_manager = Arc::new(SkillsManager::new(

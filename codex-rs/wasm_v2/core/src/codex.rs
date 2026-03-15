@@ -46,6 +46,7 @@ use crate::stream_events_utils::handle_output_item_done;
 use crate::stream_events_utils::raw_assistant_output_text_from_item;
 use crate::stream_events_utils::record_completed_response_item;
 use crate::terminal;
+use crate::tools::browser_host::UnavailableHostFs;
 use crate::truncate::TruncationPolicy;
 use crate::turn_metadata::TurnMetadataState;
 use crate::util::error_or_panic;
@@ -205,6 +206,7 @@ use review::spawn_review_thread;
 pub(crate) use run_turn::collect_explicit_app_ids_from_skill_items;
 pub(crate) use run_turn::filter_codex_apps_mcp_tools;
 pub(crate) use run_turn::filter_connectors_for_input;
+pub(crate) use run_turn::run_turn;
 use sampling::SamplingRequestResult;
 use sampling::built_tools;
 use sampling::run_sampling_request;
@@ -229,6 +231,7 @@ use types::SUBMISSION_CHANNEL_CAPACITY;
 use types::SessionLoopTermination;
 pub use types::SteerInputError;
 
+use crate::connectors::UnavailableDiscoverableAppsProvider;
 use crate::exec_policy::ExecPolicyUpdateError;
 use crate::feedback_tags;
 use crate::file_watcher::FileWatcher;
@@ -996,6 +999,8 @@ impl Session {
             code_mode_service: crate::tools::code_mode::CodeModeService::new(
                 config.js_repl_node_path.clone(),
             ),
+            browser_fs: Arc::new(UnavailableHostFs),
+            discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
         };
         let js_repl = Arc::new(JsReplHandle::with_node_path(
             config.js_repl_node_path.clone(),

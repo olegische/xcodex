@@ -19,11 +19,16 @@ use crate::codex::TurnContext;
 use crate::error::CodexErr;
 use crate::error::Result;
 use crate::function_tool::FunctionCallError;
+use crate::memories::citations::get_thread_id_from_citations;
 use crate::parse_turn_item;
+use crate::state_db;
 use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::router::ToolRouter;
+use crate::tools::router::last_assistant_message_from_item;
 use codex_utils_stream_parser::strip_citations;
 use codex_utils_stream_parser::strip_proposed_plan_blocks;
+use tracing::debug;
+use tracing::instrument;
 
 fn strip_hidden_assistant_markup(text: &str, plan_mode: bool) -> String {
     let (without_citations, _) = strip_citations(text);
@@ -138,15 +143,57 @@ pub(crate) async fn record_completed_response_item(
 ) {
     sess.record_conversation_items(turn_context, std::slice::from_ref(item))
         .await;
+    maybe_mark_thread_memory_mode_polluted_from_web_search(sess, turn_context, item).await;
+    record_stage1_output_usage_for_completed_item(turn_context, item).await;
+}
+
+async fn maybe_mark_thread_memory_mode_polluted_from_web_search(
+    sess: &Session,
+    turn_context: &TurnContext,
+    item: &ResponseItem,
+) {
+    if !turn_context
+        .config
+        .memories
+        .no_memories_if_mcp_or_web_search
+        || !matches!(item, ResponseItem::WebSearchCall { .. })
+    {
+        return;
+    }
+    state_db::mark_thread_memory_mode_polluted(
+        sess.services.state_db.as_ref(),
+        sess.conversation_id,
+        "record_completed_response_item",
+    )
+    .await;
+}
+
+async fn record_stage1_output_usage_for_completed_item(
+    turn_context: &TurnContext,
+    item: &ResponseItem,
+) {
+    let Some(raw_text) = raw_assistant_output_text_from_item(item) else {
+        return;
+    };
+
+    let (_, citations) = strip_citations(&raw_text);
+    let thread_ids = get_thread_id_from_citations(citations);
+    if thread_ids.is_empty() {
+        return;
+    }
+
+    if let Some(db) = state_db::get_state_db(turn_context.config.as_ref()).await {
+        let _ = db.record_stage1_output_usage(&thread_ids).await;
+    }
 }
 
 pub(crate) async fn handle_non_tool_response_item(
-    _sess: &Session,
-    _turn_context: &TurnContext,
+    sess: &Session,
+    turn_context: &TurnContext,
     item: &ResponseItem,
-    _plan_mode: bool,
+    plan_mode: bool,
 ) -> Option<TurnItem> {
-    let plan_mode = _plan_mode;
+    debug!(?item, "Output item");
     match item {
         ResponseItem::Message { .. }
         | ResponseItem::Reasoning { .. }
@@ -165,32 +212,50 @@ pub(crate) async fn handle_non_tool_response_item(
                 agent_message.content =
                     vec![codex_protocol::items::AgentMessageContent::Text { text: stripped }];
             }
-            if let TurnItem::ImageGeneration(image_item) = &mut turn_item
-                && let Ok(path) =
-                    save_image_generation_result(&image_item.id, &image_item.result).await
-            {
-                image_item.saved_path = Some(path.to_string_lossy().into_owned());
-                let image_output_dir = default_image_generation_output_dir();
-                let message: ResponseItem = DeveloperInstructions::new(format!(
-                    "Generated images are saved to {} as {} by default.",
-                    image_output_dir.display(),
-                    image_output_dir.join("<image_id>.png").display(),
-                ))
-                .into();
-                _sess
-                    .record_conversation_items(_turn_context, std::slice::from_ref(&message))
-                    .await;
+            if let TurnItem::ImageGeneration(image_item) = &mut turn_item {
+                match save_image_generation_result(&image_item.id, &image_item.result).await {
+                    Ok(path) => {
+                        image_item.saved_path = Some(path.to_string_lossy().into_owned());
+                        let image_output_dir = default_image_generation_output_dir();
+                        let message: ResponseItem = DeveloperInstructions::new(format!(
+                            "Generated images are saved to {} as {} by default.",
+                            image_output_dir.display(),
+                            image_output_dir.join("<image_id>.png").display(),
+                        ))
+                        .into();
+                        sess.record_conversation_items(
+                            turn_context,
+                            std::slice::from_ref(&message),
+                        )
+                        .await;
+                    }
+                    Err(err) => {
+                        let output_dir = default_image_generation_output_dir();
+                        tracing::warn!(
+                            call_id = %image_item.id,
+                            output_dir = %output_dir.display(),
+                            "failed to save generated image: {err}"
+                        );
+                    }
+                }
             }
             Some(turn_item)
+        }
+        ResponseItem::FunctionCallOutput { .. }
+        | ResponseItem::CustomToolCallOutput { .. }
+        | ResponseItem::ToolSearchOutput { .. } => {
+            debug!("unexpected tool output from stream");
+            None
         }
         _ => None,
     }
 }
 
+#[instrument(level = "trace", skip_all)]
 pub(crate) async fn handle_output_item_done(
     ctx: &mut HandleOutputCtx,
     item: ResponseItem,
-    _previously_active_item: Option<TurnItem>,
+    previously_active_item: Option<TurnItem>,
 ) -> Result<OutputItemResult> {
     let mut output = OutputItemResult::default();
     let plan_mode = ctx.turn_context.collaboration_mode.mode == ModeKind::Plan;
@@ -218,13 +283,25 @@ pub(crate) async fn handle_output_item_done(
             )
             .await
             {
+                if previously_active_item.is_none() {
+                    let mut started_item = turn_item.clone();
+                    if let TurnItem::ImageGeneration(item) = &mut started_item {
+                        item.status = "in_progress".to_string();
+                        item.revised_prompt = None;
+                        item.result.clear();
+                        item.saved_path = None;
+                    }
+                    ctx.sess
+                        .emit_turn_item_started(&ctx.turn_context, &started_item)
+                        .await;
+                }
                 ctx.sess
                     .emit_turn_item_completed(&ctx.turn_context, turn_item)
                     .await;
             }
             record_completed_response_item(ctx.sess.as_ref(), ctx.turn_context.as_ref(), &item)
                 .await;
-            output.last_agent_message = raw_assistant_output_text_from_item(&item);
+            output.last_agent_message = last_assistant_message_from_item(&item, plan_mode);
         }
         Err(FunctionCallError::MissingLocalShellCallId) => {
             record_completed_response_item(ctx.sess.as_ref(), ctx.turn_context.as_ref(), &item)
