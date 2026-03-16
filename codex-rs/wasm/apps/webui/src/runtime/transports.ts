@@ -3,6 +3,7 @@ import { emitRuntimeActivity, registerActiveModelRequest, unregisterActiveModelR
 import { loadXrouterRuntime } from "./assets";
 import { assistantTextFromResponseItem, isCompletedEvent, isOutputItemDoneEvent } from "./transcript";
 import { activeProviderApiKey, createHostError, getActiveProvider, isAbortError, modelIdToDisplayName, normalizeDiscoveredModels, normalizeHostValue } from "./utils";
+import { prepareXrouterResponsesRequest } from "./xrouter-transport";
 import type { CodexCompatibleConfig, JsonValue, ModelPreset, XrouterBrowserClient } from "./types";
 
 const deltaLogState = new Map<string, { count: number; announcedStreaming: boolean; textParts: string[] }>();
@@ -141,7 +142,6 @@ export async function runXrouterTurn(params: {
   codexConfig: CodexCompatibleConfig;
   requestBody: Record<string, unknown>;
   extraHeaders: Record<string, string> | null;
-  responseInputItems: JsonValue[] | null;
 }): Promise<JsonValue> {
   const client = await createXrouterClient(params.codexConfig);
   let cancelled = false;
@@ -157,9 +157,8 @@ export async function runXrouterTurn(params: {
 
   const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
   let streamError: JsonValue | null = null;
-  const normalizedRequestBody = buildXrouterRequestBody(
-    params.requestBody,
-    params.responseInputItems,
+  const normalizedRequestBody = prepareXrouterResponsesRequest(
+    params.requestBody as OpenAI.Responses.ResponseCreateParams,
   );
   const transportTools = Array.isArray(normalizedRequestBody.tools)
     ? (normalizedRequestBody.tools as JsonValue[])
@@ -406,200 +405,6 @@ async function createXrouterClient(codexConfig: CodexCompatibleConfig): Promise<
   );
 }
 
-function buildXrouterRequestBody(
-  requestBody: Record<string, unknown>,
-  responseInputItems: JsonValue[] | null,
-): Record<string, unknown> {
-  const normalizedInput = normalizeResponsesInputForXrouter(
-    responseInputItems,
-    requestBody.input as JsonValue | undefined,
-  );
-  const normalizedTools = Array.isArray(requestBody.tools)
-    ? requestBody.tools
-        .map((tool) => normalizeTransportToolForXrouter(tool as JsonValue))
-        .filter((tool): tool is JsonValue => tool !== null)
-    : requestBody.tools;
-  return {
-    ...requestBody,
-    ...(normalizedInput === undefined ? {} : { input: normalizedInput }),
-    ...(normalizedTools === undefined ? {} : { tools: normalizedTools }),
-  };
-}
-
-function normalizeResponsesInputForXrouter(
-  responseInputItems: JsonValue[] | null,
-  fallbackInput: JsonValue | undefined,
-): JsonValue | undefined {
-  if (responseInputItems === null) {
-    console.info("[webui] xrouter.normalize-input:fallback", {
-      input: summarizeResponsesInput(fallbackInput),
-    });
-    return fallbackInput;
-  }
-
-  const normalizedItems = responseInputItems
-    .map(normalizeResponseInputItemForXrouter)
-    .filter((item): item is JsonValue => item !== null);
-  console.info("[webui] xrouter.normalize-input", {
-    before: summarizeResponsesInput(responseInputItems),
-    after: summarizeResponsesInput(normalizedItems),
-  });
-  console.info(
-    "[webui] xrouter.normalize-input:json",
-    JSON.stringify(
-      {
-        before: responseInputItems,
-        after: normalizedItems,
-      },
-      null,
-      2,
-    ),
-  );
-  return normalizedItems;
-}
-
-function normalizeResponseInputItemForXrouter(item: JsonValue): JsonValue | null {
-  if (item === null || typeof item !== "object" || Array.isArray(item)) {
-    console.warn("[webui] xrouter.normalize-input-item:invalid", { item });
-    return null;
-  }
-
-  const record = item as Record<string, unknown>;
-  const type = typeof record.type === "string" ? record.type : null;
-  if (type === null) {
-    console.warn("[webui] xrouter.normalize-input-item:missing-type", { item: record });
-    return null;
-  }
-
-  if (type === "message") {
-    return {
-      type,
-      role: typeof record.role === "string" ? record.role : "user",
-      content: Array.isArray(record.content) ? record.content : [],
-    };
-  }
-
-  if (type === "function_call") {
-    const callId =
-      typeof record.call_id === "string"
-        ? record.call_id
-        : typeof record.id === "string"
-          ? record.id
-          : null;
-    if (callId === null || typeof record.name !== "string") {
-      console.warn("[webui] xrouter.normalize-input-item:function-call-invalid", {
-        item: record,
-      });
-      return null;
-    }
-    const normalizedItem = {
-      type,
-      name: record.name,
-      ...(typeof record.namespace === "string" && record.namespace.length > 0
-        ? { namespace: record.namespace }
-        : {}),
-      call_id: callId,
-      arguments:
-        typeof record.arguments === "string"
-          ? record.arguments
-          : record.arguments !== undefined
-            ? JSON.stringify(record.arguments)
-            : "{}",
-    };
-    console.info("[webui] xrouter.normalize-input-item:function-call", {
-      before: summarizeInputItem(item),
-      after: summarizeInputItem(normalizedItem),
-    });
-    return normalizedItem;
-  }
-
-  if (type === "function_call_output") {
-    const callId = typeof record.call_id === "string" ? record.call_id : null;
-    if (callId === null || !("output" in record)) {
-      console.warn("[webui] xrouter.normalize-input-item:function-call-output-invalid", {
-        item: record,
-      });
-      return null;
-    }
-    const normalizedItem = {
-      type,
-      call_id: callId,
-      output:
-        typeof record.output === "string"
-          ? record.output
-          : record.output !== undefined
-            ? JSON.stringify(record.output)
-            : "",
-    };
-    console.info("[webui] xrouter.normalize-input-item:function-call-output", {
-      before: summarizeInputItem(item),
-      after: summarizeInputItem(normalizedItem),
-      outputPreview:
-        typeof normalizedItem.output === "string"
-          ? normalizedItem.output.slice(0, 400)
-          : normalizedItem.output,
-    });
-    return normalizedItem;
-  }
-
-  if (type === "tool_search_call") {
-    const callId = typeof record.call_id === "string" ? record.call_id : null;
-    if (callId === null) {
-      console.warn("[webui] xrouter.normalize-input-item:tool-search-call-invalid", {
-        item: record,
-      });
-      return null;
-    }
-    const normalizedItem = {
-      type: "function_call",
-      name: "tool_search",
-      call_id: callId,
-      arguments:
-        record.arguments !== undefined
-          ? JSON.stringify(record.arguments)
-          : "{}",
-    };
-    console.info("[webui] xrouter.normalize-input-item:tool-search-call", {
-      before: summarizeInputItem(item),
-      after: summarizeInputItem(normalizedItem),
-    });
-    return normalizedItem;
-  }
-
-  if (type === "tool_search_output") {
-    const callId = typeof record.call_id === "string" ? record.call_id : null;
-    if (callId === null) {
-      console.warn("[webui] xrouter.normalize-input-item:tool-search-output-invalid", {
-        item: record,
-      });
-      return null;
-    }
-    const normalizedTools = normalizeToolSearchOutputToolsForXrouter(record.tools);
-    const normalizedItem = {
-      type: "function_call_output",
-      call_id: callId,
-      output: JSON.stringify({
-        status: typeof record.status === "string" ? record.status : "completed",
-        execution: typeof record.execution === "string" ? record.execution : "client",
-        calling_convention:
-          "Call discovered tools using the exact `name` field shown for each tool. Do not reconstruct tool names from parent groups.",
-        tools: normalizedTools,
-      }),
-    };
-    console.info("[webui] xrouter.normalize-input-item:tool-search-output", {
-      before: summarizeInputItem(item),
-      after: summarizeInputItem(normalizedItem),
-      tools: normalizedTools,
-    });
-    return normalizedItem;
-  }
-
-  console.info("[webui] xrouter.normalize-input-item:passthrough", {
-    item: summarizeInputItem(item),
-  });
-  return item;
-}
-
 function normalizeToolSearchOutputToolsForXrouter(tools: unknown): JsonValue[] {
   if (!Array.isArray(tools)) {
     return [];
@@ -652,31 +457,6 @@ function qualifyDiscoveredToolName(namespace: string, toolName: string): string 
     return toolName.startsWith(namespace) ? toolName : `${namespace}${toolName}`;
   }
   return `${namespace}${toolName}`;
-}
-
-function normalizeTransportToolForXrouter(tool: JsonValue): JsonValue | null {
-  if (tool === null || typeof tool !== "object" || Array.isArray(tool)) {
-    return null;
-  }
-
-  const record = tool as Record<string, unknown>;
-  if (record.type !== "tool_search") {
-    return tool;
-  }
-
-  return {
-    type: "function",
-    name: "tool_search",
-    description: typeof record.description === "string" ? record.description : "",
-    parameters:
-      record.parameters !== undefined && record.parameters !== null
-        ? record.parameters
-        : {
-            type: "object",
-            properties: {},
-            additionalProperties: false,
-          },
-  };
 }
 
 function summarizeToolCollection(tools: unknown): Array<Record<string, unknown> | null> | null {

@@ -216,6 +216,9 @@ function mapItemCompleted(params: Record<string, unknown>): RuntimeActivity | nu
   }
 
   if (item.type === "agentMessage") {
+    if (typeof item.text !== "string" || item.text.trim().length === 0) {
+      return null;
+    }
     return {
       type: "assistantMessage",
       requestId: turnId,

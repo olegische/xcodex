@@ -97,7 +97,6 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
           codexConfig,
           requestBody,
           extraHeaders,
-          responseInputItems,
         });
       }
 

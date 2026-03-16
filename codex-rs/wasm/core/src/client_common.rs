@@ -260,6 +260,18 @@ pub(crate) mod tools {
         Namespace(ResponsesApiNamespace),
     }
 
+    pub(crate) fn create_tools_json_for_responses_api(
+        tools: &[ToolSpec],
+    ) -> crate::error::Result<Vec<Value>> {
+        let mut tools_json = Vec::with_capacity(tools.len());
+
+        for tool in tools {
+            tools_json.push(serde_json::to_value(tool)?);
+        }
+
+        Ok(tools_json)
+    }
+
     #[derive(Debug, Clone, Serialize, PartialEq)]
     pub struct ResponsesApiNamespace {
         pub name: String,
@@ -284,5 +296,55 @@ impl Stream for ResponseStream {
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.rx_event.poll_recv(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tools::ResponsesApiTool;
+    use super::tools::ToolSpec;
+    use super::tools::create_tools_json_for_responses_api;
+    use pretty_assertions::assert_eq;
+    use serde_json::json;
+
+    #[test]
+    fn create_tools_json_for_responses_api_serializes_each_tool() {
+        let tools = vec![
+            ToolSpec::Function(ResponsesApiTool {
+                name: "read_file".to_string(),
+                description: "Read a file.".to_string(),
+                strict: false,
+                defer_loading: None,
+                parameters: json!({
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false,
+                }),
+                output_schema: None,
+            }),
+            ToolSpec::LocalShell {},
+        ];
+
+        let actual = create_tools_json_for_responses_api(&tools).expect("tools should serialize");
+
+        assert_eq!(
+            actual,
+            vec![
+                json!({
+                    "type": "function",
+                    "name": "read_file",
+                    "description": "Read a file.",
+                    "strict": false,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": false,
+                    },
+                }),
+                json!({
+                    "type": "local_shell",
+                }),
+            ]
+        );
     }
 }

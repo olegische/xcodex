@@ -1,0 +1,80 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { prepareXrouterResponsesRequest } from "./xrouter-transport.ts";
+
+test("prepareXrouterResponsesRequest preserves responses input items", () => {
+  const requestBody = {
+    input: [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "inspect storage" }],
+      },
+      {
+        type: "function_call",
+        name: "inspect_storage",
+        namespace: "browser",
+        call_id: "call_1",
+        arguments: "{\"includeValues\":true}",
+      },
+      {
+        type: "function_call_output",
+        call_id: "call_1",
+        output: [
+          {
+            type: "input_text",
+            text: "ok",
+          },
+        ],
+      },
+    ],
+    tools: [
+      {
+        type: "function",
+        name: "browser__inspect_storage",
+        description: "Inspect storage",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+    ],
+  };
+
+  const actual = prepareXrouterResponsesRequest(requestBody);
+
+  assert.deepEqual(actual.input, requestBody.input);
+});
+
+test("prepareXrouterResponsesRequest keeps tool_search tool normalization", () => {
+  const requestBody = {
+    input: [],
+    tools: [
+      {
+        type: "tool_search",
+        description: "Find tools",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+    ],
+  };
+
+  const actual = prepareXrouterResponsesRequest(requestBody);
+
+  assert.deepEqual(actual.tools, [
+    {
+      type: "function",
+      name: "tool_search",
+      description: "Find tools",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+  ]);
+});

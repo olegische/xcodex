@@ -320,7 +320,7 @@ impl RolloutRecorder {
                 return Ok(());
             }
             let items = all_items(&state);
-            let Some(thread_id) = thread_id_from_items(items.as_slice()) else {
+            let Some(_thread_id) = thread_id_from_items(items.as_slice()) else {
                 return Err(IoError::other(
                     "failed to parse thread ID from rollout state",
                 ));
@@ -341,7 +341,8 @@ impl RolloutRecorder {
             if let Some(session_meta) = session_meta {
                 state.persisted_items.push(session_meta);
             }
-            state.persisted_items.append(&mut state.buffered_items);
+            let mut buffered_items = std::mem::take(&mut state.buffered_items);
+            state.persisted_items.append(&mut buffered_items);
             return Ok(());
         }
 

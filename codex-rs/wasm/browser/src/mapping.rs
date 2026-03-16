@@ -2,11 +2,15 @@
 use codex_app_server_protocol::DynamicToolCallOutputContentItem;
 #[cfg(test)]
 use codex_app_server_protocol::DynamicToolCallStatus;
+#[cfg(test)]
 use codex_app_server_protocol::ServerNotification;
+#[cfg(test)]
 use codex_app_server_protocol::Thread;
+#[cfg(test)]
 use codex_app_server_protocol::ThreadStatus;
 #[cfg(test)]
 use codex_app_server_protocol::ToolRequestUserInputResponse;
+#[cfg(test)]
 use codex_app_server_protocol::Turn;
 #[cfg(test)]
 use codex_protocol::models::FunctionCallOutputBody;
@@ -19,13 +23,16 @@ use codex_protocol::request_user_input::RequestUserInputAnswer;
 #[cfg(test)]
 use codex_protocol::request_user_input::RequestUserInputResponse;
 
+#[cfg(test)]
 use crate::state::ThreadRecord;
-use crate::state::TurnRecord;
+#[cfg(test)]
+use codex_wasm_v2_app_server::TurnRecord;
 
 pub fn initialize_user_agent() -> String {
     format!("codex-wasm-v2-browser/{}", env!("CARGO_PKG_VERSION"))
 }
 
+#[cfg(test)]
 pub fn build_thread(record: &ThreadRecord, include_turns: bool, status: ThreadStatus) -> Thread {
     Thread {
         id: record.id.clone(),
@@ -56,6 +63,7 @@ pub fn build_thread(record: &ThreadRecord, include_turns: bool, status: ThreadSt
     }
 }
 
+#[cfg(test)]
 pub fn request_resolved_notification(
     thread_id: String,
     request_id: codex_app_server_protocol::RequestId,
@@ -68,6 +76,7 @@ pub fn request_resolved_notification(
     )
 }
 
+#[cfg(test)]
 pub fn turn_to_protocol(turn: TurnRecord) -> Turn {
     Turn {
         id: turn.id,

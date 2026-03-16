@@ -29,6 +29,7 @@ use crate::BrowserTransportOptions;
 use crate::ModelTransportHost;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseStream;
+use crate::client_common::tools::create_tools_json_for_responses_api;
 #[cfg(target_arch = "wasm32")]
 use crate::compat::api::ResponseEvent;
 use crate::compat::otel::SessionTelemetry;
@@ -207,7 +208,7 @@ impl ModelClientSession {
         let reasoning = self.build_reasoning(model_info, effort, summary);
         let verbosity = self.resolve_verbosity(model_info);
         let text = build_text_controls(verbosity, &prompt.output_schema);
-        let tools = serde_json::to_value(&prompt.tools)?;
+        let tools = serde_json::to_value(create_tools_json_for_responses_api(&prompt.tools)?)?;
 
         let mut request = serde_json::Map::new();
         request.insert("model".to_string(), Value::String(model_info.slug.clone()));

@@ -99,14 +99,20 @@ pub(crate) async fn enqueue_server_notification(
     state: &Arc<Mutex<RuntimeState>>,
     notification: codex_app_server_protocol::ServerNotification,
 ) {
+    let tx = {
+        let mut state = state.lock().await;
+        if !state.should_enqueue_notification(&notification) {
+            browser_log(&format!(
+                "[wasm_v2/browser] suppressed duplicate server notification {notification}"
+            ));
+            return;
+        }
+        state.outgoing_tx.clone()
+    };
     browser_log(&format!(
         "[wasm_v2/browser] enqueue_server_notification {notification}"
     ));
     let message = JSONRPCMessage::Notification(server_notification_to_jsonrpc(notification));
-    let tx = {
-        let state = state.lock().await;
-        state.outgoing_tx.clone()
-    };
     let _ = tx.send(message).await;
 }
 

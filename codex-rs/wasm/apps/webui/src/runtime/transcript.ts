@@ -47,12 +47,6 @@ function appendTranscriptEntry(transcript: TranscriptEntry[], nextEntry: Transcr
     return;
   }
 
-  const lastEntry = transcript[transcript.length - 1];
-  if (lastEntry?.role === "tool" && nextEntry.role === "tool") {
-    lastEntry.text = `${lastEntry.text}\n\n${normalizedText}`;
-    return;
-  }
-
   transcript.push({
     ...nextEntry,
     text: normalizedText,

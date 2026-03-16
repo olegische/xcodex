@@ -1,0 +1,8 @@
+{
+  "name": "@browser-codex/wasm-codexui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
