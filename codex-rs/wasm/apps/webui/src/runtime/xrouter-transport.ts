@@ -4,6 +4,9 @@ import type { JsonValue } from "./types";
 export function prepareXrouterResponsesRequest(
   requestBody: OpenAI.Responses.ResponseCreateParams,
 ): OpenAI.Responses.ResponseCreateParams {
+  const normalizedInput = Array.isArray(requestBody.input)
+    ? requestBody.input.map((item) => normalizeResponsesInputItemForXrouter(item as JsonValue))
+    : requestBody.input;
   const normalizedTools = Array.isArray(requestBody.tools)
     ? requestBody.tools
         .map((tool) => normalizeTransportToolForXrouter(tool as JsonValue))
@@ -11,8 +14,52 @@ export function prepareXrouterResponsesRequest(
     : requestBody.tools;
   return {
     ...requestBody,
+    ...(normalizedInput === undefined ? {} : { input: normalizedInput }),
     ...(normalizedTools === undefined ? {} : { tools: normalizedTools }),
   };
+}
+
+function normalizeResponsesInputItemForXrouter(item: JsonValue): JsonValue {
+  if (item === null || typeof item !== "object" || Array.isArray(item)) {
+    return item;
+  }
+
+  const record = item as Record<string, unknown>;
+  if (
+    record.type !== "function_call_output" &&
+    record.type !== "custom_tool_call_output"
+  ) {
+    return item;
+  }
+
+  return {
+    ...record,
+    output: normalizeFunctionCallOutputForXrouter(record.output as JsonValue),
+  };
+}
+
+function normalizeFunctionCallOutputForXrouter(output: JsonValue): JsonValue {
+  if (!Array.isArray(output)) {
+    return output;
+  }
+
+  const textParts = output.flatMap((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      return [];
+    }
+    const content = entry as Record<string, unknown>;
+    if (content.type !== "input_text" || typeof content.text !== "string") {
+      return [];
+    }
+    const text = content.text.trim();
+    return text.length > 0 ? [text] : [];
+  });
+
+  if (textParts.length === 0) {
+    return output;
+  }
+
+  return textParts.join("\n");
 }
 
 function normalizeTransportToolForXrouter(tool: JsonValue): JsonValue | null {
@@ -36,6 +83,6 @@ function normalizeTransportToolForXrouter(tool: JsonValue): JsonValue | null {
             type: "object",
             properties: {},
             additionalProperties: false,
-          },
+      },
   };
 }

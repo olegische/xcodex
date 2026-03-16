@@ -11,21 +11,42 @@ import type {
 import { DEFAULT_CODEX_CONFIG, DEFAULT_DEMO_INSTRUCTIONS } from "./constants";
 
 export function normalizeHostValue(value: unknown): unknown {
+  return normalizeHostValueInternal(value, true);
+}
+
+export function normalizeHostValuePreservingStrings(value: unknown): unknown {
+  return normalizeHostValueInternal(value, false);
+}
+
+function normalizeHostValueInternal(value: unknown, parseStrings: boolean): unknown {
   if (typeof value === "string") {
-    try {
-      return normalizeHostValue(JSON.parse(value));
-    } catch {
-      return value;
+    if (parseStrings) {
+      try {
+        return normalizeHostValueInternal(JSON.parse(value), parseStrings);
+      } catch {
+        return value;
+      }
     }
+    return value;
   }
   if (Array.isArray(value)) {
-    return value.map(normalizeHostValue);
+    return value.map((item) => normalizeHostValueInternal(item, parseStrings));
   }
   if (value instanceof Map) {
-    return Object.fromEntries([...value.entries()].map(([key, nested]) => [key, normalizeHostValue(nested)]));
+    return Object.fromEntries(
+      [...value.entries()].map(([key, nested]) => [
+        key,
+        normalizeHostValueInternal(nested, parseStrings),
+      ]),
+    );
   }
   if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, normalizeHostValue(nested)]));
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [
+        key,
+        normalizeHostValueInternal(nested, parseStrings),
+      ]),
+    );
   }
   return value;
 }

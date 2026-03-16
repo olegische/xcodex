@@ -2,7 +2,7 @@ import { DEFAULT_DEMO_INSTRUCTIONS, WORKSPACE_ROOT } from "./constants";
 import { loadStoredAuthState, loadStoredCodexConfig, loadStoredDemoInstructions } from "./storage";
 import { runResponsesApiTurn, runXrouterTurn } from "./transports";
 import { applyWorkspacePatch, listWorkspaceDir, readWorkspaceFile, searchWorkspace } from "./workspace";
-import { activeProviderApiKey, getActiveProvider, normalizeHostValue } from "./utils";
+import { activeProviderApiKey, getActiveProvider, normalizeHostValuePreservingStrings } from "./utils";
 import type { BrowserRuntimeHost, JsonValue } from "./types";
 
 export function createBrowserRuntimeHost(): BrowserRuntimeHost {
@@ -59,13 +59,13 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
       return [];
     },
     async runModelTurn(request) {
-      const requestRecord = asJsonRecord(normalizeHostValue(request));
+      const requestRecord = asJsonRecord(normalizeHostValuePreservingStrings(request));
       const codexConfig = await loadStoredCodexConfig();
       const provider = getActiveProvider(codexConfig);
       const requestId =
         typeof requestRecord.requestId === "string" ? requestRecord.requestId : crypto.randomUUID();
-      const requestBody = asJsonRecord(normalizeHostValue(requestRecord.requestBody));
-      const transportOptions = asJsonRecord(normalizeHostValue(requestRecord.transportOptions));
+      const requestBody = asJsonRecord(normalizeHostValuePreservingStrings(requestRecord.requestBody));
+      const transportOptions = asJsonRecord(normalizeHostValuePreservingStrings(requestRecord.transportOptions));
       const extraHeaders = extraHeadersFromTransportOptions(transportOptions);
       const responseInputItems = Array.isArray(requestBody.input)
         ? (requestBody.input as JsonValue[])

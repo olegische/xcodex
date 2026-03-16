@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareXrouterResponsesRequest } from "./xrouter-transport.ts";
 
-test("prepareXrouterResponsesRequest preserves responses input items", () => {
+test("prepareXrouterResponsesRequest converts function_call_output content items to plain text", () => {
   const requestBody = {
     input: [
       {
@@ -44,7 +44,15 @@ test("prepareXrouterResponsesRequest preserves responses input items", () => {
 
   const actual = prepareXrouterResponsesRequest(requestBody);
 
-  assert.deepEqual(actual.input, requestBody.input);
+  assert.deepEqual(actual.input, [
+    requestBody.input[0],
+    requestBody.input[1],
+    {
+      type: "function_call_output",
+      call_id: "call_1",
+      output: "ok",
+    },
+  ]);
 });
 
 test("prepareXrouterResponsesRequest keeps tool_search tool normalization", () => {
