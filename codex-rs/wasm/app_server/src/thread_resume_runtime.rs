@@ -20,7 +20,7 @@ use crate::LoadedThread;
 use crate::RuntimeBootstrap;
 use crate::ThreadRecord;
 use crate::TurnRecord;
-use crate::mapping::build_thread;
+use crate::models::build_thread;
 use crate::runtime_bootstrap::resolve_model;
 
 pub async fn resume_thread(

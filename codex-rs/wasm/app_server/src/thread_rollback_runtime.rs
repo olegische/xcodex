@@ -7,7 +7,7 @@ use codex_protocol::protocol::Op;
 
 use crate::AppServerState;
 use crate::ThreadRecord;
-use crate::mapping::build_thread;
+use crate::models::build_thread;
 
 pub async fn rollback_loaded_thread(
     app_server_state: &mut AppServerState,

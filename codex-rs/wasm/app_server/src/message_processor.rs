@@ -31,7 +31,7 @@ use crate::CodexMessageProcessorArgs;
 use crate::PendingServerRequest;
 use crate::ResolvedServerRequest;
 use crate::ThreadRecord;
-use crate::mapping::initialize_user_agent;
+use crate::models::initialize_user_agent;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::runtime_bootstrap::RuntimeBootstrap;
 
@@ -506,7 +506,7 @@ mod tests {
     use super::MessageProcessorArgs;
     use crate::ApiVersion;
     use crate::InProcessThreadHandle;
-    use crate::mapping::initialize_user_agent;
+    use crate::models::initialize_user_agent;
     use codex_app_server_protocol::ClientInfo;
     use codex_app_server_protocol::ClientNotification;
     use codex_app_server_protocol::ClientRequest;

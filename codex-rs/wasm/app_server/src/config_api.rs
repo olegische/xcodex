@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use codex_app_server_protocol::Config;
 use codex_app_server_protocol::ConfigBatchWriteParams;
+use codex_app_server_protocol::ConfigEdit;
 use codex_app_server_protocol::ConfigLayer;
 use codex_app_server_protocol::ConfigLayerMetadata;
 use codex_app_server_protocol::ConfigLayerSource;
@@ -27,39 +27,50 @@ use serde_json::json;
 
 use crate::RuntimeBootstrap;
 
-pub fn config_read_response(
-    runtime_bootstrap: &RuntimeBootstrap,
-    params: ConfigReadParams,
-) -> Result<ConfigReadResponse, JSONRPCErrorError> {
-    let config = protocol_config(&runtime_bootstrap.config);
-    let origins = config_origins(&config);
-    let layers = params
-        .include_layers
-        .then(|| vec![config_layer(&config)])
-        .map(Some)
-        .unwrap_or(None);
-
-    Ok(ConfigReadResponse {
-        config,
-        origins,
-        layers,
-    })
+pub struct ConfigApi<'a> {
+    runtime_bootstrap: &'a mut RuntimeBootstrap,
+    loaded_threads: Vec<Arc<codex_wasm_v2_core::codex::Codex>>,
 }
 
-pub fn config_requirements_read_response(
-    _runtime_bootstrap: &RuntimeBootstrap,
-) -> Result<ConfigRequirementsReadResponse, JSONRPCErrorError> {
-    Ok(ConfigRequirementsReadResponse { requirements: None })
-}
+impl<'a> ConfigApi<'a> {
+    pub fn new(
+        runtime_bootstrap: &'a mut RuntimeBootstrap,
+        loaded_threads: Vec<Arc<codex_wasm_v2_core::codex::Codex>>,
+    ) -> Self {
+        Self {
+            runtime_bootstrap,
+            loaded_threads,
+        }
+    }
 
-pub async fn config_value_write(
-    runtime_bootstrap: &mut RuntimeBootstrap,
-    params: ConfigValueWriteParams,
-) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
-    config_batch_write(
-        runtime_bootstrap,
-        ConfigBatchWriteParams {
-            edits: vec![codex_app_server_protocol::ConfigEdit {
+    pub fn read(&self, params: ConfigReadParams) -> Result<ConfigReadResponse, JSONRPCErrorError> {
+        let config = protocol_config(&self.runtime_bootstrap.config);
+        let origins = config_origins(&config);
+        let layers = params
+            .include_layers
+            .then(|| vec![config_layer(&config)])
+            .map(Some)
+            .unwrap_or(None);
+
+        Ok(ConfigReadResponse {
+            config,
+            origins,
+            layers,
+        })
+    }
+
+    pub fn config_requirements_read(
+        &self,
+    ) -> Result<ConfigRequirementsReadResponse, JSONRPCErrorError> {
+        Ok(ConfigRequirementsReadResponse { requirements: None })
+    }
+
+    pub async fn write_value(
+        &mut self,
+        params: ConfigValueWriteParams,
+    ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
+        self.batch_write(ConfigBatchWriteParams {
+            edits: vec![ConfigEdit {
                 key_path: params.key_path,
                 value: params.value,
                 merge_strategy: params.merge_strategy,
@@ -67,61 +78,61 @@ pub async fn config_value_write(
             file_path: params.file_path,
             expected_version: params.expected_version,
             reload_user_config: false,
-        },
-        Vec::new(),
-    )
-    .await
-}
-
-pub async fn config_batch_write(
-    runtime_bootstrap: &mut RuntimeBootstrap,
-    params: ConfigBatchWriteParams,
-    loaded_threads: Vec<Arc<codex_wasm_v2_core::codex::Codex>>,
-) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
-    let current = load_current_user_config(runtime_bootstrap).await?;
-    let mut user_config = current.config;
-    for edit in &params.edits {
-        let segments = parse_key_path(&edit.key_path).map_err(config_validation_error)?;
-        let parsed_value = parse_value(edit.value.clone()).map_err(config_validation_error)?;
-        apply_merge(
-            &mut user_config,
-            &segments,
-            parsed_value.as_ref(),
-            edit.merge_strategy.clone(),
-        )
-        .map_err(map_merge_error)?;
-    }
-
-    let content = toml::to_string(&user_config).map_err(internal_error)?;
-    let saved = runtime_bootstrap
-        .config_storage_host
-        .save_user_config(codex_wasm_v2_core::SaveUserConfigRequest {
-            file_path: Some(current.file_path.clone()),
-            expected_version: params.expected_version.or(current.version.clone()),
-            content,
         })
         .await
-        .map_err(map_host_write_error)?;
-
-    runtime_bootstrap.config.config_layer_stack = runtime_bootstrap
-        .config
-        .config_layer_stack
-        .clone()
-        .with_user_config(&current.file_path, user_config.clone());
-    apply_effective_user_config(&mut runtime_bootstrap.config, &user_config);
-
-    if params.reload_user_config {
-        for thread in loaded_threads {
-            let _ = thread.submit(Op::ReloadUserConfig).await;
-        }
     }
 
-    Ok(ConfigWriteResponse {
-        status: WriteStatus::Ok,
-        version: saved.version,
-        file_path: absolute_file_path(&current.file_path)?,
-        overridden_metadata: None,
-    })
+    pub async fn batch_write(
+        &mut self,
+        params: ConfigBatchWriteParams,
+    ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
+        let current = load_current_user_config(self.runtime_bootstrap).await?;
+        let mut user_config = current.config;
+        for edit in &params.edits {
+            let segments = parse_key_path(&edit.key_path).map_err(config_validation_error)?;
+            let parsed_value = parse_value(edit.value.clone()).map_err(config_validation_error)?;
+            apply_merge(
+                &mut user_config,
+                &segments,
+                parsed_value.as_ref(),
+                edit.merge_strategy.clone(),
+            )
+            .map_err(map_merge_error)?;
+        }
+
+        let content = toml::to_string(&user_config).map_err(internal_error)?;
+        let saved = self
+            .runtime_bootstrap
+            .config_storage_host
+            .save_user_config(codex_wasm_v2_core::SaveUserConfigRequest {
+                file_path: Some(current.file_path.clone()),
+                expected_version: params.expected_version.or(current.version.clone()),
+                content,
+            })
+            .await
+            .map_err(map_host_write_error)?;
+
+        self.runtime_bootstrap.config.config_layer_stack = self
+            .runtime_bootstrap
+            .config
+            .config_layer_stack
+            .clone()
+            .with_user_config(&current.file_path, user_config.clone());
+        apply_effective_user_config(&mut self.runtime_bootstrap.config, &user_config);
+
+        if params.reload_user_config {
+            for thread in &self.loaded_threads {
+                let _ = thread.submit(Op::ReloadUserConfig).await;
+            }
+        }
+
+        Ok(ConfigWriteResponse {
+            status: WriteStatus::Ok,
+            version: saved.version,
+            file_path: absolute_file_path(&current.file_path)?,
+            overridden_metadata: None,
+        })
+    }
 }
 
 fn protocol_config(config: &codex_wasm_v2_core::config::Config) -> Config {
@@ -139,7 +150,7 @@ fn protocol_config(config: &codex_wasm_v2_core::config::Config) -> Config {
         web_search: Some(config.web_search_mode.value()),
         tools: None,
         profile: config.active_profile.clone(),
-        profiles: HashMap::new(),
+        profiles: Default::default(),
         instructions: config.base_instructions.clone(),
         developer_instructions: config.developer_instructions.clone(),
         compact_prompt: config.compact_prompt.clone(),
@@ -149,8 +160,137 @@ fn protocol_config(config: &codex_wasm_v2_core::config::Config) -> Config {
         service_tier: config.service_tier,
         analytics: None,
         apps: None,
-        additional: HashMap::new(),
+        additional: Default::default(),
     }
+}
+
+fn config_origins(config: &Config) -> std::collections::HashMap<String, ConfigLayerMetadata> {
+    let origin = ConfigLayerMetadata {
+        name: ConfigLayerSource::SessionFlags,
+        version: config_layer_version(),
+    };
+    let mut origins = std::collections::HashMap::new();
+
+    insert_origin(&mut origins, "model", config.model.as_ref(), &origin);
+    insert_origin(
+        &mut origins,
+        "review_model",
+        config.review_model.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "model_context_window",
+        config.model_context_window.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "model_auto_compact_token_limit",
+        config.model_auto_compact_token_limit.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "model_provider",
+        config.model_provider.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "approval_policy",
+        config.approval_policy.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "sandbox_mode",
+        config.sandbox_mode.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "sandbox_workspace_write",
+        config.sandbox_workspace_write.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "web_search",
+        config.web_search.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "instructions",
+        config.instructions.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "developer_instructions",
+        config.developer_instructions.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "compact_prompt",
+        config.compact_prompt.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "model_reasoning_effort",
+        config.model_reasoning_effort.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "model_reasoning_summary",
+        config.model_reasoning_summary.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "model_verbosity",
+        config.model_verbosity.as_ref(),
+        &origin,
+    );
+    insert_origin(
+        &mut origins,
+        "service_tier",
+        config.service_tier.as_ref(),
+        &origin,
+    );
+    insert_origin(&mut origins, "profile", config.profile.as_ref(), &origin);
+
+    origins
+}
+
+fn insert_origin<T>(
+    origins: &mut std::collections::HashMap<String, ConfigLayerMetadata>,
+    key: &str,
+    value: Option<&T>,
+    origin: &ConfigLayerMetadata,
+) {
+    if value.is_some() {
+        origins.insert(key.to_string(), origin.clone());
+    }
+}
+
+fn config_layer(config: &Config) -> ConfigLayer {
+    ConfigLayer {
+        name: ConfigLayerSource::SessionFlags,
+        version: config_layer_version(),
+        config: serde_json::to_value(config).unwrap_or_else(|error| {
+            unreachable!("config/read config layer should serialize: {error}")
+        }),
+        disabled_reason: None,
+    }
+}
+
+fn config_layer_version() -> String {
+    "wasm-browser-bootstrap-v1".to_string()
 }
 
 struct LoadedUserConfig {
@@ -248,6 +388,44 @@ fn approval_policy(value: &str) -> Option<AskForApproval> {
         "on_request" => Some(AskForApproval::OnRequest),
         "never" => Some(AskForApproval::Never),
         _ => None,
+    }
+}
+
+fn sandbox_mode(policy: &codex_protocol::protocol::SandboxPolicy) -> Option<SandboxMode> {
+    match policy {
+        codex_protocol::protocol::SandboxPolicy::ReadOnly { .. } => Some(SandboxMode::ReadOnly),
+        codex_protocol::protocol::SandboxPolicy::WorkspaceWrite { .. } => {
+            Some(SandboxMode::WorkspaceWrite)
+        }
+        codex_protocol::protocol::SandboxPolicy::DangerFullAccess => {
+            Some(SandboxMode::DangerFullAccess)
+        }
+        codex_protocol::protocol::SandboxPolicy::ExternalSandbox { .. } => None,
+    }
+}
+
+fn sandbox_workspace_write(
+    policy: &codex_protocol::protocol::SandboxPolicy,
+) -> Option<SandboxWorkspaceWrite> {
+    match policy {
+        codex_protocol::protocol::SandboxPolicy::WorkspaceWrite {
+            writable_roots,
+            network_access,
+            exclude_tmpdir_env_var,
+            exclude_slash_tmp,
+            ..
+        } => Some(SandboxWorkspaceWrite {
+            writable_roots: writable_roots
+                .iter()
+                .map(|path| path.as_ref().to_path_buf())
+                .collect(),
+            network_access: *network_access,
+            exclude_tmpdir_env_var: *exclude_tmpdir_env_var,
+            exclude_slash_tmp: *exclude_slash_tmp,
+        }),
+        codex_protocol::protocol::SandboxPolicy::ReadOnly { .. }
+        | codex_protocol::protocol::SandboxPolicy::DangerFullAccess
+        | codex_protocol::protocol::SandboxPolicy::ExternalSandbox { .. } => None,
     }
 }
 
@@ -422,175 +600,4 @@ fn internal_error(message: impl std::fmt::Display) -> JSONRPCErrorError {
         data: None,
         message: message.to_string(),
     }
-}
-
-fn config_origins(config: &Config) -> HashMap<String, ConfigLayerMetadata> {
-    let origin = ConfigLayerMetadata {
-        name: ConfigLayerSource::SessionFlags,
-        version: config_layer_version(),
-    };
-    let mut origins = HashMap::new();
-
-    insert_origin(&mut origins, "model", config.model.as_ref(), &origin);
-    insert_origin(
-        &mut origins,
-        "review_model",
-        config.review_model.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "model_context_window",
-        config.model_context_window.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "model_auto_compact_token_limit",
-        config.model_auto_compact_token_limit.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "model_provider",
-        config.model_provider.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "approval_policy",
-        config.approval_policy.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "sandbox_mode",
-        config.sandbox_mode.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "sandbox_workspace_write",
-        config.sandbox_workspace_write.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "web_search",
-        config.web_search.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "instructions",
-        config.instructions.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "developer_instructions",
-        config.developer_instructions.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "compact_prompt",
-        config.compact_prompt.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "model_reasoning_effort",
-        config.model_reasoning_effort.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "model_reasoning_summary",
-        config.model_reasoning_summary.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "model_verbosity",
-        config.model_verbosity.as_ref(),
-        &origin,
-    );
-    insert_origin(
-        &mut origins,
-        "service_tier",
-        config.service_tier.as_ref(),
-        &origin,
-    );
-    insert_origin(&mut origins, "profile", config.profile.as_ref(), &origin);
-
-    origins
-}
-
-fn insert_origin<T>(
-    origins: &mut HashMap<String, ConfigLayerMetadata>,
-    key: &str,
-    value: Option<&T>,
-    origin: &ConfigLayerMetadata,
-) {
-    if value.is_some() {
-        origins.insert(key.to_string(), origin.clone());
-    }
-}
-
-fn config_layer(config: &Config) -> ConfigLayer {
-    ConfigLayer {
-        name: ConfigLayerSource::SessionFlags,
-        version: config_layer_version(),
-        config: serde_json::to_value(config).unwrap_or_else(|error| {
-            unreachable!("config/read config layer should serialize: {error}")
-        }),
-        disabled_reason: None,
-    }
-}
-
-fn config_layer_version() -> String {
-    "wasm-browser-bootstrap-v1".to_string()
-}
-
-fn sandbox_mode(policy: &codex_protocol::protocol::SandboxPolicy) -> Option<SandboxMode> {
-    match policy {
-        codex_protocol::protocol::SandboxPolicy::ReadOnly { .. } => Some(SandboxMode::ReadOnly),
-        codex_protocol::protocol::SandboxPolicy::WorkspaceWrite { .. } => {
-            Some(SandboxMode::WorkspaceWrite)
-        }
-        codex_protocol::protocol::SandboxPolicy::DangerFullAccess => {
-            Some(SandboxMode::DangerFullAccess)
-        }
-        codex_protocol::protocol::SandboxPolicy::ExternalSandbox { .. } => None,
-    }
-}
-
-fn sandbox_workspace_write(
-    policy: &codex_protocol::protocol::SandboxPolicy,
-) -> Option<SandboxWorkspaceWrite> {
-    match policy {
-        codex_protocol::protocol::SandboxPolicy::WorkspaceWrite {
-            writable_roots,
-            network_access,
-            exclude_tmpdir_env_var,
-            exclude_slash_tmp,
-            ..
-        } => Some(SandboxWorkspaceWrite {
-            writable_roots: writable_roots
-                .iter()
-                .map(absolute_path_to_path_buf)
-                .collect(),
-            network_access: *network_access,
-            exclude_tmpdir_env_var: *exclude_tmpdir_env_var,
-            exclude_slash_tmp: *exclude_slash_tmp,
-        }),
-        codex_protocol::protocol::SandboxPolicy::ReadOnly { .. }
-        | codex_protocol::protocol::SandboxPolicy::DangerFullAccess
-        | codex_protocol::protocol::SandboxPolicy::ExternalSandbox { .. } => None,
-    }
-}
-
-fn absolute_path_to_path_buf(path: &impl AsRef<std::path::Path>) -> std::path::PathBuf {
-    path.as_ref().to_path_buf()
 }

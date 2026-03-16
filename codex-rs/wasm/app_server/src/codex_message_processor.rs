@@ -26,14 +26,14 @@ use crate::LoadedThread;
 use crate::ThreadRecord;
 use crate::ThreadState;
 use crate::apply_bespoke_event_handling;
-use crate::mapping::build_thread;
-use crate::mapping::map_apps_list;
-use crate::mapping::map_model_list;
-use crate::mapping::thread_list_response;
-use crate::mapping::thread_loaded_list_response;
-use crate::mapping::thread_read_response;
-use crate::mapping::thread_started_notification;
-use crate::mapping::turn_start_response;
+use crate::models::build_thread;
+use crate::models::map_apps_list;
+use crate::models::map_model_list;
+use crate::models::thread_list_response;
+use crate::models::thread_loaded_list_response;
+use crate::models::thread_read_response;
+use crate::models::thread_started_notification;
+use crate::models::turn_start_response;
 use crate::outgoing_message::OutgoingMessageSender;
 use crate::outgoing_message::ThreadScopedOutgoingMessageSender;
 use crate::runtime_bootstrap::RuntimeBootstrap;
@@ -186,15 +186,15 @@ impl CodexMessageProcessor {
             } => {
                 let bootstrap =
                     self.runtime_bootstrap
-                        .as_ref()
+                        .as_mut()
                         .ok_or_else(|| JSONRPCErrorError {
                             code: -32603,
                             data: None,
                             message: "config/read requires runtime bootstrap".to_string(),
                         })?;
-                serde_json::to_value(crate::config_runtime::config_read_response(
-                    bootstrap, params,
-                )?)
+                serde_json::to_value(
+                    crate::config_api::ConfigApi::new(bootstrap, Vec::new()).read(params)?,
+                )
                 .map_err(internal_error)
             }
             ClientRequest::ConfigRequirementsRead {
@@ -203,22 +203,29 @@ impl CodexMessageProcessor {
             } => {
                 let bootstrap =
                     self.runtime_bootstrap
-                        .as_ref()
+                        .as_mut()
                         .ok_or_else(|| JSONRPCErrorError {
                             code: -32603,
                             data: None,
                             message: "configRequirements/read requires runtime bootstrap"
                                 .to_string(),
                         })?;
-                serde_json::to_value(crate::config_runtime::config_requirements_read_response(
-                    bootstrap,
-                )?)
+                serde_json::to_value(
+                    crate::config_api::ConfigApi::new(bootstrap, Vec::new())
+                        .config_requirements_read()?,
+                )
                 .map_err(internal_error)
             }
             ClientRequest::ConfigValueWrite {
                 request_id: _,
                 params,
             } => {
+                let loaded_threads = self
+                    .app_server_state
+                    .loaded_thread_ids()
+                    .into_iter()
+                    .filter_map(|thread_id| self.app_server_state.running_thread(&thread_id))
+                    .collect();
                 let bootstrap =
                     self.runtime_bootstrap
                         .as_mut()
@@ -228,7 +235,9 @@ impl CodexMessageProcessor {
                             message: "config/value/write requires runtime bootstrap".to_string(),
                         })?;
                 serde_json::to_value(
-                    crate::config_runtime::config_value_write(bootstrap, params).await?,
+                    crate::config_api::ConfigApi::new(bootstrap, loaded_threads)
+                        .write_value(params)
+                        .await?,
                 )
                 .map_err(internal_error)
             }
@@ -251,7 +260,8 @@ impl CodexMessageProcessor {
                             message: "config/batchWrite requires runtime bootstrap".to_string(),
                         })?;
                 serde_json::to_value(
-                    crate::config_runtime::config_batch_write(bootstrap, params, loaded_threads)
+                    crate::config_api::ConfigApi::new(bootstrap, loaded_threads)
+                        .batch_write(params)
                         .await?,
                 )
                 .map_err(internal_error)
@@ -656,7 +666,7 @@ impl CodexMessageProcessor {
                         })
                     })
                     .map(|thread| {
-                        crate::mapping::build_thread(&thread, false, thread.protocol_status())
+                        crate::models::build_thread(&thread, false, thread.protocol_status())
                     })
                     .collect();
                 serde_json::to_value(thread_list_response(data)).map_err(internal_error)
