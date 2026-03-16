@@ -1,11 +1,11 @@
 use super::*;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
 use crate::tools::discoverable::DiscoverableTool;
+use codex_protocol::dynamic_tools::DynamicToolSpec;
 use pretty_assertions::assert_eq;
 use rmcp::model::JsonObject;
 use serde_json::json;
 use std::sync::Arc;
-use codex_protocol::dynamic_tools::DynamicToolSpec;
 
 fn app_tool(name: &str, namespace: &str, connector_name: &str) -> ToolInfo {
     ToolInfo {

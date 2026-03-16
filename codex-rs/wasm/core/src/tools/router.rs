@@ -266,7 +266,11 @@ impl ToolRouter {
 
         if let Some(namespace) = tool_namespace {
             let qualified_name = format!("{namespace}__{tool_name}");
-            if self.dynamic_tool_names.iter().any(|name| name == &qualified_name) {
+            if self
+                .dynamic_tool_names
+                .iter()
+                .any(|name| name == &qualified_name)
+            {
                 return Some(qualified_name);
             }
         }
