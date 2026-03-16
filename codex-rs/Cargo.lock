@@ -2732,10 +2732,15 @@ dependencies = [
 name = "codex-wasm-v2-app-server"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "codex-app-server-protocol",
  "codex-protocol",
+ "codex-utils-absolute-path",
+ "codex-wasm-v2-core",
  "pretty_assertions",
  "serde_json",
+ "tokio",
+ "toml 0.9.11+spec-1.1.0",
 ]
 
 [[package]]
@@ -2756,6 +2761,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "tokio",
+ "toml 0.9.11+spec-1.1.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

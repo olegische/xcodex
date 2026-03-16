@@ -9,7 +9,6 @@ use crate::context_manager::is_user_turn_boundary;
 use crate::mcp::auth::compute_auth_statuses;
 use crate::mcp::collect_mcp_snapshot_from_manager;
 use crate::review_prompts::resolve_review_request;
-use crate::rollout::RolloutRecorder;
 use crate::rollout::session_index;
 use crate::tasks::CompactTask;
 use crate::tasks::UndoTask;
@@ -584,12 +583,23 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
     }
 
     let turn_context = sess.new_default_turn_with_sub_id(sub_id).await;
+    let recorder = {
+        let guard = sess.services.rollout.lock().await;
+        guard.clone()
+    };
+    let Some(recorder) = recorder else {
+        sess.send_event_raw(Event {
+            id: turn_context.sub_id.clone(),
+            msg: EventMsg::Error(ErrorEvent {
+                message: "thread rollback requires a persisted rollout path".to_string(),
+                codex_error_info: Some(CodexErrorInfo::ThreadRollbackFailed),
+            }),
+        })
+        .await;
+        return;
+    };
     let rollout_path = {
-        let recorder = {
-            let guard = sess.services.rollout.lock().await;
-            guard.clone()
-        };
-        let Some(recorder) = recorder else {
+        let Some(path) = Some(recorder.rollout_path().to_path_buf()) else {
             sess.send_event_raw(Event {
                 id: turn_context.sub_id.clone(),
                 msg: EventMsg::Error(ErrorEvent {
@@ -600,13 +610,9 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
             .await;
             return;
         };
-        recorder.rollout_path().to_path_buf()
+        path
     };
-    if let Some(recorder) = {
-        let guard = sess.services.rollout.lock().await;
-        guard.clone()
-    } && let Err(err) = recorder.flush().await
-    {
+    if let Err(err) = recorder.flush().await {
         sess.send_event_raw(Event {
             id: turn_context.sub_id.clone(),
             msg: EventMsg::Error(ErrorEvent {
@@ -621,7 +627,7 @@ pub async fn thread_rollback(sess: &Arc<Session>, sub_id: String, num_turns: u32
         return;
     }
 
-    let initial_history = match RolloutRecorder::get_rollout_history(rollout_path.as_path()).await {
+    let initial_history = match recorder.load_history().await {
         Ok(history) => history,
         Err(err) => {
             sess.send_event_raw(Event {
@@ -714,6 +720,14 @@ pub async fn set_thread_name(sess: &Arc<Session>, sub_id: String, name: String) 
     {
         let mut state = sess.state.lock().await;
         state.session_configuration.thread_name = Some(name.clone());
+    }
+
+    let rollout = {
+        let services = &sess.services;
+        services.rollout.lock().await.clone()
+    };
+    if let Some(rollout) = rollout {
+        rollout.set_thread_name(Some(name.clone())).await;
     }
 
     sess.send_event_raw(Event {

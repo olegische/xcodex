@@ -52,8 +52,10 @@ use crate::state::TaskKind;
 use crate::tasks::SessionTask;
 use crate::tasks::SessionTaskContext;
 use crate::tools::ToolRouter;
+use crate::tools::browser_host::UnavailableConfigStorageHost;
 use crate::tools::browser_host::UnavailableHostFs;
 use crate::tools::browser_host::UnavailableModelTransportHost;
+use crate::tools::browser_host::UnavailableThreadStorageHost;
 use crate::tools::context::FunctionToolOutput;
 use crate::tools::context::ToolCall;
 use crate::tools::context::ToolInvocation;
@@ -1818,6 +1820,7 @@ async fn attach_rollout_recorder(session: &Arc<Session>) -> PathBuf {
             Vec::new(),
             EventPersistenceMode::Limited,
         ),
+        Arc::new(UnavailableThreadStorageHost),
         None,
         None,
     )
@@ -2107,6 +2110,8 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
         Arc::new(UnavailableHostFs),
         Arc::new(UnavailableDiscoverableAppsProvider),
         Arc::new(UnavailableModelTransportHost),
+        Arc::new(UnavailableConfigStorageHost),
+        Arc::new(UnavailableThreadStorageHost),
     )
     .await;
 
@@ -2137,6 +2142,8 @@ async fn spawn_browser_codex_preserves_browser_host_providers() {
         browser_fs: Arc::new(RecordingHostFs),
         discoverable_apps_provider: Arc::new(RecordingDiscoverableAppsProvider),
         model_transport_host: Arc::new(UnavailableModelTransportHost),
+        config_storage_host: Arc::new(UnavailableConfigStorageHost),
+        thread_storage_host: Arc::new(UnavailableThreadStorageHost),
     })
     .await
     .expect("spawn browser codex");
@@ -2304,6 +2311,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         ),
         browser_fs: Arc::new(UnavailableHostFs),
         discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
+        config_storage_host: Arc::new(UnavailableConfigStorageHost),
+        thread_storage_host: Arc::new(UnavailableThreadStorageHost),
     };
     let js_repl = Arc::new(JsReplHandle::with_node_path(
         config.js_repl_node_path.clone(),
@@ -2747,7 +2756,9 @@ async fn shutdown_and_wait_allows_multiple_waiters() {
         rx_event,
         agent_status,
         session: Arc::new(session),
-        session_loop_termination: session_loop_termination_from_handle(session_loop_handle),
+        session_loop_termination: session_loop_termination_from_handle(
+            crate::compat::task::SpawnedTask::Native(session_loop_handle),
+        ),
     });
 
     let waiter_1 = {
@@ -2785,7 +2796,9 @@ async fn shutdown_and_wait_waits_when_shutdown_is_already_in_progress() {
         rx_event,
         agent_status,
         session: Arc::new(session),
-        session_loop_termination: session_loop_termination_from_handle(session_loop_handle),
+        session_loop_termination: session_loop_termination_from_handle(
+            crate::compat::task::SpawnedTask::Native(session_loop_handle),
+        ),
     });
 
     let waiter = {
@@ -2946,6 +2959,8 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         ),
         browser_fs: Arc::new(UnavailableHostFs),
         discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
+        config_storage_host: Arc::new(UnavailableConfigStorageHost),
+        thread_storage_host: Arc::new(UnavailableThreadStorageHost),
     };
     let js_repl = Arc::new(JsReplHandle::with_node_path(
         config.js_repl_node_path.clone(),
@@ -3621,6 +3636,7 @@ async fn record_context_updates_and_set_reference_context_item_persists_baseline
             Vec::new(),
             EventPersistenceMode::Limited,
         ),
+        Arc::new(UnavailableThreadStorageHost),
         None,
         None,
     )
@@ -3718,6 +3734,7 @@ async fn record_context_updates_and_set_reference_context_item_persists_full_rei
             Vec::new(),
             EventPersistenceMode::Limited,
         ),
+        Arc::new(UnavailableThreadStorageHost),
         None,
         None,
     )

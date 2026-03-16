@@ -85,9 +85,19 @@ impl ConfigLayerStack {
 
     pub fn with_user_config<P: AsRef<std::path::Path>>(
         mut self,
-        _path: P,
+        path: P,
         user_config: toml::Value,
     ) -> Self {
+        let path = path.as_ref();
+        if let Ok(path) = AbsolutePathBuf::from_absolute_path(path) {
+            let source = ConfigLayerSource::User { file: path };
+            let entry = ConfigLayerEntry::new(source.clone(), user_config.clone());
+            if let Some(existing) = self.layers.iter_mut().find(|layer| layer.source == source) {
+                *existing = entry;
+            } else {
+                self.layers.push(entry);
+            }
+        }
         self.effective_config = user_config;
         self
     }

@@ -1,4 +1,5 @@
 use std::io::Error as IoError;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,12 +23,19 @@ use super::SESSIONS_SUBDIR;
 use super::metadata::ThreadMetadataBuilder;
 use super::policy::EventPersistenceMode;
 use super::policy::is_persisted_response_item;
+use crate::LoadThreadSessionRequest;
+#[cfg(target_arch = "wasm32")]
+use crate::SaveThreadSessionRequest;
+use crate::StoredThreadSession;
+use crate::StoredThreadSessionMetadata;
+use crate::ThreadStorageHost;
 use crate::config::Config;
 
 #[derive(Clone)]
 pub struct RolloutRecorder {
     pub(crate) rollout_path: PathBuf,
     event_persistence_mode: EventPersistenceMode,
+    thread_storage_host: Arc<dyn ThreadStorageHost>,
     state: Arc<Mutex<RecorderState>>,
 }
 
@@ -50,6 +58,8 @@ pub enum RolloutRecorderParams {
 #[derive(Default)]
 struct RecorderState {
     session_meta: Option<SessionMetaLine>,
+    thread_name: Option<String>,
+    persisted_items: Vec<RolloutItem>,
     buffered_items: Vec<RolloutItem>,
     materialized: bool,
 }
@@ -85,10 +95,18 @@ impl RolloutRecorder {
     pub async fn new(
         config: &Config,
         params: RolloutRecorderParams,
+        thread_storage_host: Arc<dyn ThreadStorageHost>,
         _state_db_ctx: Option<crate::state_db::StateDbHandle>,
         _state_builder: Option<ThreadMetadataBuilder>,
     ) -> std::io::Result<Self> {
-        let (rollout_path, event_persistence_mode, session_meta, materialized) = match params {
+        let (
+            rollout_path,
+            event_persistence_mode,
+            session_meta,
+            thread_name,
+            persisted_items,
+            materialized,
+        ) = match params {
             RolloutRecorderParams::Create {
                 conversation_id,
                 forked_from_id,
@@ -120,19 +138,40 @@ impl RolloutRecorder {
                     },
                     git: None,
                 };
-                (rollout_path, event_persistence_mode, Some(meta), false)
+                (
+                    rollout_path,
+                    event_persistence_mode,
+                    Some(meta),
+                    None,
+                    Vec::new(),
+                    false,
+                )
             }
             RolloutRecorderParams::Resume {
                 path,
                 event_persistence_mode,
-            } => (path, event_persistence_mode, None, true),
+            } => {
+                let stored_session =
+                    load_persisted_session(&thread_storage_host, path.as_path()).await?;
+                (
+                    path,
+                    event_persistence_mode,
+                    None,
+                    stored_session.metadata.name,
+                    stored_session.items,
+                    true,
+                )
+            }
         };
 
         Ok(Self {
             rollout_path,
             event_persistence_mode,
+            thread_storage_host,
             state: Arc::new(Mutex::new(RecorderState {
                 session_meta,
+                thread_name,
+                persisted_items,
                 buffered_items: Vec::new(),
                 materialized,
             })),
@@ -178,6 +217,38 @@ impl RolloutRecorder {
 
     pub async fn shutdown(&self) -> std::io::Result<()> {
         self.flush().await
+    }
+
+    pub async fn set_thread_name(&self, thread_name: Option<String>) {
+        let mut state = self.state.lock().await;
+        state.thread_name = thread_name;
+    }
+
+    pub async fn load_history(&self) -> std::io::Result<InitialHistory> {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            return Self::get_rollout_history(self.rollout_path.as_path()).await;
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let (items, thread_id) = {
+                let state = self.state.lock().await;
+                let items = all_items(&state);
+                let thread_id = thread_id_from_items(items.as_slice());
+                (items, thread_id)
+            };
+            let Some(conversation_id) = thread_id else {
+                return Err(IoError::other(
+                    "failed to parse thread ID from rollout state",
+                ));
+            };
+            Ok(InitialHistory::Resumed(ResumedHistory {
+                conversation_id,
+                history: items,
+                rollout_path: self.rollout_path.clone(),
+            }))
+        }
     }
 
     pub(crate) async fn load_rollout_items(
@@ -245,10 +316,32 @@ impl RolloutRecorder {
         #[cfg(target_arch = "wasm32")]
         {
             let mut state = self.state.lock().await;
-            if state.materialized {
-                state.buffered_items.clear();
-                state.session_meta = None;
+            if !state.materialized {
+                return Ok(());
             }
+            let items = all_items(&state);
+            let Some(thread_id) = thread_id_from_items(items.as_slice()) else {
+                return Err(IoError::other(
+                    "failed to parse thread ID from rollout state",
+                ));
+            };
+            let metadata = build_stored_session_metadata(
+                &self.rollout_path,
+                items.as_slice(),
+                state.session_meta.as_ref(),
+                state.thread_name.as_deref(),
+            );
+            self.thread_storage_host
+                .save_thread_session(SaveThreadSessionRequest {
+                    session: StoredThreadSession { metadata, items },
+                })
+                .await
+                .map_err(host_error_to_io_error)?;
+            let session_meta = state.session_meta.take().map(RolloutItem::SessionMeta);
+            if let Some(session_meta) = session_meta {
+                state.persisted_items.push(session_meta);
+            }
+            state.persisted_items.append(&mut state.buffered_items);
             return Ok(());
         }
 
@@ -297,6 +390,155 @@ fn rollout_path_for_new_session(config: &Config, conversation_id: ThreadId) -> P
         .codex_home
         .join(SESSIONS_SUBDIR)
         .join(format!("rollout-{timestamp}-{conversation_id}.jsonl"))
+}
+
+async fn load_persisted_session(
+    thread_storage_host: &Arc<dyn ThreadStorageHost>,
+    path: &Path,
+) -> std::io::Result<StoredThreadSession> {
+    if let Some(thread_id) = thread_id_from_rollout_path(path)
+        && let Ok(response) = thread_storage_host
+            .load_thread_session(LoadThreadSessionRequest {
+                thread_id: thread_id.to_string(),
+            })
+            .await
+    {
+        return Ok(response.session);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let (items, thread_id, _) = RolloutRecorder::load_rollout_items(path).await?;
+        let Some(thread_id) = thread_id else {
+            return Err(IoError::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "failed to derive thread id from rollout path `{}`",
+                    path.display()
+                ),
+            ));
+        };
+        let metadata = build_stored_session_metadata(path, &items, None, None);
+        Ok(StoredThreadSession {
+            metadata: StoredThreadSessionMetadata {
+                thread_id: thread_id.to_string(),
+                ..metadata
+            },
+            items,
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        Err(IoError::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "failed to derive thread id from rollout path `{}`",
+                path.display()
+            ),
+        ))
+    }
+}
+
+fn all_items(state: &RecorderState) -> Vec<RolloutItem> {
+    let mut items = state.persisted_items.clone();
+    if let Some(session_meta) = state.session_meta.clone() {
+        items.insert(0, RolloutItem::SessionMeta(session_meta));
+    }
+    items.extend(state.buffered_items.clone());
+    items
+}
+
+fn thread_id_from_items(items: &[RolloutItem]) -> Option<ThreadId> {
+    items.iter().find_map(|item| match item {
+        RolloutItem::SessionMeta(session_meta) => Some(session_meta.meta.id),
+        _ => None,
+    })
+}
+
+fn thread_id_from_rollout_path(path: &Path) -> Option<ThreadId> {
+    let file_name = path.file_name()?.to_string_lossy();
+    let thread_id = file_name.strip_prefix("rollout-")?.strip_suffix(".jsonl")?;
+    let thread_id = thread_id.get(20..)?;
+    ThreadId::from_string(thread_id).ok()
+}
+
+fn build_stored_session_metadata(
+    rollout_path: &Path,
+    items: &[RolloutItem],
+    pending_session_meta: Option<&SessionMetaLine>,
+    thread_name: Option<&str>,
+) -> StoredThreadSessionMetadata {
+    let session_meta = pending_session_meta
+        .cloned()
+        .or_else(|| {
+            items.iter().find_map(|item| match item {
+                RolloutItem::SessionMeta(session_meta) => Some(session_meta.clone()),
+                _ => None,
+            })
+        })
+        .unwrap_or_else(|| SessionMetaLine {
+            meta: SessionMeta {
+                id: ThreadId::default(),
+                forked_from_id: None,
+                timestamp: crate::time::now_rfc3339(),
+                cwd: PathBuf::new(),
+                originator: "wasm_v2".to_string(),
+                cli_version: env!("CARGO_PKG_VERSION").to_string(),
+                source: SessionSource::Unknown,
+                agent_nickname: None,
+                agent_role: None,
+                model_provider: None,
+                base_instructions: None,
+                dynamic_tools: None,
+                memory_mode: None,
+            },
+            git: None,
+        });
+
+    StoredThreadSessionMetadata {
+        thread_id: session_meta.meta.id.to_string(),
+        rollout_id: rollout_path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| rollout_path.display().to_string()),
+        created_at: timestamp_to_unix_seconds(session_meta.meta.timestamp.as_str()),
+        updated_at: crate::time::now_unix_seconds(),
+        archived: false,
+        name: thread_name.map(str::to_owned),
+        preview: preview_from_items(items),
+        cwd: session_meta.meta.cwd.to_string_lossy().to_string(),
+        model_provider: session_meta.meta.model_provider.unwrap_or_default(),
+    }
+}
+
+fn preview_from_items(items: &[RolloutItem]) -> String {
+    codex_app_server_protocol::build_turns_from_rollout_items(items)
+        .into_iter()
+        .flat_map(|turn| turn.items.into_iter())
+        .find_map(|item| match item {
+            codex_app_server_protocol::ThreadItem::UserMessage { content, .. } => {
+                content.into_iter().find_map(|input| match input {
+                    codex_app_server_protocol::UserInput::Text { text, .. } => Some(text),
+                    codex_app_server_protocol::UserInput::Image { .. }
+                    | codex_app_server_protocol::UserInput::LocalImage { .. }
+                    | codex_app_server_protocol::UserInput::Skill { .. }
+                    | codex_app_server_protocol::UserInput::Mention { .. } => None,
+                })
+            }
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn timestamp_to_unix_seconds(timestamp: &str) -> i64 {
+    chrono::DateTime::parse_from_rfc3339(timestamp)
+        .map(|value| value.timestamp())
+        .unwrap_or_else(|_| crate::time::now_unix_seconds())
+}
+
+fn host_error_to_io_error(error: crate::HostError) -> IoError {
+    IoError::other(error.message)
 }
 
 #[cfg(not(target_arch = "wasm32"))]

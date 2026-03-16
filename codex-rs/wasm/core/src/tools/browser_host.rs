@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use codex_protocol::protocol::RolloutItem;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -95,12 +96,120 @@ pub struct ApplyPatchResponse {
     pub files_changed: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadThreadSessionRequest {
+    pub thread_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteThreadSessionRequest {
+    pub thread_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListThreadSessionsRequest {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadUserConfigRequest {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadUserConfigResponse {
+    pub file_path: String,
+    pub version: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveUserConfigRequest {
+    pub file_path: Option<String>,
+    pub expected_version: Option<String>,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveUserConfigResponse {
+    pub file_path: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredThreadSessionMetadata {
+    pub thread_id: String,
+    pub rollout_id: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub archived: bool,
+    pub name: Option<String>,
+    pub preview: String,
+    pub cwd: String,
+    pub model_provider: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredThreadSession {
+    pub metadata: StoredThreadSessionMetadata,
+    pub items: Vec<RolloutItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveThreadSessionRequest {
+    pub session: StoredThreadSession,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadThreadSessionResponse {
+    pub session: StoredThreadSession,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListThreadSessionsResponse {
+    pub sessions: Vec<StoredThreadSessionMetadata>,
+}
+
 #[async_trait]
 pub trait HostFs: Send + Sync {
     async fn read_file(&self, request: ReadFileRequest) -> HostResult<ReadFileResponse>;
     async fn list_dir(&self, request: ListDirRequest) -> HostResult<ListDirResponse>;
     async fn search(&self, request: SearchRequest) -> HostResult<SearchResponse>;
     async fn apply_patch(&self, request: ApplyPatchRequest) -> HostResult<ApplyPatchResponse>;
+}
+
+#[async_trait]
+pub trait ThreadStorageHost: Send + Sync {
+    async fn load_thread_session(
+        &self,
+        request: LoadThreadSessionRequest,
+    ) -> HostResult<LoadThreadSessionResponse>;
+    async fn save_thread_session(&self, request: SaveThreadSessionRequest) -> HostResult<()>;
+    async fn delete_thread_session(&self, request: DeleteThreadSessionRequest) -> HostResult<()>;
+    async fn list_thread_sessions(
+        &self,
+        request: ListThreadSessionsRequest,
+    ) -> HostResult<ListThreadSessionsResponse>;
+}
+
+#[async_trait]
+pub trait ConfigStorageHost: Send + Sync {
+    async fn load_user_config(
+        &self,
+        request: LoadUserConfigRequest,
+    ) -> HostResult<LoadUserConfigResponse>;
+    async fn save_user_config(
+        &self,
+        request: SaveUserConfigRequest,
+    ) -> HostResult<SaveUserConfigResponse>;
 }
 
 #[derive(Debug, Default)]
@@ -122,6 +231,54 @@ impl HostFs for UnavailableHostFs {
 
     async fn apply_patch(&self, _request: ApplyPatchRequest) -> HostResult<ApplyPatchResponse> {
         Err(unavailable_host_error("apply_patch"))
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct UnavailableThreadStorageHost;
+
+#[async_trait]
+impl ThreadStorageHost for UnavailableThreadStorageHost {
+    async fn load_thread_session(
+        &self,
+        _request: LoadThreadSessionRequest,
+    ) -> HostResult<LoadThreadSessionResponse> {
+        Err(unavailable_host_error("load_thread_session"))
+    }
+
+    async fn save_thread_session(&self, _request: SaveThreadSessionRequest) -> HostResult<()> {
+        Err(unavailable_host_error("save_thread_session"))
+    }
+
+    async fn delete_thread_session(&self, _request: DeleteThreadSessionRequest) -> HostResult<()> {
+        Err(unavailable_host_error("delete_thread_session"))
+    }
+
+    async fn list_thread_sessions(
+        &self,
+        _request: ListThreadSessionsRequest,
+    ) -> HostResult<ListThreadSessionsResponse> {
+        Err(unavailable_host_error("list_thread_sessions"))
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct UnavailableConfigStorageHost;
+
+#[async_trait]
+impl ConfigStorageHost for UnavailableConfigStorageHost {
+    async fn load_user_config(
+        &self,
+        _request: LoadUserConfigRequest,
+    ) -> HostResult<LoadUserConfigResponse> {
+        Err(unavailable_host_error("load_user_config"))
+    }
+
+    async fn save_user_config(
+        &self,
+        _request: SaveUserConfigRequest,
+    ) -> HostResult<SaveUserConfigResponse> {
+        Err(unavailable_host_error("save_user_config"))
     }
 }
 

@@ -1,6 +1,8 @@
 use super::*;
+use crate::UnavailableConfigStorageHost;
 use crate::UnavailableHostFs;
 use crate::UnavailableModelTransportHost;
+use crate::UnavailableThreadStorageHost;
 use crate::config_loader::ConfigLayerEntry;
 use crate::config_loader::ConfigRequirements;
 use crate::config_loader::ConfigRequirementsToml;
@@ -313,6 +315,8 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         browser_fs: Arc::new(UnavailableHostFs),
         discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
         model_transport_host: Arc::new(UnavailableModelTransportHost),
+        config_storage_host: Arc::new(UnavailableConfigStorageHost),
+        thread_storage_host: Arc::new(UnavailableThreadStorageHost),
     })
     .await
     .expect("spawn guardian subagent");

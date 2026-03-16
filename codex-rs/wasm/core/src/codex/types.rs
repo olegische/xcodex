@@ -1,7 +1,9 @@
 use super::*;
 use crate::connectors::DiscoverableAppsProvider;
+use crate::tools::browser_host::ConfigStorageHost;
 use crate::tools::browser_host::HostFs;
 use crate::tools::browser_host::ModelTransportHost;
+use crate::tools::browser_host::ThreadStorageHost;
 use codex_protocol::openai_models::ModelsResponse;
 
 #[derive(Debug, PartialEq)]
@@ -54,6 +56,8 @@ pub(crate) struct CodexSpawnArgs {
     pub(crate) browser_fs: Arc<dyn HostFs>,
     pub(crate) discoverable_apps_provider: Arc<dyn DiscoverableAppsProvider>,
     pub(crate) model_transport_host: Arc<dyn ModelTransportHost>,
+    pub(crate) config_storage_host: Arc<dyn ConfigStorageHost>,
+    pub(crate) thread_storage_host: Arc<dyn ThreadStorageHost>,
 }
 
 pub struct BrowserCodexSpawnArgs {
@@ -70,6 +74,8 @@ pub struct BrowserCodexSpawnArgs {
     pub browser_fs: Arc<dyn HostFs>,
     pub discoverable_apps_provider: Arc<dyn DiscoverableAppsProvider>,
     pub model_transport_host: Arc<dyn ModelTransportHost>,
+    pub config_storage_host: Arc<dyn ConfigStorageHost>,
+    pub thread_storage_host: Arc<dyn ThreadStorageHost>,
 }
 
 pub(crate) const INITIAL_SUBMIT_ID: &str = "";

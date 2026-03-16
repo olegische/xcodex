@@ -611,6 +611,8 @@ impl Session {
         browser_fs: Arc<dyn crate::HostFs>,
         discoverable_apps_provider: Arc<dyn crate::DiscoverableAppsProvider>,
         model_transport_host: Arc<dyn crate::ModelTransportHost>,
+        config_storage_host: Arc<dyn crate::ConfigStorageHost>,
+        thread_storage_host: Arc<dyn crate::ThreadStorageHost>,
     ) -> anyhow::Result<Arc<Self>> {
         debug!(
             "Configuring session: model={}; provider={:?}",
@@ -695,6 +697,7 @@ impl Session {
                 let rollout_recorder = RolloutRecorder::new(
                     &config,
                     rollout_params,
+                    Arc::clone(&thread_storage_host),
                     state_db_ctx.clone(),
                     state_builder.clone(),
                 )
@@ -1017,6 +1020,8 @@ impl Session {
             ),
             browser_fs,
             discoverable_apps_provider,
+            config_storage_host,
+            thread_storage_host,
         };
         let js_repl = Arc::new(JsReplHandle::with_node_path(
             config.js_repl_node_path.clone(),

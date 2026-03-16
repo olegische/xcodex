@@ -1,6 +1,10 @@
+use codex_app_server_protocol::ClientNotification;
+use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::CommandExecutionApprovalDecision;
 use codex_app_server_protocol::DynamicToolCallOutputContentItem;
 use codex_app_server_protocol::FileChangeApprovalDecision;
+use codex_app_server_protocol::InitializeParams;
+use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::McpServerElicitationAction;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
@@ -16,8 +20,13 @@ use codex_protocol::request_permissions::RequestPermissionsResponse;
 use codex_protocol::request_user_input::RequestUserInputAnswer;
 use codex_protocol::request_user_input::RequestUserInputResponse;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 
+use crate::ConnectionSessionState;
 use crate::MessageProcessor;
+use crate::MessageProcessorArgs;
+use crate::RuntimeBootstrap;
+use crate::ThreadRecord;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InProcessTurnRecord {
@@ -46,6 +55,7 @@ pub struct InProcessThreadHandle {
     pub turns: std::collections::BTreeMap<String, InProcessTurnRecord>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum PendingServerRequest {
     ExecApproval {
         thread_id: String,
@@ -75,9 +85,28 @@ pub enum PendingServerRequest {
     },
 }
 
+#[derive(Debug, PartialEq)]
 pub struct ResolvedServerRequest {
     pub thread_id: String,
     pub op: Op,
+}
+
+#[derive(Clone, Debug)]
+pub enum InProcessServerEvent {
+    ServerRequest(ServerRequest),
+    ServerNotification(ServerNotification),
+}
+
+pub struct InProcessStartArgs {
+    pub api_version: crate::ApiVersion,
+    pub config_warnings: Vec<codex_app_server_protocol::ConfigWarningNotification>,
+    pub initialize: InitializeParams,
+}
+
+pub struct InProcessClientHandle {
+    message_processor: MessageProcessor,
+    session: ConnectionSessionState,
+    event_queue: VecDeque<InProcessServerEvent>,
 }
 
 pub struct InProcessCoreEventEffect {
@@ -170,6 +199,131 @@ pub fn process_core_event(
         notifications: effect.notifications,
         server_requests: effect.server_requests,
     }
+}
+
+impl InProcessClientHandle {
+    pub fn new(args: InProcessStartArgs) -> Self {
+        Self {
+            message_processor: MessageProcessor::new(MessageProcessorArgs {
+                api_version: args.api_version,
+                config_warnings: args.config_warnings,
+            }),
+            session: ConnectionSessionState::default(),
+            event_queue: VecDeque::new(),
+        }
+    }
+
+    pub async fn request(
+        &mut self,
+        request: ClientRequest,
+    ) -> Result<serde_json::Value, JSONRPCErrorError> {
+        let response = self
+            .message_processor
+            .process_client_request(request, &mut self.session)
+            .await?;
+        self.drain_outgoing();
+        Ok(response)
+    }
+
+    pub fn notify(&mut self, notification: ClientNotification) -> Result<(), JSONRPCErrorError> {
+        self.message_processor
+            .process_client_notification(notification, &mut self.session)?;
+        self.drain_outgoing();
+        Ok(())
+    }
+
+    pub fn respond_to_server_request(
+        &mut self,
+        request_id: RequestId,
+        result: serde_json::Value,
+    ) -> Result<ResolvedServerRequest, JSONRPCErrorError> {
+        let resolved = self
+            .message_processor
+            .process_response(request_id, result)?;
+        self.drain_outgoing();
+        Ok(resolved)
+    }
+
+    pub fn fail_server_request(
+        &mut self,
+        request_id: RequestId,
+        error: JSONRPCErrorError,
+    ) -> Result<ResolvedServerRequest, JSONRPCErrorError> {
+        let resolved = self.message_processor.process_error(request_id, error)?;
+        self.drain_outgoing();
+        Ok(resolved)
+    }
+
+    pub fn process_core_event(
+        &mut self,
+        thread_id: &str,
+        thread: &mut InProcessThreadHandle,
+        next_request_id: Option<RequestId>,
+        event: &Event,
+    ) -> InProcessCoreEventEffect {
+        let effect = process_core_event(
+            &mut self.message_processor,
+            thread_id,
+            thread,
+            next_request_id,
+            event,
+        );
+        self.drain_outgoing();
+        effect
+    }
+
+    pub fn next_event(&mut self) -> Option<InProcessServerEvent> {
+        self.event_queue.pop_front()
+    }
+
+    pub fn pending_server_requests(&self) -> Vec<ServerRequest> {
+        self.message_processor.pending_server_requests()
+    }
+
+    pub fn session(&self) -> &ConnectionSessionState {
+        &self.session
+    }
+
+    pub fn register_thread(&mut self, thread: ThreadRecord) {
+        self.message_processor.register_thread(thread);
+    }
+
+    pub fn set_models(&mut self, models: Vec<codex_protocol::openai_models::ModelInfo>) {
+        self.message_processor.set_models(models);
+    }
+
+    pub fn set_runtime_bootstrap(&mut self, runtime_bootstrap: RuntimeBootstrap) {
+        self.message_processor
+            .set_runtime_bootstrap(runtime_bootstrap);
+    }
+
+    pub fn set_apps(&mut self, apps: Vec<codex_app_server_protocol::AppInfo>) {
+        self.message_processor.set_apps(apps);
+    }
+
+    fn drain_outgoing(&mut self) {
+        for notification in self.message_processor.take_notifications() {
+            self.event_queue
+                .push_back(InProcessServerEvent::ServerNotification(notification));
+        }
+        for request in self.message_processor.take_server_requests() {
+            self.event_queue
+                .push_back(InProcessServerEvent::ServerRequest(request));
+        }
+    }
+}
+
+pub async fn start(args: InProcessStartArgs) -> Result<InProcessClientHandle, JSONRPCErrorError> {
+    let initialize = args.initialize.clone();
+    let mut client = InProcessClientHandle::new(args);
+    client
+        .request(ClientRequest::Initialize {
+            request_id: RequestId::Integer(0),
+            params: initialize,
+        })
+        .await?;
+    client.notify(ClientNotification::Initialized)?;
+    Ok(client)
 }
 
 pub fn resolve_server_request(
@@ -386,17 +540,29 @@ fn dynamic_tool_response_to_core(
 
 #[cfg(test)]
 mod tests {
+    use codex_app_server_protocol::ClientInfo;
+    use codex_app_server_protocol::InitializeParams;
+    use codex_app_server_protocol::RequestId;
     use codex_app_server_protocol::ServerNotification;
+    use codex_app_server_protocol::ServerRequest;
     use codex_app_server_protocol::ThreadItem;
     use codex_app_server_protocol::Turn;
     use codex_app_server_protocol::TurnCompletedNotification;
     use codex_app_server_protocol::TurnStartedNotification;
     use codex_app_server_protocol::TurnStatus;
+    use codex_protocol::protocol::Event;
+    use codex_protocol::protocol::EventMsg;
+    use codex_protocol::request_user_input::RequestUserInputEvent;
+    use codex_protocol::request_user_input::RequestUserInputQuestion;
     use pretty_assertions::assert_eq;
 
+    use super::InProcessClientHandle;
+    use super::InProcessServerEvent;
+    use super::InProcessStartArgs;
     use super::InProcessThreadHandle;
     use super::InProcessTurnRecord;
     use super::apply_server_notification_to_thread;
+    use crate::ApiVersion;
 
     #[test]
     fn turn_started_creates_active_turn() {
@@ -472,5 +638,93 @@ mod tests {
                 error: None,
             })
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn start_performs_initialize_handshake() {
+        let client = super::start(InProcessStartArgs {
+            api_version: ApiVersion::V2,
+            config_warnings: Vec::new(),
+            initialize: InitializeParams {
+                client_info: ClientInfo {
+                    name: "web".to_string(),
+                    title: None,
+                    version: "1.0.0".to_string(),
+                },
+                capabilities: None,
+            },
+        })
+        .await
+        .expect("start initializes runtime");
+
+        assert!(client.session().initialized);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn processing_core_event_queues_server_request_for_embedded_client() {
+        let mut client = InProcessClientHandle::new(InProcessStartArgs {
+            api_version: ApiVersion::V2,
+            config_warnings: Vec::new(),
+            initialize: InitializeParams {
+                client_info: ClientInfo {
+                    name: "web".to_string(),
+                    title: None,
+                    version: "1.0.0".to_string(),
+                },
+                capabilities: None,
+            },
+        });
+        let mut thread = InProcessThreadHandle::default();
+
+        client
+            .request(codex_app_server_protocol::ClientRequest::Initialize {
+                request_id: RequestId::Integer(1),
+                params: InitializeParams {
+                    client_info: ClientInfo {
+                        name: "web".to_string(),
+                        title: None,
+                        version: "1.0.0".to_string(),
+                    },
+                    capabilities: None,
+                },
+            })
+            .await
+            .expect("initialize succeeds");
+        client
+            .notify(codex_app_server_protocol::ClientNotification::Initialized)
+            .expect("initialized notification succeeds");
+
+        client.process_core_event(
+            "thread-1",
+            &mut thread,
+            Some(RequestId::Integer(9)),
+            &Event {
+                id: "turn-1".to_string(),
+                msg: EventMsg::RequestUserInput(RequestUserInputEvent {
+                    call_id: "item-1".to_string(),
+                    turn_id: "turn-1".to_string(),
+                    questions: vec![RequestUserInputQuestion {
+                        id: "q1".to_string(),
+                        header: "Question".to_string(),
+                        question: "Continue?".to_string(),
+                        is_other: false,
+                        is_secret: false,
+                        options: None,
+                    }],
+                }),
+            },
+        );
+
+        let event = client.next_event();
+        assert!(matches!(
+            event,
+            Some(InProcessServerEvent::ServerRequest(
+                ServerRequest::ToolRequestUserInput {
+                    request_id: RequestId::Integer(9),
+                    ..
+                }
+            ))
+        ));
+        assert_eq!(client.pending_server_requests().len(), 1);
     }
 }

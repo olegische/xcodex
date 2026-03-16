@@ -9,6 +9,8 @@ use codex_wasm_v2_core::ApplyPatchResponse;
 use codex_wasm_v2_core::BrowserModelEvent;
 use codex_wasm_v2_core::BrowserModelRequest;
 use codex_wasm_v2_core::CodexAuth;
+use codex_wasm_v2_core::ConfigStorageHost;
+use codex_wasm_v2_core::DeleteThreadSessionRequest;
 use codex_wasm_v2_core::DiscoverableAppsProvider;
 use codex_wasm_v2_core::HostError;
 use codex_wasm_v2_core::HostErrorCode;
@@ -16,12 +18,22 @@ use codex_wasm_v2_core::HostFs;
 use codex_wasm_v2_core::HostResult;
 use codex_wasm_v2_core::ListDirRequest;
 use codex_wasm_v2_core::ListDirResponse;
+use codex_wasm_v2_core::ListThreadSessionsRequest;
+use codex_wasm_v2_core::ListThreadSessionsResponse;
+use codex_wasm_v2_core::LoadThreadSessionRequest;
+use codex_wasm_v2_core::LoadThreadSessionResponse;
+use codex_wasm_v2_core::LoadUserConfigRequest;
+use codex_wasm_v2_core::LoadUserConfigResponse;
 use codex_wasm_v2_core::ModelProviderInfo;
 use codex_wasm_v2_core::ModelTransportHost;
 use codex_wasm_v2_core::ReadFileRequest;
 use codex_wasm_v2_core::ReadFileResponse;
+use codex_wasm_v2_core::SaveThreadSessionRequest;
+use codex_wasm_v2_core::SaveUserConfigRequest;
+use codex_wasm_v2_core::SaveUserConfigResponse;
 use codex_wasm_v2_core::SearchRequest;
 use codex_wasm_v2_core::SearchResponse;
+use codex_wasm_v2_core::ThreadStorageHost;
 use js_sys::Function;
 use js_sys::Promise;
 use serde::Deserialize;
@@ -65,6 +77,12 @@ export interface BrowserRuntimeHost {
   listDir?(request: unknown): Promise<unknown>;
   search?(request: unknown): Promise<unknown>;
   applyPatch?(request: unknown): Promise<unknown>;
+  loadUserConfig?(request: unknown): Promise<unknown>;
+  saveUserConfig?(request: unknown): Promise<unknown>;
+  loadThreadSession?(request: unknown): Promise<unknown>;
+  saveThreadSession?(request: unknown): Promise<unknown>;
+  deleteThreadSession?(request: unknown): Promise<unknown>;
+  listThreadSessions?(request: unknown): Promise<unknown>;
   listDiscoverableApps?(request: unknown): Promise<unknown>;
   runModelTurn?(request: unknown): Promise<unknown>;
 }
@@ -127,6 +145,14 @@ impl JsHost {
     pub fn model_transport_host(&self) -> Arc<dyn ModelTransportHost> {
         Arc::new(self.clone())
     }
+
+    pub fn config_storage_host(&self) -> Arc<dyn ConfigStorageHost> {
+        Arc::new(self.clone())
+    }
+
+    pub fn thread_storage_host(&self) -> Arc<dyn ThreadStorageHost> {
+        Arc::new(self.clone())
+    }
 }
 
 // SAFETY: browser runtimes execute this host wrapper on the single JS main thread. We never move
@@ -174,6 +200,48 @@ impl ModelTransportHost for JsHost {
         request: BrowserModelRequest,
     ) -> HostResult<Vec<BrowserModelEvent>> {
         call_host_method(&self.host, "runModelTurn", request).await
+    }
+}
+
+#[async_trait]
+impl ThreadStorageHost for JsHost {
+    async fn load_thread_session(
+        &self,
+        request: LoadThreadSessionRequest,
+    ) -> HostResult<LoadThreadSessionResponse> {
+        call_host_method(&self.host, "loadThreadSession", request).await
+    }
+
+    async fn save_thread_session(&self, request: SaveThreadSessionRequest) -> HostResult<()> {
+        call_host_method(&self.host, "saveThreadSession", request).await
+    }
+
+    async fn delete_thread_session(&self, request: DeleteThreadSessionRequest) -> HostResult<()> {
+        call_host_method(&self.host, "deleteThreadSession", request).await
+    }
+
+    async fn list_thread_sessions(
+        &self,
+        request: ListThreadSessionsRequest,
+    ) -> HostResult<ListThreadSessionsResponse> {
+        call_host_method(&self.host, "listThreadSessions", request).await
+    }
+}
+
+#[async_trait]
+impl ConfigStorageHost for JsHost {
+    async fn load_user_config(
+        &self,
+        request: LoadUserConfigRequest,
+    ) -> HostResult<LoadUserConfigResponse> {
+        call_host_method(&self.host, "loadUserConfig", request).await
+    }
+
+    async fn save_user_config(
+        &self,
+        request: SaveUserConfigRequest,
+    ) -> HostResult<SaveUserConfigResponse> {
+        call_host_method(&self.host, "saveUserConfig", request).await
     }
 }
 

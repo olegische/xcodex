@@ -274,19 +274,42 @@ impl Session {
                 .join(CONFIG_TOML_FILE)
         };
 
-        let user_config = match std::fs::read_to_string(&config_toml_path) {
-            Ok(contents) => match toml::from_str::<toml::Value>(&contents) {
+        let user_config = match self
+            .services
+            .config_storage_host
+            .load_user_config(crate::LoadUserConfigRequest {})
+            .await
+        {
+            Ok(response) => match toml::from_str::<toml::Value>(&response.content) {
                 Ok(config) => config,
                 Err(err) => {
                     warn!("failed to parse user config while reloading layer: {err}");
                     return;
                 }
             },
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            Err(error) if error.code == crate::HostErrorCode::Unavailable => {
+                match std::fs::read_to_string(&config_toml_path) {
+                    Ok(contents) => match toml::from_str::<toml::Value>(&contents) {
+                        Ok(config) => config,
+                        Err(err) => {
+                            warn!("failed to parse user config while reloading layer: {err}");
+                            return;
+                        }
+                    },
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                        toml::Value::Table(Default::default())
+                    }
+                    Err(err) => {
+                        warn!("failed to read user config while reloading layer: {err}");
+                        return;
+                    }
+                }
+            }
+            Err(error) if error.code == crate::HostErrorCode::NotFound => {
                 toml::Value::Table(Default::default())
             }
-            Err(err) => {
-                warn!("failed to read user config while reloading layer: {err}");
+            Err(error) => {
+                warn!("failed to load user config from host while reloading layer: {error:?}");
                 return;
             }
         };

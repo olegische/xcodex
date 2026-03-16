@@ -25,7 +25,9 @@ use crate::shell::Shell;
 use crate::shell_snapshot::ShellSnapshot;
 use crate::skills::SkillsManager;
 use crate::state_db::StateDbHandle;
+use crate::tools::browser_host::ConfigStorageHost;
 use crate::tools::browser_host::HostFs;
+use crate::tools::browser_host::ThreadStorageHost;
 use crate::tools::code_mode::CodeModeService;
 use crate::tools::network_approval::NetworkApprovalService;
 use crate::tools::sandboxing::ApprovalStore;
@@ -61,4 +63,6 @@ pub(crate) struct SessionServices {
     pub(crate) code_mode_service: CodeModeService,
     pub(crate) browser_fs: Arc<dyn HostFs>,
     pub(crate) discoverable_apps_provider: Arc<dyn DiscoverableAppsProvider>,
+    pub(crate) config_storage_host: Arc<dyn ConfigStorageHost>,
+    pub(crate) thread_storage_host: Arc<dyn ThreadStorageHost>,
 }

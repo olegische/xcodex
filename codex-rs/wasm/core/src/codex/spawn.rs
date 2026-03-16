@@ -50,6 +50,8 @@ impl Codex {
             browser_fs,
             discoverable_apps_provider,
             model_transport_host,
+            config_storage_host,
+            thread_storage_host,
         } = args;
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
@@ -224,6 +226,8 @@ impl Codex {
             browser_fs,
             discoverable_apps_provider,
             model_transport_host,
+            config_storage_host,
+            thread_storage_host,
         )
         .instrument(session_init_span)
         .await
@@ -329,9 +333,13 @@ impl Codex {
         self.agent_status.borrow().clone()
     }
 
-    pub(crate) async fn thread_config_snapshot(&self) -> ThreadConfigSnapshot {
+    pub async fn thread_config_snapshot(&self) -> ThreadConfigSnapshot {
         let state = self.session.state.lock().await;
         state.session_configuration.thread_config_snapshot()
+    }
+
+    pub async fn current_rollout_path(&self) -> Option<std::path::PathBuf> {
+        self.session.current_rollout_path().await
     }
 
     pub(crate) fn state_db(&self) -> Option<state_db::StateDbHandle> {
