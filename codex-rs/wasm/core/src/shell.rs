@@ -92,5 +92,9 @@ pub fn get_shell(shell_type: ShellType, path: Option<&PathBuf>) -> Option<Shell>
 }
 
 pub fn default_user_shell() -> Shell {
-    get_shell(ShellType::Zsh, None).expect("default shell available")
+    Shell {
+        shell_type: ShellType::Zsh,
+        shell_path: PathBuf::from("browser://shell/zsh"),
+        shell_snapshot: empty_shell_snapshot_receiver(),
+    }
 }

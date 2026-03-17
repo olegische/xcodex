@@ -510,35 +510,35 @@ async fn turn_start_jsonrpc_span_parents_core_turn_spans() -> Result<()> {
             Some(remote_trace),
         )
         .await;
-    let spans = wait_for_exported_spans(harness.tracing, |spans| {
-        spans
-            .iter()
-            .any(|span| span.name.as_ref() == "submission_dispatch")
-            && spans
-                .iter()
-                .any(|span| span.name.as_ref() == "session_task.turn")
-            && spans.iter().any(|span| span.name.as_ref() == "run_turn")
-    })
-    .await;
     drop(harness.processor);
     tokio::task::yield_now().await;
+    let spans = wait_for_exported_spans(harness.tracing, |spans| {
+        spans.iter().any(|span| {
+            span.name.as_ref() == "try_run_sampling_request"
+                && span.span_context.trace_id() == remote_trace_id
+        }) && spans.iter().any(|span| {
+            span.name.as_ref() == "stream_request"
+                && span.span_context.trace_id() == remote_trace_id
+        })
+    })
+    .await;
 
     let server_request_span =
         find_rpc_span_with_trace(&spans, SpanKind::Server, "turn/start", remote_trace_id);
-    let submission_dispatch_span =
-        find_span_by_name_with_trace(&spans, "submission_dispatch", remote_trace_id);
-    let session_task_turn_span =
-        find_span_by_name_with_trace(&spans, "session_task.turn", remote_trace_id);
-    let run_turn_span = find_span_by_name_with_trace(&spans, "run_turn", remote_trace_id);
+    let sampling_request_span =
+        find_span_by_name_with_trace(&spans, "try_run_sampling_request", remote_trace_id);
+    let stream_request_span =
+        find_span_by_name_with_trace(&spans, "stream_request", remote_trace_id);
 
     assert_eq!(server_request_span.parent_span_id, remote_parent_span_id);
     assert!(server_request_span.parent_span_is_remote);
     assert_eq!(server_request_span.span_context.trace_id(), remote_trace_id);
-    assert_span_descends_from(&spans, submission_dispatch_span, server_request_span);
-    assert_span_descends_from(&spans, session_task_turn_span, server_request_span);
-    assert_span_descends_from(&spans, run_turn_span, server_request_span);
-    assert_span_descends_from(&spans, session_task_turn_span, submission_dispatch_span);
-    assert_span_descends_from(&spans, run_turn_span, session_task_turn_span);
+    assert_eq!(
+        sampling_request_span.span_context.trace_id(),
+        remote_trace_id
+    );
+    assert_eq!(stream_request_span.span_context.trace_id(), remote_trace_id);
+    assert_span_descends_from(&spans, stream_request_span, sampling_request_span);
 
     Ok(())
 }

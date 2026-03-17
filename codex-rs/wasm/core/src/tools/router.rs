@@ -199,9 +199,11 @@ impl ToolRouter {
         } else if matches!(payload, ToolPayload::Function { .. })
             && resolved_dynamic_tool_name.is_some()
         {
-            let dynamic_tool_name = resolved_dynamic_tool_name
-                .clone()
-                .expect("dynamic tool name checked above");
+            let Some(dynamic_tool_name) = resolved_dynamic_tool_name.clone() else {
+                return Err(FunctionCallError::Fatal(
+                    "dynamic tool name resolution became inconsistent".to_string(),
+                ));
+            };
             Box::new(
                 dynamic_handler::handle_dynamic_tool_call(
                     session.as_ref(),

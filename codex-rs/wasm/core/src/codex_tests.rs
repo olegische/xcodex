@@ -3125,7 +3125,6 @@ async fn build_settings_update_items_emits_environment_item_for_network_changes(
         NetworkConstraints {
             allowed_domains: Some(vec!["api.example.com".to_string()]),
             denied_domains: Some(vec!["blocked.example.com".to_string()]),
-            ..Default::default()
         },
         RequirementSource::CloudRequirements,
     ));

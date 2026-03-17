@@ -125,5 +125,5 @@ pub fn now_local_date() -> String {
 }
 
 fn epoch_utc() -> DateTime<Utc> {
-    DateTime::<Utc>::from_timestamp_millis(0).expect("unix epoch should be representable")
+    DateTime::<Utc>::UNIX_EPOCH
 }

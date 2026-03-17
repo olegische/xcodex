@@ -193,6 +193,7 @@ impl ContextManager {
     }
 
     pub fn get_total_token_usage(&self, server_reasoning_included: bool) -> i64 {
+        let _ = server_reasoning_included;
         let last_tokens = self
             .token_info
             .as_ref()
@@ -203,11 +204,7 @@ impl ContextManager {
             .iter()
             .map(estimate_item_token_count)
             .fold(0i64, i64::saturating_add);
-        if server_reasoning_included {
-            last_tokens.saturating_add(items_after_last_model_generated_tokens)
-        } else {
-            last_tokens.saturating_add(items_after_last_model_generated_tokens)
-        }
+        last_tokens.saturating_add(items_after_last_model_generated_tokens)
     }
 
     pub fn get_total_token_usage_breakdown(&self) -> TotalTokenUsageBreakdown {
@@ -335,7 +332,7 @@ fn remove_corresponding_for(items: &mut Vec<ResponseItem>, removed: &ResponseIte
 }
 
 fn estimate_item_token_count(item: &ResponseItem) -> i64 {
-    i64::try_from(model_visible_byte_count(item) / 4).unwrap_or(i64::MAX)
+    model_visible_byte_count(item) / 4
 }
 
 fn model_visible_byte_count(item: &ResponseItem) -> i64 {

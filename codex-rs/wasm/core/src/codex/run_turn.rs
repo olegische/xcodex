@@ -1,4 +1,5 @@
 use super::*;
+use crate::codex::sampling::SamplingRequestParams;
 use crate::compat::cancel::or_cancel;
 use crate::compat::hooks::HookEvent;
 use crate::compat::hooks::HookEventAfterAgent;
@@ -321,18 +322,18 @@ pub(crate) async fn run_turn(
             .map(|user_message| user_message.message())
             .collect::<Vec<String>>();
         let turn_metadata_header = turn_context.turn_metadata_state.current_header_value();
-        match run_sampling_request(
-            Arc::clone(&sess),
-            Arc::clone(&turn_context),
-            Arc::clone(&turn_diff_tracker),
-            &mut client_session,
-            turn_metadata_header.as_deref(),
-            sampling_request_input,
-            &turn_enabled_connectors,
+        match run_sampling_request(SamplingRequestParams {
+            sess: Arc::clone(&sess),
+            turn_context: Arc::clone(&turn_context),
+            turn_diff_tracker: Arc::clone(&turn_diff_tracker),
+            client_session: &mut client_session,
+            turn_metadata_header: turn_metadata_header.as_deref(),
+            input: sampling_request_input,
+            explicitly_enabled_connectors: &turn_enabled_connectors,
             skills_outcome,
-            &mut server_model_warning_emitted_for_turn,
-            cancellation_token.child_token(),
-        )
+            server_model_warning_emitted_for_turn: &mut server_model_warning_emitted_for_turn,
+            cancellation_token: cancellation_token.child_token(),
+        })
         .await
         {
             Ok(sampling_request_output) => {

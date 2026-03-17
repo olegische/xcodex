@@ -1,5 +1,6 @@
 use anyhow::Context;
 use codex_core::features::Feature;
+use codex_core::spawn::CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR;
 use codex_protocol::permissions::NetworkSandboxPolicy;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::EventMsg;
@@ -30,6 +31,10 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 use tokio::time::Duration;
 use tokio::time::timeout;
+
+fn network_disabled() -> bool {
+    std::env::var(CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR).is_ok()
+}
 
 #[tokio::test]
 async fn user_shell_cmd_ls_and_cat_in_temp_dir() {
@@ -332,6 +337,11 @@ async fn user_shell_command_history_is_persisted_and_shared_with_model() -> anyh
 
 #[tokio::test]
 async fn user_shell_command_does_not_set_network_sandbox_env_var() -> anyhow::Result<()> {
+    if network_disabled() {
+        eprintln!("{CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR} is set, skipping test.");
+        return Ok(());
+    }
+
     let server = responses::start_mock_server().await;
     let mut builder = core_test_support::test_codex::test_codex().with_config(|config| {
         config.permissions.network_sandbox_policy = NetworkSandboxPolicy::Restricted;

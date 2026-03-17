@@ -6,6 +6,19 @@ pub(super) struct SamplingRequestResult {
     pub(super) last_agent_message: Option<String>,
 }
 
+pub(crate) struct SamplingRequestParams<'a> {
+    pub(crate) sess: Arc<Session>,
+    pub(crate) turn_context: Arc<TurnContext>,
+    pub(crate) turn_diff_tracker: SharedTurnDiffTracker,
+    pub(crate) client_session: &'a mut ModelClientSession,
+    pub(crate) turn_metadata_header: Option<&'a str>,
+    pub(crate) input: Vec<ResponseItem>,
+    pub(crate) explicitly_enabled_connectors: &'a HashSet<String>,
+    pub(crate) skills_outcome: Option<&'a SkillLoadOutcome>,
+    pub(crate) server_model_warning_emitted_for_turn: &'a mut bool,
+    pub(crate) cancellation_token: CancellationToken,
+}
+
 async fn drain_in_flight(
     in_flight: &mut FuturesOrdered<BoxFuture<'static, CodexResult<ResponseInputItem>>>,
     sess: Arc<Session>,
@@ -26,17 +39,20 @@ async fn drain_in_flight(
 }
 
 pub(crate) async fn run_sampling_request(
-    sess: Arc<Session>,
-    turn_context: Arc<TurnContext>,
-    turn_diff_tracker: SharedTurnDiffTracker,
-    client_session: &mut ModelClientSession,
-    turn_metadata_header: Option<&str>,
-    input: Vec<ResponseItem>,
-    explicitly_enabled_connectors: &HashSet<String>,
-    skills_outcome: Option<&SkillLoadOutcome>,
-    server_model_warning_emitted_for_turn: &mut bool,
-    cancellation_token: CancellationToken,
+    params: SamplingRequestParams<'_>,
 ) -> CodexResult<SamplingRequestResult> {
+    let SamplingRequestParams {
+        sess,
+        turn_context,
+        turn_diff_tracker,
+        client_session,
+        turn_metadata_header,
+        input,
+        explicitly_enabled_connectors,
+        skills_outcome,
+        server_model_warning_emitted_for_turn,
+        cancellation_token,
+    } = params;
     let router = built_tools(
         sess.as_ref(),
         turn_context.as_ref(),
