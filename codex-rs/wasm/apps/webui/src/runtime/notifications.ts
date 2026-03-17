@@ -1,5 +1,8 @@
+import { subscribeRuntimeEvent } from "./events";
 import { emitRuntimeActivity } from "./activity";
 import type { JsonValue, RuntimeDispatch, RuntimeEvent, RuntimeActivity } from "./types";
+
+let notificationsBridgeInstalled = false;
 
 export function emitActivitiesFromDispatch(dispatch: RuntimeDispatch) {
   emitActivitiesFromNotifications(dispatch.events);
@@ -7,14 +10,24 @@ export function emitActivitiesFromDispatch(dispatch: RuntimeDispatch) {
 
 export function emitActivitiesFromNotifications(events: RuntimeEvent[]) {
   for (const event of events) {
-    const activity = mapNotificationToActivity(event);
+    const activity = runtimeActivityFromEvent(event);
     if (activity !== null) {
       emitRuntimeActivity(activity);
     }
   }
 }
 
-function mapNotificationToActivity(event: RuntimeEvent): RuntimeActivity | null {
+export function installRuntimeActivityBridge() {
+  if (notificationsBridgeInstalled) {
+    return;
+  }
+  notificationsBridgeInstalled = true;
+  subscribeRuntimeEvent((event) => {
+    emitActivitiesFromNotifications([event]);
+  });
+}
+
+export function runtimeActivityFromEvent(event: RuntimeEvent): RuntimeActivity | null {
   if (event === null || typeof event !== "object" || typeof event.method !== "string") {
     return null;
   }

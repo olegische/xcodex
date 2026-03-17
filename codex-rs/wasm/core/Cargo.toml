@@ -67,14 +67,7 @@ tokio = { workspace = true, features = [
 ] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-codex-rmcp-client = { workspace = true }
 js-sys = { workspace = true }
-rmcp = { workspace = true, default-features = false, features = [
-    "base64",
-    "macros",
-    "schemars",
-    "server",
-] }
 tokio = { workspace = true, features = [
     "macros",
     "rt",
@@ -83,7 +76,17 @@ tokio = { workspace = true, features = [
 ] }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true, features = ["console", "Window"] }
+serde-wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = [
+    "Headers",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "Url",
+    "Window",
+    "console",
+] }
 
 [dev-dependencies]
 codex-otel = { workspace = true }

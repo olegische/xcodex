@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@browser-codex/wasm-browser-host": "file:../../ts/browser-host",
+    "@browser-codex/wasm-browser-codex-runtime": "file:../../ts/browser-codex-runtime",
     "@browser-codex/wasm-model-transport": "file:../../ts/model-transport",
     "@browser-codex/wasm-runtime-core": "file:../../ts/runtime-core",
     "openai": "latest"

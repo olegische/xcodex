@@ -1,8 +1,12 @@
+import type { JsonValue } from "../../../../app-server-protocol/schema/typescript/serde_json/JsonValue";
+
 export type ModelTransportTurnParams<TConfig> = {
   requestId: string;
   config: TConfig;
   requestBody: Record<string, unknown>;
   extraHeaders: Record<string, string> | null;
+  transportOptions?: Record<string, unknown>;
+  emitNotification?: (notification: JsonValue) => Promise<void>;
 };
 
 export type ModelDiscoveryResult<TModel> = {

@@ -23,6 +23,10 @@ use crate::BrowserModelDeltaPayload;
 #[cfg(target_arch = "wasm32")]
 use crate::BrowserModelEvent;
 #[cfg(target_arch = "wasm32")]
+use crate::BrowserModelReasoningDeltaPayload;
+#[cfg(target_arch = "wasm32")]
+use crate::BrowserModelReasoningSectionPayload;
+#[cfg(target_arch = "wasm32")]
 use crate::BrowserModelRequest;
 #[cfg(target_arch = "wasm32")]
 use crate::BrowserTransportOptions;
@@ -348,6 +352,7 @@ impl ModelClientSession {
             request_body,
             transport_options: Some(BrowserTransportOptions {
                 conversation_id: Some(self.client.state.conversation_id.to_string()),
+                turn_id: turn_metadata_turn_id(turn_metadata_header),
                 session_source: Some(format!("{:?}", self.client.state.session_source)),
                 extra_headers: Some(extra_headers),
                 use_websocket: self.client.responses_websocket_enabled(model_info),
@@ -443,7 +448,30 @@ fn map_browser_model_event(event: BrowserModelEvent) -> Option<ResponseEvent> {
             payload: BrowserModelDeltaPayload { output_text_delta },
             ..
         } => Some(ResponseEvent::OutputTextDelta(output_text_delta)),
+        BrowserModelEvent::OutputItemAdded { item, .. } => {
+            Some(ResponseEvent::OutputItemAdded(item))
+        }
         BrowserModelEvent::OutputItemDone { item, .. } => Some(ResponseEvent::OutputItemDone(item)),
+        BrowserModelEvent::ReasoningSummaryDelta {
+            payload: BrowserModelReasoningDeltaPayload { delta, index },
+            ..
+        } => Some(ResponseEvent::ReasoningSummaryDelta {
+            delta,
+            summary_index: index,
+        }),
+        BrowserModelEvent::ReasoningContentDelta {
+            payload: BrowserModelReasoningDeltaPayload { delta, index },
+            ..
+        } => Some(ResponseEvent::ReasoningContentDelta {
+            delta,
+            content_index: index,
+        }),
+        BrowserModelEvent::ReasoningSummaryPartAdded {
+            payload: BrowserModelReasoningSectionPayload { index },
+            ..
+        } => Some(ResponseEvent::ReasoningSummaryPartAdded {
+            summary_index: index,
+        }),
         BrowserModelEvent::Completed { request_id } => Some(ResponseEvent::Completed {
             response_id: request_id,
             token_usage: None,
@@ -509,6 +537,21 @@ struct BrowserTextFormat<'a> {
 
 fn parse_turn_metadata_header(turn_metadata_header: Option<&str>) -> Option<HeaderValue> {
     turn_metadata_header.and_then(|value| HeaderValue::from_str(value).ok())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn turn_metadata_turn_id(turn_metadata_header: Option<&str>) -> Option<String> {
+    turn_metadata_header.and_then(|value| {
+        serde_json::from_str::<Value>(value)
+            .ok()
+            .and_then(|parsed| {
+                parsed
+                    .as_object()
+                    .and_then(|object| object.get("turn_id"))
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            })
+    })
 }
 
 fn header_map_to_json(headers: HeaderMap) -> Value {

@@ -25,8 +25,11 @@ export type BrowserRuntimeHost = {
   listDir(request: JsonValue): Promise<JsonValue>;
   search(request: JsonValue): Promise<JsonValue>;
   applyPatch(request: JsonValue): Promise<JsonValue>;
+  loadUserConfig?(request: JsonValue): Promise<JsonValue>;
+  saveUserConfig?(request: JsonValue): Promise<JsonValue>;
   listDiscoverableApps?(request: JsonValue): Promise<JsonValue>;
   runModelTurn?(request: JsonValue): Promise<JsonValue>;
+  emitNotification?(notification: JsonValue): Promise<void>;
   resolveMcpOauthRedirectUri?(request: JsonValue): Promise<JsonValue>;
   waitForMcpOauthCallback?(request: JsonValue): Promise<JsonValue>;
 };
@@ -34,6 +37,7 @@ export type BrowserRuntimeHost = {
 export type WasmProtocolRuntime = {
   send(message: unknown): Promise<unknown>;
   nextMessage(): Promise<unknown>;
+  enqueueNotification?(notification: unknown): Promise<void>;
   runtimeInfo(): unknown;
   contractVersion(): string;
 };

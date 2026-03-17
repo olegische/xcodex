@@ -8,6 +8,7 @@
   export let status = "";
   export let running = false;
   export let flat = false;
+  export let onSettings: () => void;
 
   const BOTTOM_THRESHOLD = 48;
 
@@ -91,7 +92,7 @@
 
 <section class:transcript-flat={flat} class="transcript-widget-shell widget-surface">
   <div bind:this={scrollContainer} class="transcript-scroll" on:scroll={updateScrollState}>
-    <Transcript {transcript} {liveStreamText} {status} {running} />
+    <Transcript {transcript} {liveStreamText} {status} {running} {onSettings} />
   </div>
 
   {#if showScrollToBottom}

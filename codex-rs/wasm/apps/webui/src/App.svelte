@@ -78,7 +78,6 @@
   onSelectPlan={() => toggleInspectorTab("plan", workbenchModel.renderPlan)}
   onSelectStatus={() => toggleInspectorTab("status", workbenchModel.renderPlan)}
   onSelectMetrics={() => toggleInspectorTab("metrics", workbenchModel.renderPlan)}
-  onSelectTools={() => toggleInspectorTab("tools", workbenchModel.renderPlan)}
   onSelectWorkspace={() => toggleInspectorTab("workspace", workbenchModel.renderPlan)}
   onToggleApprovals={() => toggleApprovals(workbenchModel.renderPlan)}
   {providerDraft}
@@ -92,7 +91,7 @@
 
 <RuntimeModalsContainer
   draft={providerDraft}
-  disabled={state.runtime === null}
+  disabled={runtimeUiState.running}
   profiles={uiSystem.profiles}
   onSaveConfig={(event) => void saveProviderConfig(event.detail)}
   onRefreshAccountAndModels={(event) => void refreshAccountAndModels(event.detail)}

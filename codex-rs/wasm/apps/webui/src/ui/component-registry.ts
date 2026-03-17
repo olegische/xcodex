@@ -12,7 +12,6 @@ import TranscriptWidget from "../lib/widgets/TranscriptWidget.svelte";
 import ApprovalsWidget from "../lib/widgets/ApprovalsWidget.svelte";
 import ToolActivityWidget from "../lib/widgets/ToolActivityWidget.svelte";
 import WorkspaceFilesWidget from "../lib/widgets/WorkspaceFilesWidget.svelte";
-import RemoteMcpWidget from "../lib/widgets/RemoteMcpWidget.svelte";
 import WebSignalsWidget from "../lib/widgets/WebSignalsWidget.svelte";
 import AgentSwarmWidget from "../lib/widgets/AgentSwarmWidget.svelte";
 import type { RuntimeActivity, TranscriptEntry } from "../runtime";
@@ -125,6 +124,7 @@ export const WIDGET_REGISTRY: Record<UiWidgetId, WidgetRendererDefinition> = {
       running: context.running,
       runtimeActivities: context.runtimeActivities,
       flat: context.widgetsDocument.transcript.variant === "flat",
+      onSettings: context.onSettings,
     }),
   },
   composer: {
@@ -193,16 +193,6 @@ export const WIDGET_REGISTRY: Record<UiWidgetId, WidgetRendererDefinition> = {
       workspaceFiles: context.workspaceFiles,
       maxItems: context.widgetsDocument.workspaceFiles.maxItems,
       showPreview: context.widgetsDocument.workspaceFiles.showPreview,
-    }),
-  },
-  remote_mcp: {
-    id: "remote_mcp",
-    title: "Capability Bridges",
-    allowedAreas: ["mainTop", "mainBody", "mainBottom"],
-    component: RemoteMcpWidget,
-    createProps: (context) => ({
-      title: context.widget.title,
-      workspaceFiles: context.workspaceFiles,
     }),
   },
   web_signals: {

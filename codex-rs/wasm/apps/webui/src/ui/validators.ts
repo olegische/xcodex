@@ -36,7 +36,6 @@ const WIDGET_IDS: UiWidgetId[] = [
   "approvals",
   "tool_activity",
   "workspace_files",
-  "remote_mcp",
   "web_signals",
   "agent_swarm",
 ];
@@ -49,7 +48,6 @@ const SHELL_ACTION_IDS: ShellActionId[] = [
   "metrics",
   "events",
   "approvals",
-  "tools",
   "workspace",
   "profiles",
   "settings",
@@ -358,7 +356,6 @@ function normalizeInspectorTab(value: unknown): InspectorTab {
     value === "plan" ||
     value === "metrics" ||
     value === "approvals" ||
-    value === "tools" ||
     value === "workspace"
     ? value
     : "events";

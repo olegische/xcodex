@@ -131,6 +131,7 @@ impl Session {
             config.codex_home.clone(),
             codex_apps_tools_cache_key(auth.as_ref()),
             tool_plugin_provenance,
+            Arc::clone(&self.services.mcp_oauth_host),
         )
         .await;
         {

@@ -12,7 +12,7 @@ export {
   summarizeServerRequest,
   threadToSessionSnapshot,
   turnIdFromNotification,
-} from "./browser-app-server";
+} from "./browser-runtime-core";
 export type {
   AppServerClientEvent,
   AppServerClientStartArgs,

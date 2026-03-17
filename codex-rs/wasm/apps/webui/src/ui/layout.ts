@@ -12,10 +12,9 @@ export const DEFAULT_UI_LAYOUT: UiLayoutDocument = {
   defaultInspectorTab: "workspace",
   areas: {
     mainTop: [
-      { id: "mission_state", title: "Zone" },
       { id: "page_state", title: "Surface" },
     ],
-    mainBody: [{ id: "remote_mcp", title: "Capability Bridges" }],
+    mainBody: [{ id: "runtime_events", title: "Event Stream" }],
     mainBottom: [{ id: "runtime_events", title: "Event Stream" }],
     inspector: [
       { id: "ledger", title: "Ledger" },
@@ -68,7 +67,6 @@ function buildLayoutGuide(): string {
     "- composer",
     "",
     "Allowed runtime widget ids:",
-    "- `mission_state`",
     "- `ledger`",
     "- `citations`",
     "- `page_state`",
@@ -79,7 +77,6 @@ function buildLayoutGuide(): string {
     "- `tool_activity`",
     "- `workspace_files`",
     "- `approvals`",
-    "- `remote_mcp`",
     "- `web_signals`",
     "- `agent_swarm`",
     "",

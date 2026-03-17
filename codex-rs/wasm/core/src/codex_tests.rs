@@ -1,5 +1,6 @@
 use super::*;
 use crate::CodexAuth;
+use crate::UnavailableMcpOauthHost;
 use crate::compat::hooks::Hooks;
 use crate::compat::hooks::HooksConfig;
 use crate::compat::otel::current_span_w3c_trace_context;
@@ -2112,6 +2113,7 @@ async fn session_new_fails_when_zsh_fork_enabled_without_zsh_path() {
         Arc::new(UnavailableModelTransportHost),
         Arc::new(UnavailableConfigStorageHost),
         Arc::new(UnavailableThreadStorageHost),
+        Arc::new(UnavailableMcpOauthHost),
     )
     .await;
 
@@ -2144,6 +2146,7 @@ async fn spawn_browser_codex_preserves_browser_host_providers() {
         model_transport_host: Arc::new(UnavailableModelTransportHost),
         config_storage_host: Arc::new(UnavailableConfigStorageHost),
         thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+        mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
     })
     .await
     .expect("spawn browser codex");
@@ -2313,6 +2316,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
         discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
         config_storage_host: Arc::new(UnavailableConfigStorageHost),
         thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+        mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
     };
     let js_repl = Arc::new(JsReplHandle::with_node_path(
         config.js_repl_node_path.clone(),
@@ -2961,6 +2965,7 @@ pub(crate) async fn make_session_and_context_with_dynamic_tools_and_rx(
         discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
         config_storage_host: Arc::new(UnavailableConfigStorageHost),
         thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+        mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
     };
     let js_repl = Arc::new(JsReplHandle::with_node_path(
         config.js_repl_node_path.clone(),
@@ -4332,7 +4337,7 @@ async fn dynamic_tool_dispatch_emits_request_and_returns_response() {
 }
 
 #[tokio::test]
-async fn mcp_tool_dispatch_returns_mcp_output_item() {
+async fn mcp_tool_dispatch_returns_unimplemented_function_output() {
     let (session, turn_context, _rx) = make_session_and_context_with_rx().await;
     let mut mcp_tools = std::collections::HashMap::new();
     mcp_tools.insert(
@@ -4383,11 +4388,15 @@ async fn mcp_tool_dispatch_returns_mcp_output_item() {
         .expect("mcp tool should return output");
 
     match response {
-        ResponseInputItem::McpToolCallOutput { call_id, output } => {
+        ResponseInputItem::FunctionCallOutput { call_id, output } => {
             assert_eq!(call_id, "call-mcp-1");
-            assert_eq!(output.is_error, Some(true));
+            assert_eq!(output.success, Some(false));
+            assert_eq!(
+                output.body.to_text().as_deref(),
+                Some("tool mcp__test__echo is not implemented in wasm yet")
+            );
         }
-        other => panic!("expected mcp tool call output, got {other:?}"),
+        other => panic!("expected function call output, got {other:?}"),
     }
 }
 

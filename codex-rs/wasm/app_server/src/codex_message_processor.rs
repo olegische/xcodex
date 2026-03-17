@@ -1,9 +1,7 @@
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::ListMcpServerStatusResponse;
-use codex_app_server_protocol::McpServerOauthLoginCompletedNotification;
 use codex_app_server_protocol::McpServerOauthLoginParams;
-use codex_app_server_protocol::McpServerOauthLoginResponse;
 use codex_app_server_protocol::McpServerRefreshResponse;
 use codex_app_server_protocol::McpServerStatus;
 use codex_app_server_protocol::ServerNotification;
@@ -25,10 +23,8 @@ use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use crate::AppServerState;
 use crate::LoadedThread;
@@ -58,8 +54,8 @@ use codex_wasm_core::StoredThreadSession;
 use codex_wasm_core::StoredThreadSessionMetadata;
 use codex_wasm_core::codex::Codex;
 use codex_wasm_core::codex::SteerInputError;
-use codex_wasm_core::mcp::auth::compute_auth_statuses;
-use codex_wasm_core::mcp::auth::perform_browser_oauth_login_return_url;
+use codex_wasm_core::mcp::collect_mcp_snapshot;
+use codex_wasm_core::mcp::group_tools_by_server;
 use codex_wasm_core::spawn_browser_codex;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -85,7 +81,6 @@ pub struct CodexMessageProcessor {
     app_server_state: AppServerState,
     runtime_bootstrap: Option<RuntimeBootstrap>,
     outgoing: ThreadScopedOutgoingMessageSender,
-    runtime_mcp_oauth_servers: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl CodexMessageProcessor {
@@ -96,7 +91,6 @@ impl CodexMessageProcessor {
             app_server_state: AppServerState::default(),
             runtime_bootstrap: None,
             outgoing: ThreadScopedOutgoingMessageSender::new(args.outgoing),
-            runtime_mcp_oauth_servers: Arc::new(Mutex::new(BTreeSet::new())),
         }
     }
 
@@ -150,6 +144,7 @@ impl CodexMessageProcessor {
                     model_transport_host: Arc::clone(&bootstrap.model_transport_host),
                     config_storage_host: Arc::clone(&bootstrap.config_storage_host),
                     thread_storage_host: Arc::clone(&bootstrap.thread_storage_host),
+                    mcp_oauth_host: Arc::clone(&bootstrap.mcp_oauth_host),
                 })
                 .await
                 .map_err(internal_error)?;
@@ -247,12 +242,9 @@ impl CodexMessageProcessor {
                             data: None,
                             message: "config/value/write requires runtime bootstrap".to_string(),
                         })?;
-                serde_json::to_value(
-                    crate::config_api::ConfigApi::new(bootstrap, loaded_threads)
-                        .write_value(params)
-                        .await?,
-                )
-                .map_err(internal_error)
+                crate::config_api::ConfigApi::new(bootstrap, loaded_threads)
+                    .write_value(params)
+                    .await
             }
             ClientRequest::ConfigBatchWrite {
                 request_id: _,
@@ -272,12 +264,9 @@ impl CodexMessageProcessor {
                             data: None,
                             message: "config/batchWrite requires runtime bootstrap".to_string(),
                         })?;
-                serde_json::to_value(
-                    crate::config_api::ConfigApi::new(bootstrap, loaded_threads)
-                        .batch_write(params)
-                        .await?,
-                )
-                .map_err(internal_error)
+                crate::config_api::ConfigApi::new(bootstrap, loaded_threads)
+                    .batch_write(params)
+                    .await
             }
             ClientRequest::McpServerStatusList {
                 request_id: _,
@@ -292,22 +281,18 @@ impl CodexMessageProcessor {
                             message: "mcpServerStatus/list requires runtime bootstrap".to_string(),
                         })?;
                 let config = bootstrap.config.clone();
-                let auth_statuses = compute_auth_statuses(
-                    config.mcp_servers.get().iter(),
-                    config.mcp_oauth_credentials_store_mode,
-                )
-                .await;
-                let connected_servers = self
-                    .runtime_mcp_oauth_servers
-                    .lock()
-                    .map_or_else(|_| BTreeSet::new(), |servers| servers.clone());
+                let snapshot =
+                    collect_mcp_snapshot(&config, Arc::clone(&bootstrap.mcp_oauth_host)).await;
+                let tools_by_server = group_tools_by_server(&snapshot.tools);
 
                 let mut server_names: Vec<String> = config
                     .mcp_servers
                     .get()
                     .keys()
                     .cloned()
-                    .chain(auth_statuses.keys().cloned())
+                    .chain(snapshot.auth_statuses.keys().cloned())
+                    .chain(snapshot.resources.keys().cloned())
+                    .chain(snapshot.resource_templates.keys().cloned())
                     .collect();
                 server_names.sort();
                 server_names.dedup();
@@ -333,18 +318,19 @@ impl CodexMessageProcessor {
                     .iter()
                     .map(|name| McpServerStatus {
                         name: name.clone(),
-                        tools: Default::default(),
-                        resources: Vec::new(),
-                        resource_templates: Vec::new(),
-                        auth_status: if connected_servers.contains(name) {
-                            codex_protocol::protocol::McpAuthStatus::OAuth.into()
-                        } else {
-                            auth_statuses
-                                .get(name)
-                                .map(|entry| entry.auth_status)
-                                .unwrap_or(codex_protocol::protocol::McpAuthStatus::Unsupported)
-                                .into()
-                        },
+                        tools: tools_by_server.get(name).cloned().unwrap_or_default(),
+                        resources: snapshot.resources.get(name).cloned().unwrap_or_default(),
+                        resource_templates: snapshot
+                            .resource_templates
+                            .get(name)
+                            .cloned()
+                            .unwrap_or_default(),
+                        auth_status: snapshot
+                            .auth_statuses
+                            .get(name)
+                            .cloned()
+                            .unwrap_or(codex_protocol::protocol::McpAuthStatus::Unsupported)
+                            .into(),
                     })
                     .collect();
                 serde_json::to_value(ListMcpServerStatusResponse {
@@ -877,6 +863,11 @@ impl CodexMessageProcessor {
         &self,
         params: McpServerOauthLoginParams,
     ) -> Result<serde_json::Value, JSONRPCErrorError> {
+        let McpServerOauthLoginParams {
+            name,
+            scopes: _,
+            timeout_secs: _,
+        } = params;
         let bootstrap = self
             .runtime_bootstrap
             .as_ref()
@@ -886,63 +877,24 @@ impl CodexMessageProcessor {
                 message: "mcpServer/oauth/login requires runtime bootstrap".to_string(),
             })?;
         let config = bootstrap.config.clone();
-        let McpServerOauthLoginParams {
-            name,
-            scopes,
-            timeout_secs,
-        } = params;
-        let Some(server) = config.mcp_servers.get().get(&name).cloned() else {
+        let Some(server) = config.mcp_servers.get().get(&name) else {
             return Err(invalid_request_error(format!(
                 "No MCP server named '{name}' found."
             )));
         };
-        let (url, oauth_resource) = match &server.transport {
-            codex_wasm_core::config::types::McpServerTransportConfig::StreamableHttp {
-                url,
-                ..
-            } => (url.clone(), server.oauth_resource.clone()),
+        match &server.transport {
+            codex_wasm_core::config::types::McpServerTransportConfig::StreamableHttp { .. } => {}
             _ => {
                 return Err(invalid_request_error(
                     "OAuth login is only supported for streamable HTTP servers.".to_string(),
                 ));
             }
-        };
+        }
 
-        let handle = perform_browser_oauth_login_return_url(
-            Arc::clone(&bootstrap.mcp_oauth_host),
-            &name,
-            &url,
-            scopes
-                .as_deref()
-                .unwrap_or(server.scopes.as_deref().unwrap_or_default()),
-            oauth_resource.as_deref(),
-            timeout_secs,
-        )
-        .await
-        .map_err(internal_error)?;
-        let authorization_url = handle.authorization_url().to_string();
-        let connected_servers = Arc::clone(&self.runtime_mcp_oauth_servers);
-        let outgoing = self.outgoing.clone();
-        codex_wasm_core::spawn_background_task(async move {
-            let (success, error) = match handle.wait().await {
-                Ok(()) => {
-                    if let Ok(mut servers) = connected_servers.lock() {
-                        servers.insert(name.clone());
-                    }
-                    (true, None)
-                }
-                Err(err) => (false, Some(err.to_string())),
-            };
-            outgoing.send_server_notification(ServerNotification::McpServerOauthLoginCompleted(
-                McpServerOauthLoginCompletedNotification {
-                    name,
-                    success,
-                    error,
-                },
-            ));
-        });
-        serde_json::to_value(McpServerOauthLoginResponse { authorization_url })
-            .map_err(internal_error)
+        let _ = server;
+        Err(invalid_request_error(format!(
+            "browser MCP OAuth is not wired yet for '{name}'; the wasm runtime no longer uses the native localhost OAuth stack"
+        )))
     }
 
     pub fn set_runtime_bootstrap(&mut self, runtime_bootstrap: RuntimeBootstrap) {

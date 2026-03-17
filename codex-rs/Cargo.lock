@@ -2741,6 +2741,8 @@ dependencies = [
  "serde_json",
  "tokio",
  "toml 0.9.11+spec-1.1.0",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -2804,6 +2806,7 @@ dependencies = [
  "regex-lite",
  "rmcp",
  "serde",
+ "serde-wasm-bindgen",
  "serde_json",
  "serde_yaml",
  "tempfile",

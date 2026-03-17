@@ -34,7 +34,6 @@
   export let onSelectPlan: () => void;
   export let onSelectMetrics: () => void;
   export let onToggleApprovals: () => void;
-  export let onSelectTools: () => void;
   export let onSelectWorkspace: () => void;
   export let onOpenSettings: () => void;
   export let onOpenProfiles: () => void;
@@ -79,7 +78,6 @@
   {onSelectPlan}
   {onSelectStatus}
   {onSelectMetrics}
-  {onSelectTools}
   {onSelectWorkspace}
   onToggleSidebar={toggleSidebar}
   {onToggleApprovals}

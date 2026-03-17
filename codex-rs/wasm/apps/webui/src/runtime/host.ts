@@ -3,12 +3,15 @@ import {
   createNormalizedModelTurnRunner,
   createBrowserRuntimeHostFromDeps,
 } from "@browser-codex/wasm-browser-host/runtime-host";
-import {
-  buildBrowserRuntimeBootstrap,
-  createRemoteMcpOauthHostHandlers,
-} from "@browser-codex/wasm-browser-host";
+import { buildBrowserRuntimeBootstrap } from "@browser-codex/wasm-browser-host";
 import { DEFAULT_DEMO_INSTRUCTIONS } from "./constants";
-import { loadStoredAuthState, loadStoredCodexConfig, loadStoredDemoInstructions } from "./storage";
+import {
+  loadStoredAuthState,
+  loadStoredCodexConfig,
+  loadStoredDemoInstructions,
+  loadStoredUserConfig,
+  saveStoredUserConfig,
+} from "./storage";
 import { webUiModelTransportAdapter } from "./transport-adapter";
 import { applyWorkspacePatch, listWorkspaceDir, readWorkspaceFile, searchWorkspace } from "./workspace";
 import { activeProviderApiKey, getActiveProvider } from "./utils";
@@ -16,7 +19,6 @@ import type { BrowserRuntimeHost } from "./types";
 
 export function createBrowserRuntimeHost(): BrowserRuntimeHost {
   return createBrowserRuntimeHostFromDeps({
-    ...createRemoteMcpOauthHostHandlers(),
     async loadBootstrap() {
       const [authState, codexConfig, demoInstructions] = await Promise.all([
         loadStoredAuthState(),
@@ -54,6 +56,42 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
     listDir: listWorkspaceDir,
     search: searchWorkspace,
     applyPatch: applyWorkspacePatch,
+    async loadUserConfig() {
+      const stored = await loadStoredUserConfig();
+      if (stored === null) {
+        return {
+          filePath: "/codex-home/config.toml",
+          version: "0",
+          content: "",
+        };
+      }
+      return {
+        filePath: stored.filePath,
+        version: stored.version,
+        content: stored.content,
+      };
+    },
+    async saveUserConfig(request) {
+      const requestRecord =
+        request !== null && typeof request === "object" && !Array.isArray(request)
+          ? (request as Record<string, unknown>)
+          : {};
+      if (typeof requestRecord.content !== "string") {
+        throw new Error("saveUserConfig requires string content");
+      }
+      const saved = await saveStoredUserConfig({
+        filePath: typeof requestRecord.filePath === "string" ? requestRecord.filePath : null,
+        expectedVersion:
+          typeof requestRecord.expectedVersion === "string"
+            ? requestRecord.expectedVersion
+            : null,
+        content: requestRecord.content,
+      });
+      return {
+        filePath: saved.filePath,
+        version: saved.version,
+      };
+    },
     async listDiscoverableApps() {
       return [];
     },

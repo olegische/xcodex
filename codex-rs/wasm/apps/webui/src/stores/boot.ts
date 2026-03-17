@@ -9,7 +9,6 @@ export type BootPhase =
   | "workspace_browser"
   | "web_signals"
   | "page_runtime"
-  | "zone_control"
   | "ready"
   | "error";
 
@@ -38,7 +37,6 @@ const INITIAL_STEPS: BootStep[] = [
   { id: "workspace_browser", label: "Load workspace browser", status: "pending", detail: "Waiting to read workspace files" },
   { id: "web_signals", label: "Load web signals", status: "pending", detail: "Waiting to scan AI-readable signals" },
   { id: "page_runtime", label: "Load page telemetry", status: "pending", detail: "Waiting to attach page observers" },
-  { id: "zone_control", label: "Load zone control", status: "pending", detail: "Waiting to connect APSIX zone state" },
 ] as const;
 
 const initialState: BootState = {

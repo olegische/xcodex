@@ -42,7 +42,37 @@ type BrowserAiSurfaceSnapshot = {
   capabilityMode: "page" | "extension" | "devtools";
 };
 
+export type BrowserToolCatalogEntry = {
+  toolName: string;
+  toolNamespace: string;
+  description: string;
+  inputSchema: JsonValue;
+  keywords?: string[];
+  source?: string;
+};
+
+type BrowserToolCatalogSource = () =>
+  | BrowserToolCatalogEntry[]
+  | Promise<BrowserToolCatalogEntry[]>;
+
+const browserToolCatalogSources = new Set<BrowserToolCatalogSource>();
+
 const BROWSER_TOOLS = [
+  {
+    name: "browser__tool_search",
+    description:
+      "Search browser-owned tools and registered frontend tool catalogs. This is the extension point for future frontend MCP-owned tools.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        limit: { type: "number" },
+        includeSchema: { type: "boolean" },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+  },
   {
     name: "browser__page_context",
     description: "Inspect the current browser page context, including title, URL, selection, headings, links, and capability posture.",
@@ -275,15 +305,26 @@ const BROWSER_TOOLS = [
   },
 ] as const;
 
+export function registerBrowserToolCatalogSource(source: BrowserToolCatalogSource): () => void {
+  browserToolCatalogSources.add(source);
+  return () => {
+    browserToolCatalogSources.delete(source);
+  };
+}
+
 export function createBrowserAwareToolExecutor(): HostToolExecutorAdapter {
   return {
     async list() {
+      const tools = await listBrowserToolCatalog();
       return {
-        tools: BROWSER_TOOLS.map((tool) => ({
-          toolName: tool.name.replace(/^browser__/, ""),
-          toolNamespace: "browser",
+        tools: tools.map((tool) => ({
+          toolName:
+            tool.toolNamespace === "browser"
+              ? tool.toolName.replace(/^browser__/, "")
+              : tool.toolName,
+          toolNamespace: tool.toolNamespace,
           description: tool.description,
-          inputSchema: tool.inputSchema as JsonValue,
+          inputSchema: tool.inputSchema,
         })),
       };
     },
@@ -293,7 +334,9 @@ export function createBrowserAwareToolExecutor(): HostToolExecutorAdapter {
         params.toolNamespace === "browser" && !params.toolName.startsWith("browser__")
           ? `browser__${params.toolName}`
           : params.toolName;
-      if (toolName === "browser__page_context") {
+      if (toolName === "browser__tool_search") {
+        output = await searchBrowserToolCatalog(asRecord(params.input));
+      } else if (toolName === "browser__page_context") {
         output = inspectPageContext(asRecord(params.input));
       } else if (toolName === "browser__ai_surface_scan") {
         output = await scanCurrentAiSurface();
@@ -343,6 +386,125 @@ export function createBrowserAwareToolExecutor(): HostToolExecutorAdapter {
       return;
     },
   };
+}
+
+async function listBrowserToolCatalog(): Promise<BrowserToolCatalogEntry[]> {
+  const builtinTools = BROWSER_TOOLS.map(
+    (tool): BrowserToolCatalogEntry => ({
+      toolName: tool.name,
+      toolNamespace: "browser",
+      description: tool.description,
+      inputSchema: tool.inputSchema as JsonValue,
+      source: "browser-runtime",
+    }),
+  );
+
+  const extraTools = (
+    await Promise.all(
+      [...browserToolCatalogSources].map(async (source) => {
+        try {
+          return await source();
+        } catch (error) {
+          console.warn("[webui] browser tool catalog source failed", error);
+          return [];
+        }
+      }),
+    )
+  ).flat();
+
+  return dedupeBrowserToolCatalog([...builtinTools, ...extraTools]);
+}
+
+async function searchBrowserToolCatalog(input: Record<string, JsonValue>): Promise<JsonValue> {
+  const query = typeof input.query === "string" ? input.query.trim() : "";
+  if (query.length === 0) {
+    throw new Error("browser__tool_search requires a non-empty query");
+  }
+
+  const limit = clampNumber(input.limit, 8, 1, 25);
+  const includeSchema = input.includeSchema === true;
+  const catalog = await listBrowserToolCatalog();
+  const queryTerms = tokenizeSearchText(query);
+  const results = catalog
+    .map((entry) => ({
+      entry,
+      score: scoreBrowserToolCatalogEntry(entry, queryTerms),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      const leftQualified = `${left.entry.toolNamespace}__${left.entry.toolName}`;
+      const rightQualified = `${right.entry.toolNamespace}__${right.entry.toolName}`;
+      return leftQualified.localeCompare(rightQualified);
+    })
+    .slice(0, limit);
+
+  return {
+    query,
+    count: results.length,
+    tools: results.map(({ entry, score }) => ({
+      toolName: entry.toolName,
+      toolNamespace: entry.toolNamespace,
+      qualifiedName:
+        entry.toolNamespace === "browser" && entry.toolName.startsWith("browser__")
+          ? entry.toolName
+          : `${entry.toolNamespace}__${entry.toolName}`,
+      description: entry.description,
+      source: entry.source ?? null,
+      keywords: entry.keywords ?? [],
+      score,
+      inputSchema: includeSchema ? entry.inputSchema : null,
+    })),
+  } satisfies JsonValue;
+}
+
+function dedupeBrowserToolCatalog(tools: BrowserToolCatalogEntry[]): BrowserToolCatalogEntry[] {
+  const deduped = new Map<string, BrowserToolCatalogEntry>();
+  for (const tool of tools) {
+    deduped.set(`${tool.toolNamespace}::${tool.toolName}`, tool);
+  }
+  return [...deduped.values()];
+}
+
+function scoreBrowserToolCatalogEntry(entry: BrowserToolCatalogEntry, queryTerms: string[]): number {
+  const qualifiedName =
+    entry.toolNamespace === "browser" && entry.toolName.startsWith("browser__")
+      ? entry.toolName
+      : `${entry.toolNamespace}__${entry.toolName}`;
+  const haystack = tokenizeSearchText(
+    [
+      entry.toolName,
+      qualifiedName,
+      entry.toolNamespace,
+      entry.description,
+      ...(entry.keywords ?? []),
+      entry.source ?? "",
+    ].join(" "),
+  );
+  const haystackSet = new Set(haystack);
+  let score = 0;
+  for (const term of queryTerms) {
+    if (qualifiedName.includes(term)) {
+      score += 8;
+    } else if (entry.toolName.includes(term)) {
+      score += 6;
+    } else if (entry.toolNamespace.includes(term)) {
+      score += 4;
+    } else if (haystackSet.has(term)) {
+      score += 3;
+    }
+  }
+  return score;
+}
+
+function tokenizeSearchText(input: string): string[] {
+  return input
+    .toLowerCase()
+    .split(/[^a-z0-9_]+/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
 }
 
 export async function scanCurrentAiSurface(): Promise<BrowserAiSurfaceSnapshot> {

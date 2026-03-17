@@ -31,6 +31,8 @@ export const webUiModelTransportAdapter: ModelTransportAdapter<
       apiKey: params.apiKey,
       requestBody: params.requestBody,
       extraHeaders: params.extraHeaders,
+      transportOptions: params.transportOptions,
+      emitNotification: params.emitNotification,
     });
   },
   async runXrouterTurn(params) {
@@ -39,6 +41,8 @@ export const webUiModelTransportAdapter: ModelTransportAdapter<
       codexConfig: params.config,
       requestBody: params.requestBody,
       extraHeaders: params.extraHeaders,
+      transportOptions: params.transportOptions,
+      emitNotification: params.emitNotification,
     });
   },
 });

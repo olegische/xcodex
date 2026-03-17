@@ -1,85 +1,76 @@
-import type { AppServerClientStartArgs } from "@browser-codex/wasm-runtime-core/app-server-client";
-import type { BrowserRuntimeHost, RuntimeModule, WasmProtocolRuntime } from "@browser-codex/wasm-runtime-core/types";
-import type { RequestId } from "../../../../app-server-protocol/schema/typescript/RequestId";
+import type { BrowserCodexRuntimeDeps } from "@browser-codex/wasm-browser-codex-runtime";
+import type { BrowserRuntimeBootstrapPayload } from "@browser-codex/wasm-browser-host/bootstrap";
+import type { BrowserHostFileSystem, BrowserRuntimeHostDeps, NormalizedModelTurnRequest } from "@browser-codex/wasm-browser-host/runtime-host";
+import type { JsonValue, RuntimeModule } from "@browser-codex/wasm-runtime-core/types";
 
-export type JsonRecord = Record<string, unknown>;
-
-export type CodexUiNotification = {
-  method: string;
-  params: unknown;
-  atIso: string;
+export type IndexedDbStoreNames = {
+  authState: string;
+  config: string;
+  sessions: string;
+  userConfig: string;
 };
 
-export type CodexUiPendingServerRequest = {
-  id: number;
-  method: string;
-  params: unknown;
-  receivedAtIso: string;
+export type IndexedDbPersistenceOptions = {
+  dbName?: string;
+  dbVersion?: number;
+  storeNames?: Partial<IndexedDbStoreNames>;
+  authStateKey?: string;
+  configKey?: string;
+  userConfigKey?: string;
 };
 
-export type CodexUiServerRequestReply = {
-  id: number;
-  result?: unknown;
-  error?: {
-    code?: number;
-    message: string;
-    data?: unknown;
-  };
+export type StoredUserConfig = {
+  filePath: string;
+  version: string;
+  content: string;
 };
 
-export type CodexUiRpcBody = {
-  method: string;
-  params?: unknown;
+export type CodexUiPersistence<TAuthState, TConfig, TSnapshot> = {
+  loadAuthState(): Promise<TAuthState | null>;
+  saveAuthState(authState: TAuthState): Promise<void>;
+  clearAuthState(): Promise<void>;
+  loadConfig(): Promise<TConfig>;
+  saveConfig(config: TConfig): Promise<void>;
+  clearConfig(): Promise<void>;
+  loadSession(threadId: string): Promise<TSnapshot | null>;
+  saveSession(snapshot: TSnapshot, threadId?: string): Promise<void>;
+  deleteSession(threadId: string): Promise<void>;
+  loadUserConfig(): Promise<StoredUserConfig | null>;
+  saveUserConfig(input: {
+    filePath?: string | null;
+    expectedVersion?: string | null;
+    content: string;
+  }): Promise<StoredUserConfig>;
 };
 
-export type CodexUiRuntimeFactoryArgs = {
+export type CodexUiRuntimeHostOptions<TConfig> = BrowserHostFileSystem & {
+  bootstrap: BrowserRuntimeBootstrapPayload;
+  persistence: Pick<CodexUiPersistence<unknown, TConfig, unknown>, "loadUserConfig" | "saveUserConfig">;
+  runNormalizedModelTurn(request: NormalizedModelTurnRequest): Promise<JsonValue>;
+  listDiscoverableApps?: BrowserRuntimeHostDeps["listDiscoverableApps"];
+};
+
+export type CreateCodexUiBrowserRuntimeParams<
+  TAuthState,
+  TConfig,
+  TAccount,
+  TModelPreset,
+  TDispatch,
+  TEvent,
+  TSnapshot,
+  TRefreshAuthResult,
+> = {
   runtimeModule: RuntimeModule;
-  host: BrowserRuntimeHost;
-  wasmInput?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
-};
-
-export type CodexUiAdapterOptions = CodexUiRuntimeFactoryArgs & {
-  client?: AppServerClientStartArgs;
-};
-
-export type CodexUiHttpCompatibility = {
-  handle(request: Request): Promise<Response | null>;
-  handleRpc(request: Request): Promise<Response>;
-  handleMethodCatalog(): Promise<Response>;
-  handleNotificationCatalog(): Promise<Response>;
-  handlePendingServerRequests(): Promise<Response>;
-  handleRespondServerRequest(request: Request): Promise<Response>;
-  handleEvents(): Promise<Response>;
-};
-
-export type CodexUiAdapter = {
-  rpc<T = unknown>(body: CodexUiRpcBody): Promise<T>;
-  subscribeNotifications(cb: (notification: CodexUiNotification) => void): () => void;
-  listPendingServerRequests(): Promise<CodexUiPendingServerRequest[]>;
-  respondServerRequest(body: CodexUiServerRequestReply): Promise<void>;
-  methodCatalog(): Promise<string[]>;
-  notificationCatalog(): Promise<string[]>;
-  http(): CodexUiHttpCompatibility;
-  dispose(): Promise<void>;
-};
-
-export type CodexUiBrowserCompatOptions = {
-  codexApiBasePath?: string;
-};
-
-export type CodexUiBrowserCompatHandle = {
-  dispose(): void;
-};
-
-export type CreatedRuntime = {
-  runtime: WasmProtocolRuntime;
-  contractVersion: string;
-};
-
-export type PendingRequestEntry = {
-  compatId: number;
-  runtimeId: RequestId;
-  method: string;
-  params: unknown;
-  receivedAtIso: string;
+  host: unknown;
+  deps: BrowserCodexRuntimeDeps<
+    TAuthState,
+    TConfig,
+    TAccount,
+    TModelPreset,
+    TDispatch,
+    TEvent,
+    TSnapshot,
+    TRefreshAuthResult
+  >;
+  experimentalApi?: boolean;
 };

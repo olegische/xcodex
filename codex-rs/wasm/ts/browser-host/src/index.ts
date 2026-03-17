@@ -2,10 +2,8 @@ export { WORKSPACE_ROOT, WORKSPACE_STORAGE_KEY } from "./constants";
 export {
   addRemoteMcpServer,
   connectRemoteMcpServer,
-  createRemoteMcpOauthHostHandlers,
   getRemoteMcpAuthStatusLabel,
   getRemoteMcpToolName,
-  handleRemoteMcpPopupCallback,
   installRemoteMcpController,
   isRemoteMcpAuthenticated,
   isRemoteMcpUnsupported,
@@ -13,9 +11,17 @@ export {
   logoutRemoteMcpServer,
   refreshRemoteMcpServer,
   removeRemoteMcpServer,
+} from "./mcp";
+export {
+  beginRemoteMcpOauthSession,
+  clearRemoteMcpOauthSession,
+  configureRemoteMcpOauthSessionPersistence,
+  createRemoteMcpOauthHostHandlers,
+  handleRemoteMcpPopupCallback,
+  readRemoteMcpOauthSession,
   resolveRemoteMcpOauthRedirectUri,
   waitForRemoteMcpOauthCallback,
-} from "./mcp";
+} from "./mcp-oauth";
 export type {
   BrowserRemoteMcpController,
   BrowserRemoteMcpConnectionState,

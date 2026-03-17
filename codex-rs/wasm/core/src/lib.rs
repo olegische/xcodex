@@ -82,6 +82,8 @@ pub use tools::browser_host::ApplyPatchRequest;
 pub use tools::browser_host::ApplyPatchResponse;
 pub use tools::browser_host::BrowserModelDeltaPayload;
 pub use tools::browser_host::BrowserModelEvent;
+pub use tools::browser_host::BrowserModelReasoningDeltaPayload;
+pub use tools::browser_host::BrowserModelReasoningSectionPayload;
 pub use tools::browser_host::BrowserModelRequest;
 pub use tools::browser_host::BrowserTransportOptions;
 pub use tools::browser_host::ConfigStorageHost;

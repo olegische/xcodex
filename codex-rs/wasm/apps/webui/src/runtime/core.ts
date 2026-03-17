@@ -1,5 +1,5 @@
 import { DEFAULT_CODEX_CONFIG, DEFAULT_DEMO_INSTRUCTIONS, THREAD_ID, TURN_PREFIX, XROUTER_PROVIDER_OPTIONS } from "./constants";
-import { createAppServerBrowserRuntime } from "./app-server";
+import { createBrowserCodexRuntime } from "./browser-codex-runtime";
 import { loadRuntimeModule } from "./assets";
 import { createBrowserRuntimeHost } from "./host";
 import { webUiModelTransportAdapter } from "./transport-adapter";
@@ -47,7 +47,7 @@ export function createInitialState(): DemoState {
 
 export async function loadRuntime(): Promise<BrowserRuntime> {
   const wasm = await loadRuntimeModule();
-  return createAppServerBrowserRuntime(wasm, createBrowserRuntimeHost());
+  return createBrowserCodexRuntime(wasm, createBrowserRuntimeHost());
 }
 
 export async function saveProviderConfig(

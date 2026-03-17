@@ -202,6 +202,7 @@ use review::spawn_review_thread;
 #[cfg(test)]
 pub(crate) use run_turn::collect_explicit_app_ids_from_skill_items;
 pub(crate) use run_turn::filter_codex_apps_mcp_tools;
+#[cfg(test)]
 pub(crate) use run_turn::filter_connectors_for_input;
 pub(crate) use run_turn::run_turn;
 use sampling::SamplingRequestResult;
@@ -246,7 +247,6 @@ use crate::mcp::maybe_prompt_and_install_mcp_dependencies;
 use crate::mcp::with_codex_apps_mcp;
 use crate::mcp_connection_manager::McpConnectionManager;
 use crate::mcp_connection_manager::codex_apps_tools_cache_key;
-use crate::mcp_connection_manager::filter_non_codex_apps_mcp_tools_only;
 use crate::memories;
 use crate::mentions::build_connector_slug_counts;
 use crate::mentions::build_skill_name_counts;
@@ -613,6 +613,7 @@ impl Session {
         model_transport_host: Arc<dyn crate::ModelTransportHost>,
         config_storage_host: Arc<dyn crate::ConfigStorageHost>,
         thread_storage_host: Arc<dyn crate::ThreadStorageHost>,
+        mcp_oauth_host: Arc<dyn crate::McpOauthHost>,
     ) -> anyhow::Result<Arc<Self>> {
         debug!(
             "Configuring session: model={}; provider={:?}",
@@ -1022,6 +1023,7 @@ impl Session {
             discoverable_apps_provider,
             config_storage_host,
             thread_storage_host,
+            mcp_oauth_host: Arc::clone(&mcp_oauth_host),
         };
         let js_repl = Arc::new(JsReplHandle::with_node_path(
             config.js_repl_node_path.clone(),
@@ -1108,6 +1110,7 @@ impl Session {
             config.codex_home.clone(),
             codex_apps_tools_cache_key(auth),
             tool_plugin_provenance,
+            Arc::clone(&mcp_oauth_host),
         )
         .await;
         {

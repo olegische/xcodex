@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "latest",
-    "@browser-codex/wasm-runtime-core": "file:../runtime-core"
+    "@browser-codex/wasm-runtime-core": "file:../runtime-core",
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "oauth4webapi": "^3.8.3"
   },
   "exports": {
     ".": "./src/index.ts",

@@ -32,6 +32,7 @@ pub async fn spawn_browser_codex(args: BrowserCodexSpawnArgs) -> CodexResult<Cod
         model_transport_host,
         config_storage_host,
         thread_storage_host,
+        mcp_oauth_host,
     } = args;
 
     let auth_manager = AuthManager::from_auth(config.codex_home.clone(), auth);
@@ -71,6 +72,7 @@ pub async fn spawn_browser_codex(args: BrowserCodexSpawnArgs) -> CodexResult<Cod
         model_transport_host,
         config_storage_host,
         thread_storage_host,
+        mcp_oauth_host,
     })
     .await
 }

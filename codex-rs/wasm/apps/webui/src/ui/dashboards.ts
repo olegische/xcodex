@@ -19,11 +19,8 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
         inspectorMode: "column",
         defaultInspectorTab: "workspace",
         areas: {
-          mainTop: [
-            { id: "mission_state", title: "Chat" },
-            { id: "page_state", title: "Surface" },
-          ],
-          mainBody: [{ id: "remote_mcp", title: "Capability Bridges" }],
+          mainTop: [{ id: "page_state", title: "Surface" }],
+          mainBody: [{ id: "runtime_events", title: "Chat Flow" }],
           inspector: [
             { id: "citations", title: "Citations" },
             { id: "workspace_files", title: "Artifacts" },
@@ -34,7 +31,7 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
       widgets: {
         ...structuredClone(DEFAULT_UI_WIDGETS),
         metrics: {
-          items: ["view", "model", "tools", "workspace", "events"],
+          items: ["view", "model", "workspace", "events"],
         },
         shell: {
           sidebarPrimaryAction: "new_thread",
@@ -58,10 +55,9 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
             { id: "page_state", title: "Surface" },
             { id: "web_signals", title: "Signals" },
           ],
-          mainBody: [{ id: "mission_state", title: "Chat Flow" }],
+          mainBody: [{ id: "runtime_events", title: "Chat Flow" }],
           inspector: [
             { id: "citations", title: "Citations" },
-            { id: "remote_mcp", title: "Capability Bridges" },
             { id: "workspace_files", title: "Artifacts" },
           ],
         },
@@ -97,7 +93,7 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
         ...structuredClone(DEFAULT_UI_WIDGETS),
         shell: {
           sidebarPrimaryAction: "new_thread",
-          sidebarFooterActions: ["status", "plan", "tools", "workspace", "settings"],
+          sidebarFooterActions: ["status", "plan", "workspace", "settings"],
           headerLeadingActions: ["toggle_sidebar", "new_thread"],
           headerTrailingActions: ["metrics", "approvals", "settings"],
         },
@@ -117,8 +113,8 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
             { id: "page_state", title: "Current Surface" },
             { id: "web_signals", title: "Signal Scan" },
           ],
-          mainBody: [{ id: "mission_state", title: "Chat Pressure" }],
-          inspector: [{ id: "remote_mcp", title: "Capability Bridges" }],
+          mainBody: [{ id: "runtime_events", title: "Chat Pressure" }],
+          inspector: [{ id: "citations", title: "Citations" }],
         },
       },
       widgets: {
@@ -141,7 +137,7 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
         inspectorMode: "column",
         defaultInspectorTab: "status",
         areas: {
-          mainTop: [{ id: "mission_state", title: "Chat" }],
+          mainTop: [{ id: "runtime_events", title: "Chat" }],
           mainBody: [{ id: "session_status", title: "Runtime Status" }],
           mainBottom: [{ id: "plan_status", title: "Plan" }],
           inspector: [
@@ -158,7 +154,7 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
         },
         shell: {
           sidebarPrimaryAction: "new_thread",
-          sidebarFooterActions: ["status", "plan", "tools", "workspace", "settings"],
+          sidebarFooterActions: ["status", "plan", "workspace", "settings"],
           headerLeadingActions: ["toggle_sidebar", "new_thread"],
           headerTrailingActions: ["approvals", "metrics", "settings"],
         },
@@ -175,7 +171,6 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
         defaultInspectorTab: "workspace",
         areas: {
           mainTop: [
-            { id: "mission_state", title: "Chat" },
             { id: "workspace_files", title: "Artifacts" },
           ],
           mainBody: [
@@ -197,35 +192,35 @@ export const DEFAULT_UI_DASHBOARDS: UiDashboardsDocument = {
         },
         shell: {
           sidebarPrimaryAction: "new_thread",
-          sidebarFooterActions: ["workspace", "plan", "tools", "settings"],
+          sidebarFooterActions: ["workspace", "plan", "settings"],
           headerLeadingActions: ["toggle_sidebar", "new_thread"],
-          headerTrailingActions: ["workspace", "tools", "settings"],
+          headerTrailingActions: ["workspace", "settings"],
         },
       },
     },
     {
       id: "access",
       name: "Tools",
-      description: "Remote MCP bridges and authentication flow.",
+      description: "Browser-local capability and workspace access.",
       layout: {
         ...structuredClone(DEFAULT_UI_LAYOUT),
         chatPlacement: "left",
         inspectorMode: "column",
-        defaultInspectorTab: "tools",
+        defaultInspectorTab: "status",
         areas: {
-          mainTop: [{ id: "remote_mcp", title: "Capability Bridges" }],
-          mainBody: [],
-          mainBottom: [],
-          inspector: [],
+          mainTop: [{ id: "tool_activity", title: "Tool Activity" }],
+          mainBody: [{ id: "runtime_events", title: "Event Stream" }],
+          mainBottom: [{ id: "workspace_files", title: "Artifacts" }],
+          inspector: [{ id: "session_status", title: "Runtime Status" }],
         },
       },
       widgets: {
         ...structuredClone(DEFAULT_UI_WIDGETS),
         shell: {
           sidebarPrimaryAction: "new_thread",
-          sidebarFooterActions: ["tools", "workspace", "settings"],
+          sidebarFooterActions: ["workspace", "settings"],
           headerLeadingActions: ["toggle_sidebar", "new_thread"],
-          headerTrailingActions: ["tools", "workspace", "settings"],
+          headerTrailingActions: ["workspace", "settings"],
         },
       },
     },

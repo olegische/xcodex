@@ -4,6 +4,7 @@ import {
   DEFAULT_DEMO_INSTRUCTIONS,
   INSTRUCTIONS_STORAGE_KEY,
   PROVIDER_CONFIG_KEY,
+  USER_CONFIG_STORAGE_KEY,
   WORKSPACE_ROOT,
 } from "./constants";
 import {
@@ -40,9 +41,83 @@ export async function openWebUiDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("providerConfig")) {
         db.createObjectStore("providerConfig");
       }
+      if (!db.objectStoreNames.contains("userConfig")) {
+        db.createObjectStore("userConfig");
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("failed to open webui db"));
+  });
+}
+
+type StoredUserConfig = {
+  filePath: string;
+  version: string;
+  content: string;
+};
+
+export async function loadStoredUserConfig(): Promise<StoredUserConfig | null> {
+  const db = await openWebUiDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("userConfig", "readonly");
+    const request = tx.objectStore("userConfig").get(USER_CONFIG_STORAGE_KEY);
+    request.onsuccess = () => resolve((request.result as StoredUserConfig | undefined) ?? null);
+    request.onerror = () => reject(request.error ?? new Error("failed to load user config"));
+  });
+}
+
+export async function saveStoredUserConfig(input: {
+  filePath?: string | null;
+  expectedVersion?: string | null;
+  content: string;
+}): Promise<StoredUserConfig> {
+  const db = await openWebUiDb();
+  return await new Promise((resolve, reject) => {
+    const tx = db.transaction("userConfig", "readwrite");
+    const store = tx.objectStore("userConfig");
+    const readRequest = store.get(USER_CONFIG_STORAGE_KEY);
+    readRequest.onerror = () =>
+      reject(readRequest.error ?? new Error("failed to read current user config"));
+    readRequest.onsuccess = () => {
+      const current = (readRequest.result as StoredUserConfig | undefined) ?? null;
+      if (
+        input.expectedVersion !== null &&
+        input.expectedVersion !== undefined &&
+        current !== null &&
+        current.version !== input.expectedVersion
+      ) {
+        reject(
+          new Error(
+            `user config version mismatch: expected ${input.expectedVersion}, got ${current.version}`,
+          ),
+        );
+        return;
+      }
+
+      if (
+        (input.expectedVersion !== null && input.expectedVersion !== undefined) &&
+        current === null &&
+        input.expectedVersion !== "0"
+      ) {
+        reject(
+          new Error(
+            `user config version mismatch: expected ${input.expectedVersion}, got <missing>`,
+          ),
+        );
+        return;
+      }
+
+      const nextVersion = current === null ? 1 : Number.parseInt(current.version, 10) + 1;
+      const next: StoredUserConfig = {
+        filePath: input.filePath?.trim() || "/codex-home/config.toml",
+        version: String(Number.isFinite(nextVersion) ? nextVersion : Date.now()),
+        content: input.content,
+      };
+      const writeRequest = store.put(next, USER_CONFIG_STORAGE_KEY);
+      writeRequest.onerror = () =>
+        reject(writeRequest.error ?? new Error("failed to save user config"));
+      writeRequest.onsuccess = () => resolve(next);
+    };
   });
 }
 

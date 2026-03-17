@@ -42,7 +42,8 @@ pub(crate) async fn execute_user_shell_command(
 ) {
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl SessionTask for UserShellCommandTask {
     fn kind(&self) -> TaskKind {
         TaskKind::Regular

@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { inspectorStore } from "../stores/inspector";
   import type { TranscriptEntry } from "../runtime";
 
   export let transcript: TranscriptEntry[] = [];
   export let liveStreamText = "";
   export let status = "";
   export let running = false;
+  export let onSettings: (() => void) | undefined = undefined;
   let copiedText: string | null = null;
   let copiedResetTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -13,8 +15,25 @@
   }
 
   function currentSubheading(currentStatus: string): string {
-    void currentStatus;
+    if (needsProviderSetup(currentStatus)) {
+      return "Router is not configured yet. Open Settings, paste your provider API key, save the config, then refresh models.";
+    }
+    if (currentStatus.startsWith("Router bootstrap pending:")) {
+      return `Router setup is incomplete. ${currentStatus.replace("Router bootstrap pending:", "").trim()}`;
+    }
     return "Start in chat. Open the inspector only when you need page state, tools, artifacts, or event logs.";
+  }
+
+  function needsProviderSetup(currentStatus: string): boolean {
+    return currentStatus === "Waiting for router API key.";
+  }
+
+  function openSettings(): void {
+    if (onSettings !== undefined) {
+      onSettings();
+      return;
+    }
+    inspectorStore.openSettings();
   }
 
   function paragraphs(text: string): string[] {
@@ -57,6 +76,9 @@
     <div class="empty-state">
       <h3>{currentGreeting()}</h3>
       <p>{currentSubheading(status)}</p>
+      {#if needsProviderSetup(status) || status.startsWith("Router bootstrap pending:")}
+        <button class="empty-state-cta" on:click={openSettings}>Open Settings</button>
+      {/if}
     </div>
   {/if}
 

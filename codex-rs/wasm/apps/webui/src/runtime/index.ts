@@ -12,6 +12,7 @@ export {
   saveDraftProviderConfig,
   transportLabel,
 } from "./core";
+export { subscribeRuntimeEvent } from "./events";
 export { subscribeRuntimeActivity } from "./activity";
 export type {
   Account,

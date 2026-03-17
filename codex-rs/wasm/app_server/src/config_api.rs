@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
 use codex_app_server_protocol::Config;
@@ -12,7 +12,6 @@ use codex_app_server_protocol::ConfigReadResponse;
 use codex_app_server_protocol::ConfigRequirementsReadResponse;
 use codex_app_server_protocol::ConfigValueWriteParams;
 use codex_app_server_protocol::ConfigWriteErrorCode;
-use codex_app_server_protocol::ConfigWriteResponse;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::MergeStrategy;
 use codex_app_server_protocol::SandboxMode;
@@ -22,7 +21,7 @@ use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::SandboxPolicy;
-use codex_utils_absolute_path::AbsolutePathBuf;
+use serde_json::Value as JsonValue;
 use serde_json::json;
 
 use crate::RuntimeBootstrap;
@@ -68,7 +67,7 @@ impl<'a> ConfigApi<'a> {
     pub async fn write_value(
         &mut self,
         params: ConfigValueWriteParams,
-    ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
+    ) -> Result<JsonValue, JSONRPCErrorError> {
         self.batch_write(ConfigBatchWriteParams {
             edits: vec![ConfigEdit {
                 key_path: params.key_path,
@@ -85,10 +84,33 @@ impl<'a> ConfigApi<'a> {
     pub async fn batch_write(
         &mut self,
         params: ConfigBatchWriteParams,
-    ) -> Result<ConfigWriteResponse, JSONRPCErrorError> {
-        let current = load_current_user_config(self.runtime_bootstrap).await?;
+    ) -> Result<JsonValue, JSONRPCErrorError> {
+        debug_config_write("batch_write:start", || {
+            format!(
+                "edits={}, file_path={:?}, expected_version={:?}, reload_user_config={}",
+                params.edits.len(),
+                params.file_path,
+                params.expected_version,
+                params.reload_user_config
+            )
+        });
+        let current = load_current_user_config(self.runtime_bootstrap)
+            .await
+            .map_err(|error| contextual_internal_error("load_current_user_config", error))?;
+        debug_config_write("batch_write:loaded-current", || {
+            format!(
+                "file_path={}, version={:?}",
+                current.file_path, current.version
+            )
+        });
         let mut user_config = current.config;
         for edit in &params.edits {
+            debug_config_write("batch_write:apply-edit", || {
+                format!(
+                    "key_path={}, merge_strategy={:?}",
+                    edit.key_path, edit.merge_strategy
+                )
+            });
             let segments = parse_key_path(&edit.key_path).map_err(config_validation_error)?;
             let parsed_value = parse_value(edit.value.clone()).map_err(config_validation_error)?;
             apply_merge(
@@ -101,6 +123,9 @@ impl<'a> ConfigApi<'a> {
         }
 
         let content = toml::to_string(&user_config).map_err(internal_error)?;
+        debug_config_write("batch_write:serialized", || {
+            format!("content_bytes={}", content.len())
+        });
         let saved = self
             .runtime_bootstrap
             .config_storage_host
@@ -110,15 +135,26 @@ impl<'a> ConfigApi<'a> {
                 content,
             })
             .await
-            .map_err(map_host_write_error)?;
+            .map_err(|error| contextual_host_write_error("save_user_config", error))?;
+        debug_config_write("batch_write:saved", || {
+            format!("file_path={}, version={}", saved.file_path, saved.version)
+        });
 
-        self.runtime_bootstrap.config.config_layer_stack = self
-            .runtime_bootstrap
-            .config
-            .config_layer_stack
-            .clone()
-            .with_user_config(&current.file_path, user_config.clone());
-        apply_effective_user_config(&mut self.runtime_bootstrap.config, &user_config);
+        self.runtime_bootstrap.config.config_layer_stack =
+            run_config_write_step("with_user_config", || {
+                self.runtime_bootstrap
+                    .config
+                    .config_layer_stack
+                    .clone()
+                    .with_user_config(&current.file_path, user_config.clone())
+            })?;
+        debug_config_write("batch_write:updated-layer-stack", || {
+            format!("file_path={}", current.file_path)
+        });
+        run_config_write_step("apply_effective_user_config", || {
+            apply_effective_user_config(&mut self.runtime_bootstrap.config, &user_config);
+        })?;
+        debug_config_write("batch_write:applied-effective-config", String::new);
 
         if params.reload_user_config {
             for thread in &self.loaded_threads {
@@ -126,12 +162,12 @@ impl<'a> ConfigApi<'a> {
             }
         }
 
-        Ok(ConfigWriteResponse {
-            status: WriteStatus::Ok,
-            version: saved.version,
-            file_path: absolute_file_path(&current.file_path)?,
-            overridden_metadata: None,
-        })
+        Ok(json!({
+            "status": WriteStatus::Ok,
+            "version": saved.version,
+            "filePath": current.file_path,
+            "overriddenMetadata": JsonValue::Null,
+        }))
     }
 }
 
@@ -370,6 +406,19 @@ fn apply_effective_user_config(
     {
         let _ = config.permissions.sandbox_policy.set(sandbox_mode);
     }
+    if let Some(mcp_servers) = table
+        .get("mcp_servers")
+        .cloned()
+        .and_then(parse_mcp_servers)
+    {
+        config.mcp_servers = codex_wasm_core::config::Constrained::allow_any(mcp_servers);
+    }
+}
+
+fn parse_mcp_servers(
+    value: toml::Value,
+) -> Option<std::collections::HashMap<String, codex_wasm_core::config::types::McpServerConfig>> {
+    value.try_into().ok()
 }
 
 fn string_value(value: Option<&toml::Value>) -> Option<String> {
@@ -565,16 +614,41 @@ fn map_merge_error(error: MergeError) -> JSONRPCErrorError {
     }
 }
 
-fn map_host_write_error(error: codex_wasm_core::HostError) -> JSONRPCErrorError {
+fn contextual_host_write_error(step: &str, error: codex_wasm_core::HostError) -> JSONRPCErrorError {
+    let message = format!("config/value/write failed at {step}: {}", error.message);
     match error.code {
         codex_wasm_core::HostErrorCode::Conflict => {
-            config_write_error(ConfigWriteErrorCode::ConfigVersionConflict, error.message)
+            config_write_error(ConfigWriteErrorCode::ConfigVersionConflict, message)
         }
         codex_wasm_core::HostErrorCode::PermissionDenied => {
-            config_write_error(ConfigWriteErrorCode::ConfigLayerReadonly, error.message)
+            config_write_error(ConfigWriteErrorCode::ConfigLayerReadonly, message)
         }
-        _ => internal_error(error.message),
+        _ => internal_error(message),
     }
+}
+
+fn contextual_internal_error(step: &str, error: JSONRPCErrorError) -> JSONRPCErrorError {
+    JSONRPCErrorError {
+        code: error.code,
+        data: error.data,
+        message: format!("config/value/write failed at {step}: {}", error.message),
+    }
+}
+
+fn run_config_write_step<T>(
+    step: &str,
+    action: impl FnOnce() -> T,
+) -> Result<T, JSONRPCErrorError> {
+    std::panic::catch_unwind(AssertUnwindSafe(action)).map_err(|payload| {
+        let message = if let Some(text) = payload.downcast_ref::<&str>() {
+            (*text).to_string()
+        } else if let Some(text) = payload.downcast_ref::<String>() {
+            text.clone()
+        } else {
+            "unknown panic".to_string()
+        };
+        internal_error(format!("config/value/write failed at {step}: {message}"))
+    })
 }
 
 fn config_validation_error(message: impl Into<String>) -> JSONRPCErrorError {
@@ -589,14 +663,17 @@ fn config_write_error(code: ConfigWriteErrorCode, message: impl Into<String>) ->
     }
 }
 
-fn absolute_file_path(file_path: &str) -> Result<AbsolutePathBuf, JSONRPCErrorError> {
-    let path = PathBuf::from(file_path);
-    let absolute = if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir().map_err(internal_error)?.join(path)
-    };
-    AbsolutePathBuf::from_absolute_path(absolute).map_err(internal_error)
+fn debug_config_write(message: &str, details: impl FnOnce() -> String) {
+    let rendered = format!("[wasm-config-api] {message} {}", details());
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&rendered));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        println!("{rendered}");
+    }
 }
 
 fn internal_error(message: impl std::fmt::Display) -> JSONRPCErrorError {

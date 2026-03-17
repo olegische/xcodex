@@ -47,7 +47,6 @@
   export let onSelectPlan: () => void;
   export let onSelectMetrics: () => void;
   export let onToggleApprovals: () => void;
-  export let onSelectTools: () => void;
   export let onSelectWorkspace: () => void;
   export let onOpenSettings: () => void;
   export let onOpenProfiles: () => void;
@@ -61,7 +60,6 @@
     plan: () => onSelectPlan(),
     metrics: () => onSelectMetrics(),
     approvals: () => onToggleApprovals(),
-    tools: () => onSelectTools(),
     workspace: () => onSelectWorkspace(),
     profiles: () => onOpenProfiles(),
     settings: () => onOpenSettings(),
@@ -78,15 +76,13 @@
   function inspectorWidgetVisible(tab: InspectorTab, widgetId: string) {
     switch (tab) {
       case "mission":
-        return widgetId === "mission_state" || widgetId === "plan_status";
+        return widgetId === "plan_status";
       case "citations":
         return widgetId === "citations";
       case "page":
         return widgetId === "page_state";
       case "signals":
         return widgetId === "web_signals";
-      case "tools":
-        return widgetId === "remote_mcp" || widgetId === "tool_activity";
       case "workspace":
         return widgetId === "workspace_files";
       case "status":
@@ -127,12 +123,6 @@
           eyebrow: "Signals",
           title: "AI-readable quality",
           copy: "Metadata quality, llms.txt, schema.org, and trust gaps.",
-        };
-      case "tools":
-        return {
-          eyebrow: "Tools",
-          title: "Capabilities",
-          copy: "Remote MCP bridges, tool calls, and access state.",
         };
       case "workspace":
         return {

@@ -356,6 +356,7 @@ pub struct BrowserModelRequest {
 #[serde(rename_all = "camelCase")]
 pub struct BrowserTransportOptions {
     pub conversation_id: Option<String>,
+    pub turn_id: Option<String>,
     pub session_source: Option<String>,
     pub extra_headers: Option<Value>,
     pub use_websocket: bool,
@@ -381,6 +382,22 @@ pub enum BrowserModelEvent {
         request_id: String,
         item: codex_protocol::models::ResponseItem,
     },
+    OutputItemAdded {
+        request_id: String,
+        item: codex_protocol::models::ResponseItem,
+    },
+    ReasoningSummaryDelta {
+        request_id: String,
+        payload: BrowserModelReasoningDeltaPayload,
+    },
+    ReasoningContentDelta {
+        request_id: String,
+        payload: BrowserModelReasoningDeltaPayload,
+    },
+    ReasoningSummaryPartAdded {
+        request_id: String,
+        payload: BrowserModelReasoningSectionPayload,
+    },
     Completed {
         request_id: String,
     },
@@ -390,6 +407,19 @@ pub enum BrowserModelEvent {
 #[serde(rename_all = "camelCase")]
 pub struct BrowserModelDeltaPayload {
     pub output_text_delta: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserModelReasoningDeltaPayload {
+    pub delta: String,
+    pub index: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserModelReasoningSectionPayload {
+    pub index: i64,
 }
 
 #[async_trait]

@@ -27,6 +27,7 @@ use crate::skills::SkillsManager;
 use crate::state_db::StateDbHandle;
 use crate::tools::browser_host::ConfigStorageHost;
 use crate::tools::browser_host::HostFs;
+use crate::tools::browser_host::McpOauthHost;
 use crate::tools::browser_host::ThreadStorageHost;
 use crate::tools::code_mode::CodeModeService;
 use crate::tools::network_approval::NetworkApprovalService;
@@ -65,4 +66,5 @@ pub(crate) struct SessionServices {
     pub(crate) discoverable_apps_provider: Arc<dyn DiscoverableAppsProvider>,
     pub(crate) config_storage_host: Arc<dyn ConfigStorageHost>,
     pub(crate) thread_storage_host: Arc<dyn ThreadStorageHost>,
+    pub(crate) mcp_oauth_host: Arc<dyn McpOauthHost>,
 }

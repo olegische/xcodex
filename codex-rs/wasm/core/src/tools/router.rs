@@ -10,7 +10,6 @@ use crate::tools::context::SharedTurnDiffTracker;
 use crate::tools::context::ToolCall;
 use crate::tools::context::ToolPayload;
 use crate::tools::dynamic_handler;
-use crate::tools::mcp_handler;
 use crate::tools::tool_search_handler;
 use crate::tools::tool_suggest_handler;
 use codex_protocol::dynamic_tools::DynamicToolSpec;
@@ -28,7 +27,6 @@ use std::sync::Arc;
 pub struct ToolRouter {
     specs: Vec<crate::client_common::tools::ToolSpec>,
     dynamic_tool_names: Vec<String>,
-    mcp_tool_names: Vec<String>,
     app_tools: Option<HashMap<String, ToolInfo>>,
     discoverable_tools: Option<Vec<crate::tools::discoverable::DiscoverableTool>>,
 }
@@ -48,7 +46,7 @@ impl ToolRouter {
         params: ToolRouterParams<'_>,
     ) -> Self {
         let ToolRouterParams {
-            mcp_tools,
+            mcp_tools: _mcp_tools,
             app_tools,
             discoverable_tools,
             dynamic_tools,
@@ -65,17 +63,10 @@ impl ToolRouter {
         {
             specs.push(tool_suggest_handler::tool_suggest_spec(discoverable_tools));
         }
-        if let Some(mcp_tools) = mcp_tools.as_ref() {
-            specs.extend(mcp_handler::mcp_tool_specs(mcp_tools));
-        }
         specs.extend(dynamic_handler::dynamic_tool_specs(dynamic_tools));
         Self {
             specs,
             dynamic_tool_names: dynamic_tools.iter().map(|tool| tool.name.clone()).collect(),
-            mcp_tool_names: mcp_tools
-                .as_ref()
-                .map(|tools| tools.keys().cloned().collect())
-                .unwrap_or_default(),
             app_tools: if config.search_tool { app_tools } else { None },
             discoverable_tools: if config.tool_suggest {
                 discoverable_tools
@@ -221,13 +212,6 @@ impl ToolRouter {
                 )
                 .await?,
             )
-        } else if matches!(payload, ToolPayload::Mcp { .. })
-            && self
-                .mcp_tool_names
-                .iter()
-                .any(|name| name == &call.tool_name)
-        {
-            Box::new(mcp_handler::handle_mcp_tool_call(session.as_ref(), payload.clone()).await?)
         } else if matches!(payload, ToolPayload::Function { .. })
             && call.tool_name == tool_suggest_handler::TOOL_SUGGEST_TOOL_NAME
         {
@@ -328,7 +312,7 @@ impl ToolRouter {
         matches!(
             tool_name,
             "read_file" | "list_dir" | "grep_files" | "tool_search" | "tool_suggest"
-        ) || self.mcp_tool_names.iter().any(|name| name == tool_name)
+        )
     }
 }
 

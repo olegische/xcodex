@@ -11,6 +11,7 @@ export type ResponsesStreamingExecutorParams<TError> = {
   extraHeaders: Record<string, string> | null;
   onRegisterCancel: (cancel: () => void, isCancelled: () => boolean) => void;
   onUnregisterCancel: () => void;
+  onEvent?: (event: ResponsesStreamEvent) => void;
   onDelta?: (delta: string) => void;
   onOutputItemDone?: (item: unknown) => void;
   onCompleted?: () => void;
@@ -44,6 +45,7 @@ export async function runResponsesStreamingExecutor<TError>(
     });
 
     for await (const event of stream as AsyncIterable<ResponsesStreamEvent>) {
+      params.onEvent?.(event);
       const outputTextDelta = extractOutputTextDelta(event);
       if (outputTextDelta !== null) {
         params.onDelta?.(outputTextDelta);

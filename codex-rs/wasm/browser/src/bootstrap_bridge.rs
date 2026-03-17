@@ -95,6 +95,14 @@ async fn build_bootstrap_config(
         .await
         && let Ok(toml_value) = toml::from_str::<toml::Value>(&user_config.content)
     {
+        if let Some(mcp_servers) = toml_value
+            .as_table()
+            .and_then(|table| table.get("mcp_servers"))
+            .cloned()
+            .and_then(parse_mcp_servers)
+        {
+            config.mcp_servers = codex_wasm_core::config::Constrained::allow_any(mcp_servers);
+        }
         config.config_layer_stack = config
             .config_layer_stack
             .with_user_config(PathBuf::from(user_config.file_path), toml_value);
@@ -109,4 +117,10 @@ async fn build_bootstrap_config(
         let _ = config.permissions.sandbox_policy.set(sandbox_policy);
     }
     config
+}
+
+fn parse_mcp_servers(
+    value: toml::Value,
+) -> Option<std::collections::HashMap<String, codex_wasm_core::config::types::McpServerConfig>> {
+    value.try_into().ok()
 }

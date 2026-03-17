@@ -144,18 +144,12 @@ pub(crate) async fn run_sampling_request(
 pub(crate) async fn built_tools(
     sess: &Session,
     turn_context: &TurnContext,
-    input: &[ResponseItem],
+    _input: &[ResponseItem],
     explicitly_enabled_connectors: &HashSet<String>,
-    skills_outcome: Option<&SkillLoadOutcome>,
-    cancellation_token: &CancellationToken,
+    _skills_outcome: Option<&SkillLoadOutcome>,
+    _cancellation_token: &CancellationToken,
 ) -> CodexResult<Arc<ToolRouter>> {
-    let mcp_connection_manager = sess.services.mcp_connection_manager.read().await;
-    let has_mcp_servers = mcp_connection_manager.has_servers();
-    let mut mcp_tools = mcp_connection_manager
-        .list_all_tools()
-        .or_cancel(cancellation_token)
-        .await?;
-    drop(mcp_connection_manager);
+    let mcp_tools = HashMap::new();
     let loaded_plugins = sess
         .services
         .plugins_manager
@@ -210,41 +204,15 @@ pub(crate) async fn built_tools(
         None
     };
 
-    let app_tools = connectors.as_ref().map(|connectors| {
-        filter_codex_apps_mcp_tools(&mcp_tools, connectors, &turn_context.config)
+    let app_tools = connectors.as_ref().and_then(|connectors| {
+        let filtered = filter_codex_apps_mcp_tools(&mcp_tools, connectors, &turn_context.config);
+        (!filtered.is_empty()).then_some(filtered)
     });
-
-    if let Some(connectors) = connectors.as_ref() {
-        let skill_name_counts_lower = skills_outcome.map_or_else(HashMap::new, |outcome| {
-            build_skill_name_counts(&outcome.skills, &outcome.disabled_paths).1
-        });
-
-        let explicitly_enabled = filter_connectors_for_input(
-            connectors,
-            input,
-            &effective_explicitly_enabled_connectors,
-            &skill_name_counts_lower,
-        );
-
-        let mut selected_mcp_tools = filter_non_codex_apps_mcp_tools_only(&mcp_tools);
-        selected_mcp_tools.extend(filter_codex_apps_mcp_tools(
-            &mcp_tools,
-            explicitly_enabled.as_ref(),
-            &turn_context.config,
-        ));
-
-        mcp_tools = selected_mcp_tools;
-    }
 
     Ok(Arc::new(ToolRouter::from_config(
         &turn_context.tools_config,
         ToolRouterParams {
-            mcp_tools: has_mcp_servers.then(|| {
-                mcp_tools
-                    .into_iter()
-                    .map(|(name, tool)| (name, tool.tool))
-                    .collect()
-            }),
+            mcp_tools: None,
             app_tools,
             discoverable_tools,
             dynamic_tools: turn_context.dynamic_tools.as_slice(),

@@ -19,7 +19,7 @@ export function snapshotToTranscript(snapshot: SessionSnapshot): TranscriptEntry
           entry !== null &&
           typeof entry === "object" &&
           !Array.isArray(entry) &&
-          entry.type === "text" &&
+          (entry as { type?: unknown }).type === "text" &&
           typeof (entry as { text?: unknown }).text === "string"
             ? [(entry as { text: string }).text]
             : [],

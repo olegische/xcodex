@@ -90,6 +90,7 @@ export interface BrowserRuntimeHost {
   listThreadSessions?(request: unknown): Promise<unknown>;
   listDiscoverableApps?(request: unknown): Promise<unknown>;
   runModelTurn?(request: unknown): Promise<unknown>;
+  emitNotification?(notification: unknown): Promise<void>;
   resolveMcpOauthRedirectUri?(request: unknown): Promise<unknown>;
   waitForMcpOauthCallback?(request: unknown): Promise<unknown>;
 }

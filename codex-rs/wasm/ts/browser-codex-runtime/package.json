@@ -1,0 +1,13 @@
+{
+  "name": "@browser-codex/wasm-browser-codex-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@browser-codex/wasm-runtime-core": "file:../runtime-core"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts"
+  }
+}

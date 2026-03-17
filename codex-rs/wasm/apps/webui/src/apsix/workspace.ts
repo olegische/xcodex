@@ -3,11 +3,6 @@ import {
   saveStoredWorkspaceSnapshot,
   upsertWorkspaceFile,
 } from "../runtime/storage";
-import {
-  getRemoteMcpToolName,
-  isRemoteMcpAuthenticated,
-  listRemoteMcpServers,
-} from "../runtime/mcp";
 import type {
   ApsixActorSummary,
   ApsixAnchorSummary,
@@ -21,12 +16,9 @@ import type {
 } from "../types";
 import { ensureWorkspaceDocument, upsertWorkspaceDocument } from "../ui/workspace";
 
-type RemoteMcpServerState = Awaited<ReturnType<typeof listRemoteMcpServers>>[number];
-
 const LEGACY_APSIX_ROOT = "/workspace/apsix";
 export const APSIX_ROOT = "/workspace/codex";
 export const APSIX_MANIFEST_PATH = `${APSIX_ROOT}/README.md`;
-export const APSIX_MCP_PATH = `${APSIX_ROOT}/mcp-servers.json`;
 export const APSIX_SIGNALS_PATH = `${APSIX_ROOT}/web-signals.json`;
 export const APSIX_PAGE_RUNTIME_PATH = `${APSIX_ROOT}/page-runtime.json`;
 export const APSIX_ZONE_STATE_PATH = `${APSIX_ROOT}/zone-state.json`;
@@ -35,22 +27,6 @@ export const APSIX_ARTIFACTS_PATH = `${APSIX_ROOT}/artifacts.json`;
 export const APSIX_ANCHORS_PATH = `${APSIX_ROOT}/anchors.json`;
 export const APSIX_EVENT_LOG_PATH = `${APSIX_ROOT}/event-log.json`;
 export const APSIX_SOURCES_PATH = `${APSIX_ROOT}/sources.json`;
-
-export type RemoteMcpServer = {
-  id: string;
-  name: string;
-  url: string;
-  status: string;
-  authMode: string;
-  login: string;
-  latencyMs: number;
-  scopes: string[];
-  tools: string[];
-  description: string;
-  expiresAt?: number | null;
-  lastError?: string | null;
-  clientId?: string | null;
-};
 
 export type WebSignalSite = {
   domain: string;
@@ -80,10 +56,6 @@ export type ApsixWorkspaceSnapshot = {
   anchors: ApsixAnchorSummary[];
   events: ApsixLedgerEventSummary[];
   sources: ApsixCitationSourceSummary[];
-};
-
-const DEFAULT_REMOTE_MCP_DOC: { servers: RemoteMcpServer[] } = {
-  servers: [],
 };
 
 const DEFAULT_WEB_SIGNALS_DOC: { sites: WebSignalSite[] } = {
@@ -164,7 +136,6 @@ export async function ensureApsixWorkspaceSeed(): Promise<void> {
   await removeDeprecatedCodexWorkspaceDocuments();
   await upsertWorkspaceDocument(APSIX_MANIFEST_PATH, buildManifestDocument());
   await Promise.all([
-    ensureWorkspaceDocument(APSIX_MCP_PATH, serializeJson(DEFAULT_REMOTE_MCP_DOC)),
     ensureWorkspaceDocument(APSIX_SIGNALS_PATH, serializeJson(DEFAULT_WEB_SIGNALS_DOC)),
     ensureWorkspaceDocument(APSIX_PAGE_RUNTIME_PATH, serializeJson(DEFAULT_PAGE_RUNTIME_DOC)),
     ensureWorkspaceDocument(APSIX_ARTIFACTS_PATH, serializeJson({ artifacts: [] })),
@@ -175,48 +146,6 @@ export async function ensureApsixWorkspaceSeed(): Promise<void> {
 
 export async function ensureAiAwareWorkspaceSeed(): Promise<void> {
   await ensureApsixWorkspaceSeed();
-}
-
-export function readRemoteMcpServers(workspaceFiles: WorkspaceFileSummary[]): RemoteMcpServer[] {
-  const payload = readJsonDocument<{ servers?: RemoteMcpServer[] }>(
-    workspaceFiles,
-    APSIX_MCP_PATH,
-    DEFAULT_REMOTE_MCP_DOC,
-  );
-  return Array.isArray(payload.servers) ? payload.servers : DEFAULT_REMOTE_MCP_DOC.servers;
-}
-
-export async function saveRemoteMcpServersSnapshot(states: RemoteMcpServerState[]): Promise<void> {
-  const workspace = await loadStoredWorkspaceSnapshot();
-  const current = readJsonDocument<{ servers?: RemoteMcpServer[] }>(
-    asWorkspaceFiles(workspace),
-    APSIX_MCP_PATH,
-    DEFAULT_REMOTE_MCP_DOC,
-  );
-  const previousById = new Map(
-    (Array.isArray(current.servers) ? current.servers : []).map((server) => [server.id, server]),
-  );
-  const nextDocument = {
-    servers: states.map((state) => {
-      const previous = previousById.get(state.serverName);
-      return {
-        id: state.serverName,
-        name: previous?.name ?? prettifyServerName(state.serverName),
-        url: state.serverUrl,
-        status: state.authStatus,
-        authMode: "oauth",
-        login: isRemoteMcpAuthenticated(state) ? "authenticated" : "required",
-        latencyMs: previous?.latencyMs ?? 0,
-        scopes: state.scopes,
-        tools: state.tools.map(getRemoteMcpToolName),
-        description: previous?.description ?? `Remote MCP capability lane for ${prettifyServerName(state.serverName)}.`,
-        expiresAt: state.expiresAt,
-        lastError: state.lastError,
-        clientId: state.clientId,
-      } satisfies RemoteMcpServer;
-    }),
-  };
-  await saveWorkspaceJsonDocument(APSIX_MCP_PATH, nextDocument, workspace);
 }
 
 export function readWebSignalSites(workspaceFiles: WorkspaceFileSummary[]): WebSignalSite[] {
@@ -418,7 +347,6 @@ function buildManifestDocument(): string {
     `- \`${APSIX_ARTIFACTS_PATH}\` for generated and anchored artifacts`,
     `- \`${APSIX_ANCHORS_PATH}\` for anchor decisions`,
     `- \`${APSIX_SOURCES_PATH}\` for citation sources and evidence keys`,
-    `- \`${APSIX_MCP_PATH}\` for remote MCP capability lanes`,
     `- \`${APSIX_SIGNALS_PATH}\` for AI-readable web signals`,
     `- \`${APSIX_PAGE_RUNTIME_PATH}\` for page state and browser events`,
     "- `/workspace/ui/*.json` for the live shell itself",

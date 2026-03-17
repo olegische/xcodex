@@ -209,7 +209,7 @@ export type MissionStep = {
 export type MissionStateSummary = {
   goal: string;
   phase: MissionPhase;
-  lane: "page" | "tools" | "artifacts" | "idle";
+  lane: "page" | "artifacts" | "idle";
   summary: string;
   blockers: string[];
   steps: MissionStep[];

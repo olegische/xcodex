@@ -172,6 +172,7 @@ async fn spawn_resumed_thread(
         model_transport_host: Arc::clone(&runtime_bootstrap.model_transport_host),
         config_storage_host: Arc::clone(&runtime_bootstrap.config_storage_host),
         thread_storage_host: Arc::clone(&runtime_bootstrap.thread_storage_host),
+        mcp_oauth_host: Arc::clone(&runtime_bootstrap.mcp_oauth_host),
     })
     .await
     .map(|spawn| spawn.codex)

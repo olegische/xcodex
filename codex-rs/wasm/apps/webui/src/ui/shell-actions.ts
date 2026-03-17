@@ -43,12 +43,6 @@ const SHELL_ACTION_REGISTRY: Record<ShellActionId, ShellActionSpec> = {
     shortLabel: "OK",
     ariaLabel: "Open approvals",
   },
-  tools: {
-    id: "tools",
-    label: "Relay",
-    shortLabel: "R",
-    ariaLabel: "Open tool activity",
-  },
   workspace: {
     id: "workspace",
     label: "Artifacts",

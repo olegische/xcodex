@@ -69,7 +69,7 @@
 
         <label>
           <span>Provider Name</span>
-          <input bind:value={draft.providerDisplayName} disabled={disabled} />
+          <input bind:value={draft.providerDisplayName} autocomplete="organization" disabled={disabled} />
         </label>
 
         {#if draft.transportMode === "xrouter-browser"}
@@ -86,12 +86,17 @@
 
         <label>
           <span>Base URL</span>
-          <input bind:value={draft.providerBaseUrl} disabled={disabled} />
+          <input bind:value={draft.providerBaseUrl} autocomplete="url" disabled={disabled} />
         </label>
 
         <label>
           <span>API Key</span>
-          <input bind:value={draft.apiKey} type="password" disabled={disabled} />
+          <input
+            bind:value={draft.apiKey}
+            type="password"
+            autocomplete="off"
+            disabled={disabled}
+          />
           <span class="settings-help">Stored locally in this browser profile. Do not use on shared machines or untrusted origins.</span>
         </label>
 
@@ -106,7 +111,7 @@
 
         <label>
           <span>Personality</span>
-          <input bind:value={draft.personality} disabled={disabled} />
+          <input bind:value={draft.personality} autocomplete="off" disabled={disabled} />
         </label>
       </div>
 

@@ -878,6 +878,22 @@ button {
   color: var(--text-muted);
 }
 
+.empty-state-cta {
+  margin-top: 18px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-elevated);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.empty-state-cta:hover {
+  background: var(--hover);
+}
+
 .message-row {
   display: flex;
   justify-content: flex-start;
@@ -1365,75 +1381,6 @@ button {
   padding: 0 18px;
   border: 1px solid var(--border);
   background: var(--surface-input);
-}
-
-.mcp-add-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.mcp-server-list {
-  display: grid;
-  gap: 12px;
-}
-
-.mcp-tools-disclosure {
-  display: grid;
-  gap: 8px;
-}
-
-.mcp-tools-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: fit-content;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-muted);
-  list-style: none;
-  cursor: pointer;
-}
-
-.mcp-tools-toggle::-webkit-details-marker {
-  display: none;
-}
-
-.mcp-tools-toggle:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.mcp-tools-caret {
-  transition: transform 140ms ease;
-}
-
-.mcp-tools-disclosure[open] .mcp-tools-caret {
-  transform: rotate(180deg);
-}
-
-.mcp-tools-list {
-  display: grid;
-  gap: 6px;
-}
-
-.mcp-server-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.mcp-tool-row {
-  color: var(--text-muted);
-  font-size: 0.92rem;
-  line-height: 1.4;
 }
 
 .profiles-card {

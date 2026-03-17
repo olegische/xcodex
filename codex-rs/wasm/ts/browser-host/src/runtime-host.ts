@@ -11,10 +11,13 @@ export type NormalizedModelTurnRequest = {
   requestBody: Record<string, unknown>;
   transportOptions: Record<string, unknown>;
   rawRequest: unknown;
+  emitNotification?: (notification: JsonValue) => Promise<void>;
 };
 
 export type BrowserRuntimeHostDeps = BrowserHostFileSystem & {
   loadBootstrap(): Promise<Awaited<ReturnType<BrowserRuntimeHost["loadBootstrap"]>>>;
+  loadUserConfig?: BrowserRuntimeHost["loadUserConfig"];
+  saveUserConfig?: BrowserRuntimeHost["saveUserConfig"];
   listDiscoverableApps?: BrowserRuntimeHost["listDiscoverableApps"];
   runNormalizedModelTurn?: (request: NormalizedModelTurnRequest) => Promise<JsonValue>;
   resolveMcpOauthRedirectUri?: BrowserRuntimeHost["resolveMcpOauthRedirectUri"];
@@ -25,7 +28,9 @@ export type NormalizedModelTurnRunnerParams<TConfig> = {
   requestId: string;
   config: TConfig;
   requestBody: Record<string, JsonValue>;
+  transportOptions: Record<string, unknown>;
   extraHeaders: Record<string, string> | null;
+  emitNotification?: (notification: JsonValue) => Promise<void>;
 };
 
 export type CreateNormalizedModelTurnRunnerDeps<TConfig, TResult> = {
@@ -46,17 +51,31 @@ export function createBrowserRuntimeHostFromDeps(
     listDir: deps.listDir,
     search: deps.search,
     applyPatch: deps.applyPatch,
+    async loadUserConfig(request: JsonValue) {
+      if (deps.loadUserConfig === undefined) {
+        throw new Error("Browser runtime host does not provide user config loading");
+      }
+      return await deps.loadUserConfig(request);
+    },
+    async saveUserConfig(request: JsonValue) {
+      if (deps.saveUserConfig === undefined) {
+        throw new Error("Browser runtime host does not provide user config persistence");
+      }
+      return await deps.saveUserConfig(request);
+    },
     async listDiscoverableApps(request: JsonValue) {
       if (deps.listDiscoverableApps === undefined) {
         return [];
       }
       return await deps.listDiscoverableApps(request);
     },
-    async runModelTurn(request: JsonValue) {
+    async runModelTurn(this: BrowserRuntimeHost, request: JsonValue) {
       if (deps.runNormalizedModelTurn === undefined) {
         throw new Error("Browser runtime host does not provide model transport execution");
       }
-      return await deps.runNormalizedModelTurn(normalizeModelTurnRequest(request));
+      return await deps.runNormalizedModelTurn(
+        normalizeModelTurnRequest(request, this.emitNotification),
+      );
     },
     async resolveMcpOauthRedirectUri(request: JsonValue) {
       if (deps.resolveMcpOauthRedirectUri === undefined) {
@@ -73,7 +92,10 @@ export function createBrowserRuntimeHostFromDeps(
   };
 }
 
-export function normalizeModelTurnRequest(request: unknown): NormalizedModelTurnRequest {
+export function normalizeModelTurnRequest(
+  request: unknown,
+  emitNotification?: BrowserRuntimeHost["emitNotification"],
+): NormalizedModelTurnRequest {
   const requestRecord = asJsonRecord(normalizeHostValuePreservingStrings(request));
   return {
     requestId:
@@ -83,6 +105,7 @@ export function normalizeModelTurnRequest(request: unknown): NormalizedModelTurn
       normalizeHostValuePreservingStrings(requestRecord.transportOptions),
     ),
     rawRequest: request,
+    emitNotification,
   };
 }
 
@@ -118,7 +141,9 @@ export function createNormalizedModelTurnRunner<TConfig, TResult>(
       requestId: request.requestId,
       config,
       requestBody: request.requestBody as Record<string, JsonValue>,
+      transportOptions: request.transportOptions,
       extraHeaders,
+      emitNotification: request.emitNotification,
     });
   };
 }

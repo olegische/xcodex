@@ -13,7 +13,7 @@ export const DEFAULT_UI_WIDGETS: UiWidgetsDocument = {
     showExplanation: true,
   },
   metrics: {
-    items: ["view", "dashboard", "profile", "theme", "model", "events", "approvals", "tools", "workspace"],
+    items: ["view", "dashboard", "profile", "theme", "model", "events", "approvals", "workspace"],
   },
   transcript: {
     variant: "bubble",
@@ -91,7 +91,6 @@ function buildWidgetsGuide(): string {
     "- `approvals.compact`",
     "",
     "Additional runtime widgets consume workspace documents directly:",
-    "- `remote_mcp` reads `/workspace/codex/mcp-servers.json`",
     "- `web_signals` reads `/workspace/codex/web-signals.json`",
     "- `workspace_files` reads the current browser workspace snapshot",
     "- `citations` reads `/workspace/codex/{artifacts,anchors,sources}.json`",

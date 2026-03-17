@@ -99,12 +99,12 @@
         <form class="profiles-editor" on:submit|preventDefault={() => dispatch("saveprofile", draft)}>
           <label>
             <span>Active Profile Name</span>
-            <input bind:value={draft.name} />
+            <input bind:value={draft.name} autocomplete="nickname" />
           </label>
 
           <label>
             <span>Theme</span>
-            <input bind:value={draft.theme} />
+            <input bind:value={draft.theme} autocomplete="off" />
           </label>
 
           <label>

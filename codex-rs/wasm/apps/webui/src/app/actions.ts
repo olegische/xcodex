@@ -1,7 +1,6 @@
 import { tick } from "svelte";
 import { composerStore } from "../stores/composer";
 import { inspectorStore } from "../stores/inspector";
-import { apsixZoneStore } from "../stores/apsix-zone";
 import { runtimeSessionStore } from "../stores/runtime-session";
 import { runtimeUiStore } from "../stores/runtime-ui";
 import { uiSystemStore } from "../stores/ui-system";
@@ -21,6 +20,9 @@ export async function initializeApp(): Promise<boolean> {
     console.info("[webui] initialize:start");
     await initializeUiShell();
     const boot = await initializeRuntimeSession();
+    if (shouldPromptForProviderSetup(boot)) {
+      inspectorStore.openSettings();
+    }
     console.info("[webui] initialize:done", {
       modelProvider: boot.state.codexConfig.modelProvider,
       model: boot.state.codexConfig.model,
@@ -33,6 +35,14 @@ export async function initializeApp(): Promise<boolean> {
     runtimeSessionStore.setError(`Failed to initialize runtime: ${formatError(error)}`);
     return false;
   }
+}
+
+function shouldPromptForProviderSetup(boot: Awaited<ReturnType<typeof initializeRuntimeSession>>): boolean {
+  return (
+    boot.state.runtime === null &&
+    boot.state.models.length === 0 &&
+    boot.providerDraft.apiKey.trim().length === 0
+  );
 }
 
 export async function initializeUiShell() {
@@ -106,7 +116,6 @@ export async function sendTurn(): Promise<void> {
 
   try {
     runtimeUiStore.beginManualTurn(message);
-    await apsixZoneStore.beginTurn(message);
     composerStore.setMessage("");
     console.info("[webui] ui:send", {
       message,
@@ -115,7 +124,6 @@ export async function sendTurn(): Promise<void> {
     });
     runtimeSessionStore.setStatus("Sending turn...", false);
     const outcome = await runtimeSessionStore.runTurn(message, runtimeUiState.turnCounter);
-    await apsixZoneStore.finalizeCompletedTurn(outcome.state.transcript);
     runtimeUiStore.finalizeTranscript(
       outcome.state.transcript,
       outcome.result.nextTurnCounter,
@@ -129,12 +137,10 @@ export async function sendTurn(): Promise<void> {
     const stopRequested = runtimeUiStore.snapshot().stopRequested;
     runtimeUiStore.markCancelled();
     if (stopRequested || isCancellationError(error)) {
-      await apsixZoneStore.block("Zone stopped by user.");
       runtimeSessionStore.setCancelledStatus();
       return;
     }
     console.error("[webui] ui:send:failed", error);
-    await apsixZoneStore.block(formatError(error));
     runtimeSessionStore.setError(`Turn failed: ${formatError(error)}`);
   }
 }
@@ -152,7 +158,6 @@ export async function stopTurn(): Promise<void> {
     runtimeUiStore.markStopRequested();
     await runtime.cancelModelTurn(runtimeUiState.activeRequestId);
     runtimeUiStore.markCancelled();
-    await apsixZoneStore.block("Zone cancelled during execution.");
     runtimeSessionStore.setCancelledStatus();
   } catch (error) {
     console.error("[webui] ui:stop:failed", error);
@@ -165,7 +170,6 @@ export async function resetThread(): Promise<void> {
     console.info("[webui] ui:reset-thread");
     await runtimeSessionStore.resetThread();
     runtimeUiStore.resetThread();
-    await apsixZoneStore.reset();
     composerStore.reset();
     await tick();
     document.querySelector<HTMLTextAreaElement>(".composer-input")?.focus();

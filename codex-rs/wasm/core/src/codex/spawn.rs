@@ -52,6 +52,7 @@ impl Codex {
             model_transport_host,
             config_storage_host,
             thread_storage_host,
+            mcp_oauth_host,
         } = args;
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
@@ -228,6 +229,7 @@ impl Codex {
             model_transport_host,
             config_storage_host,
             thread_storage_host,
+            mcp_oauth_host,
         )
         .instrument(session_init_span)
         .await

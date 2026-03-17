@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use codex_protocol::mcp::Resource;
-use codex_protocol::mcp::ResourceTemplate;
 use codex_protocol::mcp::Tool;
 use codex_protocol::protocol::McpListToolsResponseEvent;
 
@@ -16,6 +14,7 @@ use crate::config::types::McpServerTransportConfig;
 use crate::features::Feature;
 use crate::plugins::PluginCapabilitySummary;
 use crate::plugins::PluginsManager;
+use crate::tools::browser_host::McpOauthHost;
 
 const MCP_TOOL_NAME_PREFIX: &str = "mcp";
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
@@ -190,6 +189,18 @@ pub(crate) fn with_codex_apps_mcp(
     servers
 }
 
+pub async fn collect_mcp_snapshot(
+    _config: &Config,
+    _mcp_oauth_host: Arc<dyn McpOauthHost>,
+) -> McpListToolsResponseEvent {
+    McpListToolsResponseEvent {
+        tools: HashMap::new(),
+        resources: HashMap::new(),
+        resource_templates: HashMap::new(),
+        auth_statuses: HashMap::new(),
+    }
+}
+
 pub struct McpManager {
     plugins_manager: Arc<PluginsManager>,
 }
@@ -267,18 +278,29 @@ pub fn group_tools_by_server(
 }
 
 pub(crate) async fn collect_mcp_snapshot_from_manager(
-    _mcp_connection_manager: &crate::mcp_connection_manager::McpConnectionManager,
+    mcp_connection_manager: &crate::mcp_connection_manager::McpConnectionManager,
     auth_status_entries: HashMap<String, crate::mcp::auth::McpAuthStatusEntry>,
 ) -> McpListToolsResponseEvent {
     let auth_statuses = auth_status_entries
         .iter()
         .map(|(name, entry)| (name.clone(), entry.auth_status))
         .collect();
+    let tools = mcp_connection_manager
+        .list_all_tools()
+        .await
+        .into_iter()
+        .filter_map(|(qualified_name, tool_info)| {
+            serde_json::to_value(tool_info.tool)
+                .ok()
+                .and_then(|value| serde_json::from_value::<Tool>(value).ok())
+                .map(|tool| (qualified_name, tool))
+        })
+        .collect();
 
     McpListToolsResponseEvent {
-        tools: HashMap::<String, Tool>::new(),
-        resources: HashMap::<String, Vec<Resource>>::new(),
-        resource_templates: HashMap::<String, Vec<ResourceTemplate>>::new(),
+        tools,
+        resources: HashMap::new(),
+        resource_templates: HashMap::new(),
         auth_statuses,
     }
 }

@@ -11,6 +11,11 @@ use crate::jsonrpc_bridge::server_notification_to_jsonrpc;
 use crate::jsonrpc_bridge::server_request_to_jsonrpc;
 use crate::state::RuntimeState;
 
+enum NotificationEnqueueSource {
+    Core,
+    HostLive,
+}
+
 pub(crate) async fn process_core_event(
     state: &Arc<Mutex<RuntimeState>>,
     thread_id: &str,
@@ -99,14 +104,42 @@ pub(crate) async fn enqueue_server_notification(
     state: &Arc<Mutex<RuntimeState>>,
     notification: codex_app_server_protocol::ServerNotification,
 ) {
+    enqueue_server_notification_with_source(state, notification, NotificationEnqueueSource::Core)
+        .await;
+}
+
+pub(crate) async fn enqueue_host_server_notification(
+    state: &Arc<Mutex<RuntimeState>>,
+    notification: codex_app_server_protocol::ServerNotification,
+) {
+    enqueue_server_notification_with_source(
+        state,
+        notification,
+        NotificationEnqueueSource::HostLive,
+    )
+    .await;
+}
+
+async fn enqueue_server_notification_with_source(
+    state: &Arc<Mutex<RuntimeState>>,
+    notification: codex_app_server_protocol::ServerNotification,
+    source: NotificationEnqueueSource,
+) {
     let tx = {
         let mut state = state.lock().await;
-        if !state.should_enqueue_notification(&notification) {
-            browser_log(&format!(
-                "[wasm/browser] suppressed duplicate server notification method={}",
-                notification_method(&notification)
-            ));
-            return;
+        match source {
+            NotificationEnqueueSource::Core => {
+                if !state.should_enqueue_core_notification(&notification) {
+                    browser_log(&format!(
+                        "[wasm/browser] suppressed duplicate server notification method={}",
+                        notification_method(&notification)
+                    ));
+                    return;
+                }
+            }
+            NotificationEnqueueSource::HostLive => {
+                state.record_live_notification(&notification);
+            }
         }
         state.outgoing_tx.clone()
     };

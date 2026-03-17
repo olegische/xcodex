@@ -1,6 +1,7 @@
 use super::*;
 use crate::UnavailableConfigStorageHost;
 use crate::UnavailableHostFs;
+use crate::UnavailableMcpOauthHost;
 use crate::UnavailableModelTransportHost;
 use crate::UnavailableThreadStorageHost;
 use crate::config_loader::ConfigLayerEntry;
@@ -317,6 +318,7 @@ async fn guardian_subagent_does_not_inherit_parent_exec_policy_rules() {
         model_transport_host: Arc::new(UnavailableModelTransportHost),
         config_storage_host: Arc::new(UnavailableConfigStorageHost),
         thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+        mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
     })
     .await
     .expect("spawn guardian subagent");

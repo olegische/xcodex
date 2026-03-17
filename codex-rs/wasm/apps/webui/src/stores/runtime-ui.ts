@@ -1,5 +1,6 @@
 import { get, writable } from "svelte/store";
-import type { RuntimeActivity, TranscriptEntry } from "../runtime";
+import { runtimeActivityFromEvent } from "../runtime/notifications";
+import type { RuntimeActivity, RuntimeEvent, TranscriptEntry } from "../runtime";
 
 export type RuntimeUiState = {
   activities: RuntimeActivity[];
@@ -32,7 +33,11 @@ function createRuntimeUiStore() {
     reset() {
       set(initialState);
     },
-    observeActivity(activity: RuntimeActivity) {
+    observeRuntimeEvent(event: RuntimeEvent) {
+      const activity = runtimeActivityFromEvent(event);
+      if (activity === null) {
+        return;
+      }
       if (activity.type === "toolCall" || activity.type === "toolOutput") {
         console.info("[webui] runtime-ui:observe-tool-activity", activity);
       }

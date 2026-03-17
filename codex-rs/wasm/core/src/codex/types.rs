@@ -2,6 +2,7 @@ use super::*;
 use crate::connectors::DiscoverableAppsProvider;
 use crate::tools::browser_host::ConfigStorageHost;
 use crate::tools::browser_host::HostFs;
+use crate::tools::browser_host::McpOauthHost;
 use crate::tools::browser_host::ModelTransportHost;
 use crate::tools::browser_host::ThreadStorageHost;
 use codex_protocol::openai_models::ModelsResponse;
@@ -58,6 +59,7 @@ pub(crate) struct CodexSpawnArgs {
     pub(crate) model_transport_host: Arc<dyn ModelTransportHost>,
     pub(crate) config_storage_host: Arc<dyn ConfigStorageHost>,
     pub(crate) thread_storage_host: Arc<dyn ThreadStorageHost>,
+    pub(crate) mcp_oauth_host: Arc<dyn McpOauthHost>,
 }
 
 pub struct BrowserCodexSpawnArgs {
@@ -76,6 +78,7 @@ pub struct BrowserCodexSpawnArgs {
     pub model_transport_host: Arc<dyn ModelTransportHost>,
     pub config_storage_host: Arc<dyn ConfigStorageHost>,
     pub thread_storage_host: Arc<dyn ThreadStorageHost>,
+    pub mcp_oauth_host: Arc<dyn McpOauthHost>,
 }
 
 pub(crate) const INITIAL_SUBMIT_ID: &str = "";

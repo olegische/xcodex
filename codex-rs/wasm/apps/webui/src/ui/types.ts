@@ -14,7 +14,6 @@ export type InspectorTab =
   | "metrics"
   | "events"
   | "approvals"
-  | "tools"
   | "workspace";
 export type UiWidgetId =
   | "mission_state"
@@ -30,7 +29,6 @@ export type UiWidgetId =
   | "approvals"
   | "tool_activity"
   | "workspace_files"
-  | "remote_mcp"
   | "web_signals"
   | "agent_swarm";
 export type UiAreaName = "mainTop" | "mainBody" | "mainBottom" | "inspector";
@@ -42,7 +40,6 @@ export type ShellActionId =
   | "metrics"
   | "events"
   | "approvals"
-  | "tools"
   | "workspace"
   | "profiles"
   | "settings";

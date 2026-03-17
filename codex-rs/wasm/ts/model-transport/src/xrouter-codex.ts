@@ -1,6 +1,9 @@
 import type { JsonValue } from "../../../../app-server-protocol/schema/typescript/serde_json/JsonValue";
 
-export function mapXrouterOutputItemToCodexResponseItem(item: JsonValue): JsonValue | null {
+export function mapXrouterOutputItemToCodexResponseItem(
+  item: JsonValue,
+  fallbackAssistantItemId?: string,
+): JsonValue | null {
   if (item === null || typeof item !== "object" || Array.isArray(item)) {
     return null;
   }
@@ -8,6 +11,11 @@ export function mapXrouterOutputItemToCodexResponseItem(item: JsonValue): JsonVa
   if (record.type === "message") {
     return {
       type: "message",
+      ...(typeof record.id === "string"
+        ? { id: record.id }
+        : typeof fallbackAssistantItemId === "string"
+          ? { id: fallbackAssistantItemId }
+          : {}),
       role: typeof record.role === "string" ? record.role : "assistant",
       content: Array.isArray(record.content) ? (record.content as JsonValue[]) : [],
       end_turn: true,

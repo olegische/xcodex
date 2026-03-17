@@ -3,7 +3,8 @@ import type { DynamicToolCallOutputContentItem } from "../../../../app-server-pr
 import type { ServerNotification } from "../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ServerRequest } from "../../../../app-server-protocol/schema/typescript/ServerRequest";
 import type { AppServerClientEvent } from "./app-server-client";
-import type { RuntimeModule } from "./types";
+import type { BrowserRuntimeHost, RuntimeModule } from "./types";
+import type { WasmProtocolRuntime } from "./types";
 import { AppServerClient } from "./app-server-client";
 import type { JsonValue } from "./types";
 
@@ -12,7 +13,9 @@ export async function startBrowserAppServerClient(
   host: unknown,
   args: { experimentalApi?: boolean } = {},
 ): Promise<AppServerClient> {
-  const runtime = new runtimeModule.WasmBrowserRuntime(host);
+  const hostWithSink = attachRuntimeNotificationSink(host);
+  const runtime = new runtimeModule.WasmBrowserRuntime(hostWithSink);
+  installRuntimeNotificationSink(hostWithSink, runtime);
   return await AppServerClient.start(runtime, { experimentalApi: args.experimentalApi ?? true });
 }
 
@@ -154,7 +157,7 @@ export abstract class BrowserAppServerRuntimeCore<TDispatch, TEvent, TSnapshot> 
   protected async request(method: string, params: Record<string, unknown>): Promise<unknown> {
     const id = `browser-${this.nextRequestId++}`;
     console.info("[browser-app-server] client-request", summarizeClientRequest(method, id, params));
-    const response = await this.client.request<unknown>({
+    const response = await this.client.request({
       id,
       method,
       params,
@@ -302,4 +305,23 @@ function awaitPendingDispatch<TDispatch>(
   return new Promise<TDispatch>((resolve, reject) => {
     register(resolve, reject);
   });
+}
+
+function attachRuntimeNotificationSink(host: unknown): BrowserRuntimeHost {
+  if (host !== null && typeof host === "object" && !Array.isArray(host)) {
+    return host as BrowserRuntimeHost;
+  }
+  return {} as BrowserRuntimeHost;
+}
+
+function installRuntimeNotificationSink(
+  host: BrowserRuntimeHost,
+  runtime: WasmProtocolRuntime,
+): void {
+  if (typeof runtime.enqueueNotification !== "function") {
+    return;
+  }
+  host.emitNotification = async (notification: unknown) => {
+    await runtime.enqueueNotification?.(notification);
+  };
 }

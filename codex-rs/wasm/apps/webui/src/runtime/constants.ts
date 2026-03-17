@@ -7,7 +7,7 @@ import type { CodexCompatibleConfig, DemoInstructions, XrouterProvider } from ".
 export const THREAD_ID = "codex-browser-terminal-thread";
 export const TURN_PREFIX = "codex-browser-terminal-turn";
 export const DB_NAME = "codex-wasm-browser-terminal";
-export const DB_VERSION = 2;
+export const DB_VERSION = 4;
 export const BUILD_MANIFEST_PATH = "/pkg/manifest.json";
 export const XROUTER_MANIFEST_PATH = "/xrouter-browser/manifest.json";
 export const OPENAI_API_BASE_URL = "https://api.openai.com/v1";
@@ -16,6 +16,7 @@ export const ZAI_API_BASE_URL = "https://api.z.ai/api/paas/v4";
 export const DEEPSEEK_API_BASE_URL = "https://api.deepseek.com";
 export const PREFERRED_API_MODELS = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini"];
 export const PROVIDER_CONFIG_KEY = "current";
+export const USER_CONFIG_STORAGE_KEY = "current";
 export const INSTRUCTIONS_STORAGE_KEY = "codex.wasm.instructions.codex-browser-terminal-thread";
 export const UI_THEME_REVISION_STORAGE_KEY = "codex.wasm.ui-theme-revision.codex-browser-terminal";
 export const UI_THEME_REVISION = "codex-terminal-v1";

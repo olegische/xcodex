@@ -17,6 +17,9 @@ pub fn request_target(request: &ClientRequest) -> Option<RequestTarget> {
         | ClientRequest::ConfigRead { .. }
         | ClientRequest::ConfigValueWrite { .. }
         | ClientRequest::ConfigBatchWrite { .. }
+        | ClientRequest::McpServerStatusList { .. }
+        | ClientRequest::McpServerRefresh { .. }
+        | ClientRequest::McpServerOauthLogin { .. }
         | ClientRequest::ConfigRequirementsRead { .. }
         | ClientRequest::ThreadResume { .. }
         | ClientRequest::ThreadRollback { .. }
@@ -48,6 +51,8 @@ pub fn request_target(request: &ClientRequest) -> Option<RequestTarget> {
 #[cfg(test)]
 mod tests {
     use codex_app_server_protocol::ClientRequest;
+    use codex_app_server_protocol::ListMcpServerStatusParams;
+    use codex_app_server_protocol::McpServerOauthLoginParams;
     use codex_app_server_protocol::RequestId;
     use codex_app_server_protocol::SkillsListParams;
     use codex_app_server_protocol::ThreadArchiveParams;
@@ -123,6 +128,25 @@ mod tests {
                 num_turns: 1,
             },
         };
+        let mcp_status = ClientRequest::McpServerStatusList {
+            request_id: RequestId::Integer(8),
+            params: ListMcpServerStatusParams {
+                cursor: None,
+                limit: None,
+            },
+        };
+        let mcp_refresh = ClientRequest::McpServerRefresh {
+            request_id: RequestId::Integer(9),
+            params: None,
+        };
+        let mcp_login = ClientRequest::McpServerOauthLogin {
+            request_id: RequestId::Integer(10),
+            params: McpServerOauthLoginParams {
+                name: "remote".to_string(),
+                scopes: None,
+                timeout_secs: None,
+            },
+        };
 
         assert!(matches!(
             request_target(&read),
@@ -153,6 +177,18 @@ mod tests {
         assert!(matches!(request_target(&resume), Some(RequestTarget::Root)));
         assert!(matches!(
             request_target(&rollback),
+            Some(RequestTarget::Root)
+        ));
+        assert!(matches!(
+            request_target(&mcp_status),
+            Some(RequestTarget::Root)
+        ));
+        assert!(matches!(
+            request_target(&mcp_refresh),
+            Some(RequestTarget::Root)
+        ));
+        assert!(matches!(
+            request_target(&mcp_login),
             Some(RequestTarget::Root)
         ));
     }

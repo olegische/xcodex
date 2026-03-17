@@ -1179,6 +1179,113 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn config_write_updates_effective_mcp_servers_for_status_and_read() {
+        let mut processor = MessageProcessor::new(MessageProcessorArgs {
+            api_version: ApiVersion::V2,
+            config_warnings: Vec::new(),
+        });
+        let mut session = ConnectionSessionState::default();
+        let root = std::env::temp_dir().join(format!(
+            "codex-wasm-app-server-mcp-write-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        processor.set_runtime_bootstrap(crate::RuntimeBootstrap {
+            config: Config {
+                codex_home: root.clone(),
+                cwd: root,
+                ..Config::default()
+            },
+            auth: None,
+            model_catalog: None,
+            browser_fs: Arc::new(UnavailableHostFs),
+            discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
+            model_transport_host: Arc::new(UnavailableModelTransportHost),
+            config_storage_host: Arc::new(InMemoryConfigStorageHost::default()),
+            thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
+        });
+
+        processor
+            .process_client_request(
+                ClientRequest::Initialize {
+                    request_id: RequestId::Integer(1),
+                    params: InitializeParams {
+                        client_info: ClientInfo {
+                            name: "web".to_string(),
+                            title: None,
+                            version: "1.0.0".to_string(),
+                        },
+                        capabilities: Some(InitializeCapabilities {
+                            experimental_api: true,
+                            opt_out_notification_methods: None,
+                        }),
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("initialize succeeds");
+
+        processor
+            .process_client_request(
+                ClientRequest::ConfigValueWrite {
+                    request_id: RequestId::Integer(2),
+                    params: codex_app_server_protocol::ConfigValueWriteParams {
+                        key_path: "mcp_servers".to_string(),
+                        value: serde_json::json!({
+                            "mcp_notion_com_mcp": {
+                                "url": "https://mcp.notion.com/mcp"
+                            }
+                        }),
+                        merge_strategy: codex_app_server_protocol::MergeStrategy::Replace,
+                        file_path: None,
+                        expected_version: None,
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("config/value/write succeeds");
+
+        let config_read = processor
+            .process_client_request(
+                ClientRequest::ConfigRead {
+                    request_id: RequestId::Integer(3),
+                    params: ConfigReadParams {
+                        include_layers: false,
+                        cwd: None,
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("config/read succeeds");
+        assert_eq!(
+            config_read["config"]["mcp_servers"]["mcp_notion_com_mcp"]["url"].as_str(),
+            Some("https://mcp.notion.com/mcp")
+        );
+
+        let mcp_status = processor
+            .process_client_request(
+                ClientRequest::McpServerStatusList {
+                    request_id: RequestId::Integer(4),
+                    params: codex_app_server_protocol::ListMcpServerStatusParams {
+                        cursor: None,
+                        limit: None,
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("mcpServerStatus/list succeeds");
+        assert_eq!(
+            mcp_status["data"][0]["name"].as_str(),
+            Some("mcp_notion_com_mcp")
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn config_read_exposes_remote_mcp_servers_and_status_list() {
         let mut processor = MessageProcessor::new(MessageProcessorArgs {
             api_version: ApiVersion::V2,

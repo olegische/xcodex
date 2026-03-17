@@ -1,4 +1,5 @@
 use super::*;
+use crate::compat::cancel::or_cancel;
 use crate::compat::hooks::HookEvent;
 use crate::compat::hooks::HookEventAfterAgent;
 use crate::compat::hooks::HookPayload;
@@ -55,15 +56,8 @@ pub(crate) async fn run_turn(
         // Plugin mentions need raw MCP/app inventory even when app tools
         // are normally hidden so we can describe the plugin's currently
         // usable capabilities for this turn.
-        match sess
-            .services
-            .mcp_connection_manager
-            .read()
-            .await
-            .list_all_tools()
-            .or_cancel(&cancellation_token)
-            .await
-        {
+        let mcp_connection_manager = sess.services.mcp_connection_manager.read().await;
+        match or_cancel(mcp_connection_manager.list_all_tools(), &cancellation_token).await {
             Ok(mcp_tools) => mcp_tools,
             Err(_) if turn_context.apps_enabled() => return None,
             Err(_) => HashMap::new(),

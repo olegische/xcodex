@@ -1,11 +1,11 @@
 import { bootStore } from "../stores/boot";
-import { apsixZoneStore } from "../stores/apsix-zone";
 import { pageRuntimeStore } from "../stores/page-runtime";
 import { runtimeUiStore } from "../stores/runtime-ui";
 import { webSignalsStore } from "../stores/web-signals";
 import { workspaceBrowserStore } from "../stores/workspace-browser";
-import { subscribeRuntimeActivity } from "../runtime";
+import { subscribeRuntimeEvent } from "../runtime";
 import { ENABLE_PAGE_TELEMETRY } from "../runtime/constants";
+import type { RuntimeEvent } from "../runtime";
 import { connectComposerSessionSync } from "./controllers";
 import { initializeRuntimeSession, initializeUiShell } from "./actions";
 
@@ -17,11 +17,10 @@ export function setupAppLifecycle(options?: {
   const deltaLogState = new Map<string, { count: number; announcedStreaming: boolean }>();
 
   let disconnectComposerSessionSync = () => {};
-  let unsubscribeRuntimeActivity = () => {};
+  let unsubscribeRuntimeEvents = () => {};
   let disconnectWorkspaceBrowser = () => {};
   let disconnectWebSignals = () => {};
   let disconnectPageRuntime = () => {};
-  let disconnectZoneControl = () => {};
 
   void (async () => {
     try {
@@ -39,9 +38,9 @@ export function setupAppLifecycle(options?: {
 
       await runBootStep("subscriptions", "Connecting runtime subscriptions", async () => {
         disconnectComposerSessionSync = connectComposerSessionSync();
-        unsubscribeRuntimeActivity = subscribeRuntimeActivity((activity) => {
-          logRuntimeActivity(activity, deltaLogState);
-          runtimeUiStore.observeActivity(activity);
+        unsubscribeRuntimeEvents = subscribeRuntimeEvent((event) => {
+          logRuntimeEvent(event, deltaLogState);
+          runtimeUiStore.observeRuntimeEvent(event);
         });
       });
 
@@ -64,10 +63,6 @@ export function setupAppLifecycle(options?: {
         },
       );
 
-      await runBootStep("zone_control", "Loading runtime state control", async () => {
-        disconnectZoneControl = await apsixZoneStore.initialize();
-      });
-
       bootStore.setPhase("ready", "Runtime ready");
     } catch (error) {
       console.error("[webui] lifecycle:failed", error);
@@ -86,11 +81,10 @@ export function setupAppLifecycle(options?: {
 
   return () => {
     disconnectComposerSessionSync();
-    unsubscribeRuntimeActivity();
+    unsubscribeRuntimeEvents();
     disconnectWorkspaceBrowser();
     disconnectWebSignals();
     disconnectPageRuntime();
-    disconnectZoneControl();
   };
 }
 
@@ -103,8 +97,7 @@ async function runBootStep(
     | "subscriptions"
     | "workspace_browser"
     | "web_signals"
-    | "page_runtime"
-    | "zone_control",
+    | "page_runtime",
   detail: string,
   action: () => Promise<void>,
 ) {
@@ -119,89 +112,111 @@ async function waitForPaint(): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-function logRuntimeActivity(
-  activity: Parameters<Parameters<typeof subscribeRuntimeActivity>[0]>[0],
+function logRuntimeEvent(
+  event: RuntimeEvent,
   deltaLogState: Map<string, { count: number; announcedStreaming: boolean }>,
 ) {
-  if (activity.type === "delta") {
-    const state = deltaLogState.get(activity.requestId) ?? {
+  const params = asRecord(event.params);
+  if (params === null) {
+    return;
+  }
+
+  if (event.method === "item/agentMessage/delta") {
+    if (typeof params.turnId !== "string" || typeof params.delta !== "string") {
+      return;
+    }
+    const state = deltaLogState.get(params.turnId) ?? {
       count: 0,
       announcedStreaming: false,
     };
     state.count += 1;
     if (state.count <= 5) {
       console.info("[webui] runtime-delta", {
-        requestId: activity.requestId,
+        requestId: params.turnId,
         chunk: state.count,
-        text: activity.text,
+        text: params.delta,
       });
     } else if (!state.announcedStreaming) {
       state.announcedStreaming = true;
       console.info("[webui] runtime-delta", {
-        requestId: activity.requestId,
+        requestId: params.turnId,
         status: "receiving response",
         chunksSeen: state.count,
       });
     }
-    deltaLogState.set(activity.requestId, state);
+    deltaLogState.set(params.turnId, state);
     return;
   }
 
-  if (activity.type === "completed") {
-    const deltaState = deltaLogState.get(activity.requestId);
+  if (event.method === "turn/completed") {
+    const turn = asRecord(params.turn);
+    if (turn === null || typeof turn.id !== "string") {
+      return;
+    }
+    const deltaState = deltaLogState.get(turn.id);
     if (deltaState !== undefined) {
       console.info("[webui] runtime-delta", {
-        requestId: activity.requestId,
+        requestId: turn.id,
         status: "response received",
         chunksSeen: deltaState.count,
       });
-      deltaLogState.delete(activity.requestId);
+      deltaLogState.delete(turn.id);
     }
-    console.info("[webui] runtime-activity", activity);
+    console.info("[webui] runtime-event", event);
     return;
   }
 
-  if (activity.type === "error") {
-    deltaLogState.delete(activity.requestId);
+  if (event.method === "error") {
+    if (typeof params.turnId === "string") {
+      deltaLogState.delete(params.turnId);
+    }
+    console.info("[webui] runtime-event", event);
+    return;
   }
 
-  if (activity.type === "pageEvent") {
-    if (activity.kind === "mutation") {
+  if (event.method === "item/started") {
+    const item = asRecord(params.item);
+    if (typeof params.turnId !== "string" || item === null || typeof item.type !== "string") {
       return;
     }
-    console.info("[webui] page-event", activity);
-    return;
+    if (item.type === "dynamicToolCall" || item.type === "mcpToolCall") {
+      const toolName =
+        item.type === "mcpToolCall" && typeof item.server === "string" && typeof item.tool === "string"
+          ? `${normalizeMcpServerNamespace(item.server)}${item.tool}`
+          : typeof item.tool === "string"
+            ? item.tool
+            : null;
+      console.info("[webui] runtime-tool-call:args", {
+        requestId: params.turnId,
+        callId: typeof item.id === "string" ? item.id : null,
+        toolName,
+        argumentsJson: stringifyForLog(item.arguments ?? null),
+      });
+    }
   }
 
-  if (activity.type === "apsixZone") {
-    console.info("[webui] runtime-zone", activity);
-    return;
+  if (event.method === "item/completed") {
+    const item = asRecord(params.item);
+    if (item?.type === "agentMessage") {
+      return;
+    }
   }
 
-  if (
-    activity.type === "apsixSpawn" ||
-    activity.type === "apsixArtifact" ||
-    activity.type === "apsixAnchor" ||
-    activity.type === "apsixFreeze"
-  ) {
-    console.info("[webui] runtime-artifact", activity);
-    return;
-  }
+  console.info("[webui] runtime-event", event);
+}
 
-  if (activity.type === "assistantMessage") {
-    return;
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
   }
+  return value as Record<string, unknown>;
+}
 
-  if (activity.type === "toolCall") {
-    console.info("[webui] runtime-tool-call:args", {
-      requestId: activity.requestId,
-      callId: activity.callId,
-      toolName: activity.toolName,
-      argumentsJson: stringifyForLog(activity.arguments),
-    });
+function normalizeMcpServerNamespace(server: string): string {
+  if (server.startsWith("mcp__") && server.endsWith("__")) {
+    return server;
   }
-
-  console.info("[webui] runtime-activity", activity);
+  return `mcp__${server}__`;
 }
 
 function stringifyForLog(value: unknown): string {

@@ -141,7 +141,7 @@ export type RuntimeActivity =
   | {
       type: "missionState";
       phase: "idle" | "observing" | "planning" | "acting" | "waiting" | "blocked" | "completed" | "failed";
-      lane: "page" | "tools" | "artifacts" | "idle";
+      lane: "page" | "artifacts" | "idle";
       goal: string;
       summary: string;
     }
@@ -283,8 +283,11 @@ export type BrowserRuntimeHost = {
   listDir(request: JsonValue): Promise<JsonValue>;
   search(request: JsonValue): Promise<JsonValue>;
   applyPatch(request: JsonValue): Promise<JsonValue>;
+  loadUserConfig?(request: JsonValue): Promise<JsonValue>;
+  saveUserConfig?(request: JsonValue): Promise<JsonValue>;
   listDiscoverableApps?(request: JsonValue): Promise<JsonValue>;
   runModelTurn?(request: JsonValue): Promise<JsonValue>;
+  emitNotification?(notification: JsonValue): Promise<void>;
   resolveMcpOauthRedirectUri?(request: JsonValue): Promise<JsonValue>;
   waitForMcpOauthCallback?(request: JsonValue): Promise<JsonValue>;
 };
@@ -292,6 +295,7 @@ export type BrowserRuntimeHost = {
 export type WasmProtocolRuntime = {
   send(message: JsonValue): Promise<JsonValue>;
   nextMessage(): Promise<JsonValue>;
+  enqueueNotification?(notification: JsonValue): Promise<void>;
   runtimeInfo(): JsonValue;
   contractVersion(): string;
 };

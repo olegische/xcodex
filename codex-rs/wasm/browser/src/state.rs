@@ -26,6 +26,8 @@ pub struct RuntimeState {
     pub pending_server_request_threads: HashMap<RequestId, String>,
     pub recent_notification_keys: HashSet<String>,
     pub recent_notification_order: VecDeque<String>,
+    pub live_notification_keys: HashSet<String>,
+    pub live_notification_order: VecDeque<String>,
 }
 
 impl RuntimeState {
@@ -47,6 +49,8 @@ impl RuntimeState {
             pending_server_request_threads: HashMap::new(),
             recent_notification_keys: HashSet::new(),
             recent_notification_order: VecDeque::new(),
+            live_notification_keys: HashSet::new(),
+            live_notification_order: VecDeque::new(),
         }
     }
 
@@ -56,20 +60,40 @@ impl RuntimeState {
         RequestId::Integer(id)
     }
 
-    pub fn should_enqueue_notification(&mut self, notification: &ServerNotification) -> bool {
+    pub fn should_enqueue_core_notification(&mut self, notification: &ServerNotification) -> bool {
+        if let Some(key) = exact_notification_key(notification)
+            && self.live_notification_keys.remove(&key)
+        {
+            return false;
+        }
+        self.should_enqueue_duplicate_sensitive_notification(notification)
+    }
+
+    pub fn record_live_notification(&mut self, notification: &ServerNotification) {
+        if let Some(key) = exact_notification_key(notification) {
+            remember_notification_key(
+                &mut self.live_notification_keys,
+                &mut self.live_notification_order,
+                key,
+            );
+        }
+    }
+
+    fn should_enqueue_duplicate_sensitive_notification(
+        &mut self,
+        notification: &ServerNotification,
+    ) -> bool {
         let Some(key) = notification_dedupe_key(notification) else {
             return true;
         };
         if self.recent_notification_keys.contains(&key) {
             return false;
         }
-        self.recent_notification_keys.insert(key.clone());
-        self.recent_notification_order.push_back(key);
-        if self.recent_notification_order.len() > RECENT_NOTIFICATION_KEY_LIMIT
-            && let Some(oldest_key) = self.recent_notification_order.pop_front()
-        {
-            self.recent_notification_keys.remove(&oldest_key);
-        }
+        remember_notification_key(
+            &mut self.recent_notification_keys,
+            &mut self.recent_notification_order,
+            key,
+        );
         true
     }
 }
@@ -91,6 +115,24 @@ fn notification_dedupe_key(notification: &ServerNotification) -> Option<String> 
             }))
         }
         _ => None,
+    }
+}
+
+fn exact_notification_key(notification: &ServerNotification) -> Option<String> {
+    serde_json::to_string(notification).ok()
+}
+
+fn remember_notification_key(
+    keys: &mut HashSet<String>,
+    order: &mut VecDeque<String>,
+    key: String,
+) {
+    keys.insert(key.clone());
+    order.push_back(key);
+    if order.len() > RECENT_NOTIFICATION_KEY_LIMIT
+        && let Some(oldest_key) = order.pop_front()
+    {
+        keys.remove(&oldest_key);
     }
 }
 
@@ -128,8 +170,8 @@ mod tests {
             turn_id: "turn_1".to_string(),
         });
 
-        assert!(state.should_enqueue_notification(&notification));
-        assert!(!state.should_enqueue_notification(&notification));
+        assert!(state.should_enqueue_core_notification(&notification));
+        assert!(!state.should_enqueue_core_notification(&notification));
     }
 
     #[test]
@@ -150,8 +192,8 @@ mod tests {
             turn_id: "turn_1".to_string(),
         });
 
-        assert!(state.should_enqueue_notification(&notification));
-        assert!(!state.should_enqueue_notification(&notification));
+        assert!(state.should_enqueue_core_notification(&notification));
+        assert!(!state.should_enqueue_core_notification(&notification));
     }
 
     #[test]
@@ -171,8 +213,8 @@ mod tests {
 
         assert_eq!(
             vec![
-                state.should_enqueue_notification(&first),
-                state.should_enqueue_notification(&second),
+                state.should_enqueue_core_notification(&first),
+                state.should_enqueue_core_notification(&second),
             ],
             vec![true, true]
         );

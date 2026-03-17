@@ -76,26 +76,27 @@ function createRuntimeSessionStore() {
     },
     async saveConfig(nextDraft?: ProviderDraft) {
       const session = get({ subscribe });
-      const runtime = requireRuntime(session.state);
       const providerDraft = nextDraft ?? session.providerDraft;
-      const saved = await saveDraftProviderConfig(runtime, session.state, providerDraft);
+      const saved = await saveDraftProviderConfig(session.state.runtime, session.state, providerDraft);
       set(saved);
       syncComposer(saved.providerDraft, saved.state.models);
       return saved;
     },
     async refreshAccountAndModels(nextDraft?: ProviderDraft) {
       const session = get({ subscribe });
-      const runtime = requireRuntime(session.state);
       const providerDraft = nextDraft ?? session.providerDraft;
-      const refreshed = await refreshAccountAndModelsFromDraft(runtime, session.state, providerDraft);
+      const refreshed = await refreshAccountAndModelsFromDraft(
+        session.state.runtime,
+        session.state,
+        providerDraft,
+      );
       set(refreshed);
       syncComposer(refreshed.providerDraft, refreshed.state.models);
       return refreshed;
     },
     async clearAuth() {
       const session = get({ subscribe });
-      const runtime = requireRuntime(session.state);
-      const cleared = await clearSavedAuth(runtime, session.state);
+      const cleared = await clearSavedAuth(session.state.runtime, session.state);
       set(cleared);
       syncComposer(cleared.providerDraft, cleared.state.models);
       return cleared;

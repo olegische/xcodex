@@ -18,6 +18,8 @@ codex-utils-absolute-path = { workspace = true }
 codex-wasm-core = { path = "../core" }
 serde_json = { workspace = true }
 toml = { workspace = true }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = ["console"] }
 
 [dev-dependencies]
 async-trait = { workspace = true }

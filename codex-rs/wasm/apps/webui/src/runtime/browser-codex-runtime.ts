@@ -1,0 +1,142 @@
+import { collaborationStore } from "../stores/collaboration";
+import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
+import {
+  threadToSessionSnapshot,
+  turnIdFromNotification,
+} from "@browser-codex/wasm-runtime-core";
+import { createBrowserCodexRuntime as createSharedBrowserCodexRuntime } from "../../../../ts/browser-codex-runtime/src";
+import { createBrowserAwareToolExecutor } from "./browser-tools";
+import { emitRuntimeEvents as emitNotificationEvents } from "./events";
+import { installRuntimeActivityBridge } from "./notifications";
+import {
+  loadStoredAuthState,
+  loadStoredCodexConfig,
+  loadStoredSession,
+  saveStoredAuthState,
+  saveStoredSession,
+} from "./storage";
+import { webUiModelTransportAdapter } from "./transport-adapter";
+import { formatError, getActiveProvider, normalizeHostValue } from "./utils";
+import type {
+  Account,
+  AuthState,
+  BrowserRuntime,
+  JsonValue,
+  ModelPreset,
+  RuntimeDispatch,
+  RuntimeEvent,
+  RuntimeModule,
+  SessionSnapshot,
+} from "./types";
+
+const browserToolExecutor = createBrowserAwareToolExecutor();
+
+export async function createBrowserCodexRuntime(
+  runtimeModule: RuntimeModule,
+  host: unknown,
+): Promise<BrowserRuntime> {
+  installRuntimeActivityBridge();
+  return await createSharedBrowserCodexRuntime({
+    runtimeModule,
+    host,
+    deps: {
+      persistence: {
+        loadAuthState: loadStoredAuthState,
+        saveAuthState: saveStoredAuthState,
+        async clearAuthState() {
+          await saveStoredAuthState({
+            authMode: "apiKey",
+            openaiApiKey: null,
+            accessToken: null,
+            refreshToken: null,
+            chatgptAccountId: null,
+            chatgptPlanType: null,
+            lastRefreshAt: null,
+          });
+        },
+        loadConfig: loadStoredCodexConfig,
+        loadSession: loadStoredSession,
+        saveSession: saveStoredSession,
+      },
+      dynamicTools: browserToolExecutor,
+      async readAccount({ authState, config }) {
+        const provider = getActiveProvider(config);
+        if (authState === null || authState.openaiApiKey === null || authState.openaiApiKey.trim().length === 0) {
+          return {
+            account: null,
+            requiresOpenaiAuth: provider.providerKind === "openai",
+          };
+        }
+        return {
+          account: {
+            email: null,
+            planType: authState.chatgptPlanType,
+            chatgptAccountId: authState.chatgptAccountId,
+            authMode: authState.authMode,
+          } satisfies Account,
+          requiresOpenaiAuth: false,
+        };
+      },
+      async discoverModels({ config }) {
+        return await webUiModelTransportAdapter.discoverModels(config);
+      },
+      async refreshAuth(_context) {
+        throw new Error("Browser terminal uses API keys only.");
+      },
+      normalizeThread(thread) {
+        return normalizeHostValue(thread) as Record<string, unknown>;
+      },
+      threadToSnapshot(thread) {
+        return threadToSessionSnapshot(thread);
+      },
+      withRequestedThreadId(snapshot, requestedThreadId) {
+        return {
+          ...snapshot,
+          threadId: requestedThreadId,
+        };
+      },
+      buildDispatch(snapshot, events) {
+        console.info("[webui] app-server:turn-resolved", {
+          threadId: snapshot.threadId,
+          eventCount: events.length,
+          eventMethods: events.map((event) => event.method),
+        });
+        return {
+          value: snapshot,
+          events,
+        };
+      },
+      mapNotificationToEvent(notification: ServerNotification) {
+        return {
+          method: notification.method,
+          params: ("params" in notification ? notification.params : null) as JsonValue,
+        } satisfies RuntimeEvent;
+      },
+      emitRuntimeEvents(events) {
+        emitNotificationEvents(events);
+      },
+      turnIdFromRuntimeEvent(event) {
+        return turnIdFromNotification(event);
+      },
+      isTurnCompletedEvent(event) {
+        return event.method === "turn/completed";
+      },
+      formatError,
+      async requestUserInput(request) {
+        return await collaborationStore.requestUserInput(request);
+      },
+      actualThreadIdFromSnapshot(snapshot) {
+        if (
+          snapshot.metadata !== null &&
+          typeof snapshot.metadata === "object" &&
+          !Array.isArray(snapshot.metadata) &&
+          typeof (snapshot.metadata as Record<string, unknown>).id === "string"
+        ) {
+          return (snapshot.metadata as Record<string, unknown>).id as string;
+        }
+        return null;
+      },
+      logScope: "webui",
+    },
+  });
+}

@@ -1,4 +1,5 @@
 pub(crate) mod api;
+pub(crate) mod cancel;
 pub(crate) mod hooks;
 pub(crate) mod network;
 pub(crate) mod otel;
