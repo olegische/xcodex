@@ -630,6 +630,7 @@ pub fn process_loaded_thread_event(
 ) -> LoadedThreadEventEffect {
     let mut notifications = Vec::new();
     let mut server_requests = Vec::new();
+    message_processor.sync_thread_state_from_record(thread_record);
     let mut thread = thread_record.in_process_thread_handle();
     let effect = crate::process_core_event(
         message_processor,
@@ -1019,5 +1020,72 @@ mod tests {
                 phase: None,
             }]
         );
+    }
+
+    #[test]
+    fn turn_complete_uses_loaded_thread_record_when_processor_state_is_stale() {
+        let mut processor = MessageProcessor::new(MessageProcessorArgs {
+            api_version: ApiVersion::V2,
+            config_warnings: Vec::new(),
+        });
+        let thread_record = ThreadRecord {
+            id: "thread-1".to_string(),
+            preview: String::new(),
+            ephemeral: false,
+            model_provider: "openai".to_string(),
+            cwd: PathBuf::from("/workspace"),
+            source: SessionSource::Unknown,
+            name: None,
+            created_at: 1,
+            updated_at: 1,
+            archived: false,
+            turns: BTreeMap::from([(
+                "turn-1".to_string(),
+                TurnRecord {
+                    id: "turn-1".to_string(),
+                    items: vec![ThreadItem::AgentMessage {
+                        id: "item-1".to_string(),
+                        text: "ok".to_string(),
+                        phase: None,
+                    }],
+                    status: TurnStatus::InProgress,
+                    error: None,
+                },
+            )]),
+            active_turn_id: Some("turn-1".to_string()),
+            waiting_on_approval: false,
+            waiting_on_user_input: false,
+        };
+
+        let effect = process_loaded_thread_event(
+            &mut processor,
+            "thread-1",
+            &thread_record,
+            None,
+            &Event {
+                id: "evt-1".to_string(),
+                msg: EventMsg::TurnComplete(TurnCompleteEvent {
+                    turn_id: "turn-1".to_string(),
+                    last_agent_message: None,
+                }),
+            },
+        );
+
+        match effect.notifications.as_slice() {
+            [ServerNotification::TurnCompleted(TurnCompletedNotification { thread_id, turn })] => {
+                assert_eq!(thread_id, "thread-1");
+                assert_eq!(turn.id, "turn-1");
+                assert_eq!(
+                    turn.items,
+                    vec![ThreadItem::AgentMessage {
+                        id: "item-1".to_string(),
+                        text: "ok".to_string(),
+                        phase: None,
+                    }]
+                );
+                assert_eq!(turn.status, TurnStatus::Completed);
+            }
+            other => panic!("unexpected notifications: {other:?}"),
+        }
     }
 }

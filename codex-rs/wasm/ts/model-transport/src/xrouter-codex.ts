@@ -11,10 +11,14 @@ export function mapXrouterOutputItemToCodexResponseItem(
   if (record.type === "message") {
     return {
       type: "message",
-      ...(typeof record.id === "string"
-        ? { id: record.id }
-        : typeof fallbackAssistantItemId === "string"
-          ? { id: fallbackAssistantItemId }
+      // Xrouter streaming starts the assistant message before the final output
+      // item arrives. Reuse that synthetic item id on completion so the
+      // app-server closes the same assistant item instead of materializing a
+      // second message with a different upstream id.
+      ...(typeof fallbackAssistantItemId === "string"
+        ? { id: fallbackAssistantItemId }
+        : typeof record.id === "string"
+          ? { id: record.id }
           : {}),
       role: typeof record.role === "string" ? record.role : "assistant",
       content: Array.isArray(record.content) ? (record.content as JsonValue[]) : [],

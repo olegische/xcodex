@@ -121,7 +121,6 @@ export function summarizeClientResponse(
 type PendingTurn<TDispatch, TEvent> = {
   threadId: string;
   turnId: string | null;
-  events: TEvent[];
   resolve: (dispatch: TDispatch) => void;
   reject: (error: unknown) => void;
 };
@@ -172,7 +171,6 @@ export abstract class BrowserAppServerRuntimeCore<TDispatch, TEvent, TSnapshot> 
       this.pendingThreadTurns.set(requestedThreadId, {
         threadId: actualThreadId,
         turnId: null,
-        events: [],
         resolve,
         reject,
       });
@@ -246,7 +244,6 @@ export abstract class BrowserAppServerRuntimeCore<TDispatch, TEvent, TSnapshot> 
     if (pending === undefined) {
       return;
     }
-    pending.events.push(event);
     if (this.isTurnCompletedEvent(event)) {
       void this.resolveTurn(turnId, pending);
     }
@@ -256,7 +253,7 @@ export abstract class BrowserAppServerRuntimeCore<TDispatch, TEvent, TSnapshot> 
     this.pendingTurns.delete(turnId);
     try {
       const snapshot = await this.readThreadSnapshot(pending.threadId);
-      pending.resolve(this.buildResolvedDispatch(snapshot, pending.events));
+      pending.resolve(this.buildResolvedDispatch(snapshot, []));
     } catch (error) {
       pending.reject(error);
     }

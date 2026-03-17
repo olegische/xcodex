@@ -7,6 +7,9 @@ use codex_protocol::protocol::EventMsg;
 use tokio::sync::Mutex;
 use wasm_bindgen::JsValue;
 
+#[cfg(test)]
+use codex_app_server_protocol::ThreadItem;
+
 use crate::jsonrpc_bridge::server_notification_to_jsonrpc;
 use crate::jsonrpc_bridge::server_request_to_jsonrpc;
 use crate::state::RuntimeState;
@@ -127,6 +130,9 @@ async fn enqueue_server_notification_with_source(
 ) {
     let tx = {
         let mut state = state.lock().await;
+        if matches!(source, NotificationEnqueueSource::HostLive) {
+            state.record_live_notification(&notification);
+        }
         match source {
             NotificationEnqueueSource::Core => {
                 if !state.should_enqueue_core_notification(&notification) {
@@ -137,9 +143,7 @@ async fn enqueue_server_notification_with_source(
                     return;
                 }
             }
-            NotificationEnqueueSource::HostLive => {
-                state.record_live_notification(&notification);
-            }
+            NotificationEnqueueSource::HostLive => {}
         }
         state.outgoing_tx.clone()
     };
@@ -214,6 +218,141 @@ fn notification_method(notification: &codex_app_server_protocol::ServerNotificat
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+#[cfg(test)]
+fn apply_notification_to_loaded_record(
+    record: &mut codex_wasm_app_server::ThreadRecord,
+    notification: &codex_app_server_protocol::ServerNotification,
+) {
+    let mut thread = record.in_process_thread_handle();
+    codex_wasm_app_server::apply_server_notification_to_thread(&mut thread, notification);
+    record.apply_in_process_thread_handle(thread);
+    match notification {
+        codex_app_server_protocol::ServerNotification::AgentMessageDelta(payload) => {
+            append_agent_message_delta(record, &payload.turn_id, &payload.item_id, &payload.delta);
+        }
+        codex_app_server_protocol::ServerNotification::ReasoningSummaryTextDelta(payload) => {
+            append_reasoning_summary_delta(
+                record,
+                &payload.turn_id,
+                &payload.item_id,
+                payload.summary_index,
+                &payload.delta,
+            );
+        }
+        codex_app_server_protocol::ServerNotification::ReasoningSummaryPartAdded(payload) => {
+            ensure_reasoning_summary_slot(
+                record,
+                &payload.turn_id,
+                &payload.item_id,
+                payload.summary_index,
+            );
+        }
+        codex_app_server_protocol::ServerNotification::ReasoningTextDelta(payload) => {
+            append_reasoning_content_delta(
+                record,
+                &payload.turn_id,
+                &payload.item_id,
+                payload.content_index,
+                &payload.delta,
+            );
+        }
+        _ => {}
+    }
+    record.updated_at = codex_wasm_core::time::now_unix_seconds();
+}
+
+#[cfg(test)]
+fn append_agent_message_delta(
+    record: &mut codex_wasm_app_server::ThreadRecord,
+    turn_id: &str,
+    item_id: &str,
+    delta: &str,
+) {
+    let Some(turn) = record.turns.get_mut(turn_id) else {
+        return;
+    };
+    let Some(ThreadItem::AgentMessage { text, .. }) =
+        turn.items.iter_mut().find(|item| item.id() == item_id)
+    else {
+        return;
+    };
+    text.push_str(delta);
+}
+
+#[cfg(test)]
+fn append_reasoning_summary_delta(
+    record: &mut codex_wasm_app_server::ThreadRecord,
+    turn_id: &str,
+    item_id: &str,
+    summary_index: i64,
+    delta: &str,
+) {
+    let Some(ThreadItem::Reasoning { summary, .. }) =
+        find_thread_item_mut(record, turn_id, item_id)
+    else {
+        return;
+    };
+    let Some(index) = usize::try_from(summary_index).ok() else {
+        return;
+    };
+    while summary.len() <= index {
+        summary.push(String::new());
+    }
+    summary[index].push_str(delta);
+}
+
+#[cfg(test)]
+fn append_reasoning_content_delta(
+    record: &mut codex_wasm_app_server::ThreadRecord,
+    turn_id: &str,
+    item_id: &str,
+    content_index: i64,
+    delta: &str,
+) {
+    let Some(ThreadItem::Reasoning { content, .. }) =
+        find_thread_item_mut(record, turn_id, item_id)
+    else {
+        return;
+    };
+    let Some(index) = usize::try_from(content_index).ok() else {
+        return;
+    };
+    while content.len() <= index {
+        content.push(String::new());
+    }
+    content[index].push_str(delta);
+}
+
+#[cfg(test)]
+fn ensure_reasoning_summary_slot(
+    record: &mut codex_wasm_app_server::ThreadRecord,
+    turn_id: &str,
+    item_id: &str,
+    summary_index: i64,
+) {
+    let Some(ThreadItem::Reasoning { summary, .. }) =
+        find_thread_item_mut(record, turn_id, item_id)
+    else {
+        return;
+    };
+    let Some(index) = usize::try_from(summary_index).ok() else {
+        return;
+    };
+    while summary.len() <= index {
+        summary.push(String::new());
+    }
+}
+
+#[cfg(test)]
+fn find_thread_item_mut<'a>(
+    record: &'a mut codex_wasm_app_server::ThreadRecord,
+    turn_id: &str,
+    item_id: &str,
+) -> Option<&'a mut ThreadItem> {
+    let turn = record.turns.get_mut(turn_id)?;
+    turn.items.iter_mut().find(|item| item.id() == item_id)
+}
+
 #[cfg(target_arch = "wasm32")]
 fn browser_log(message: &str) {
     web_sys::console::log_1(&JsValue::from_str(message));
@@ -221,3 +360,175 @@ fn browser_log(message: &str) {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn browser_log(_message: &str) {}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    use codex_app_server_protocol::AgentMessageDeltaNotification;
+    use codex_app_server_protocol::ItemCompletedNotification;
+    use codex_app_server_protocol::ItemStartedNotification;
+    use codex_app_server_protocol::ReasoningSummaryPartAddedNotification;
+    use codex_app_server_protocol::ReasoningSummaryTextDeltaNotification;
+    use codex_app_server_protocol::ReasoningTextDeltaNotification;
+    use codex_app_server_protocol::ServerNotification;
+    use codex_app_server_protocol::ThreadItem;
+    use codex_app_server_protocol::TurnStatus;
+    use codex_protocol::protocol::SessionSource;
+    use pretty_assertions::assert_eq;
+
+    use super::apply_notification_to_loaded_record;
+
+    fn thread_record_with_turn(items: Vec<ThreadItem>) -> codex_wasm_app_server::ThreadRecord {
+        codex_wasm_app_server::ThreadRecord {
+            id: "thread-1".to_string(),
+            preview: String::new(),
+            ephemeral: false,
+            model_provider: "openai".to_string(),
+            cwd: PathBuf::from("/workspace"),
+            source: SessionSource::Unknown,
+            name: None,
+            created_at: 1,
+            updated_at: 1,
+            archived: false,
+            turns: BTreeMap::from([(
+                "turn-1".to_string(),
+                codex_wasm_app_server::TurnRecord {
+                    id: "turn-1".to_string(),
+                    items,
+                    status: TurnStatus::InProgress,
+                    error: None,
+                },
+            )]),
+            active_turn_id: Some("turn-1".to_string()),
+            waiting_on_approval: false,
+            waiting_on_user_input: false,
+        }
+    }
+
+    #[test]
+    fn host_sink_notifications_update_agent_message_record() {
+        let mut record = thread_record_with_turn(Vec::new());
+
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::ItemStarted(ItemStartedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item: ThreadItem::AgentMessage {
+                    id: "item-1".to_string(),
+                    text: String::new(),
+                    phase: None,
+                },
+            }),
+        );
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::AgentMessageDelta(AgentMessageDeltaNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: "item-1".to_string(),
+                delta: "hel".to_string(),
+            }),
+        );
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::AgentMessageDelta(AgentMessageDeltaNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: "item-1".to_string(),
+                delta: "lo".to_string(),
+            }),
+        );
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::ItemCompleted(ItemCompletedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item: ThreadItem::AgentMessage {
+                    id: "item-1".to_string(),
+                    text: "hello".to_string(),
+                    phase: None,
+                },
+            }),
+        );
+
+        assert_eq!(
+            record.turns["turn-1"].items,
+            vec![ThreadItem::AgentMessage {
+                id: "item-1".to_string(),
+                text: "hello".to_string(),
+                phase: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn host_sink_notifications_update_reasoning_record() {
+        let mut record = thread_record_with_turn(Vec::new());
+
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::ItemStarted(ItemStartedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item: ThreadItem::Reasoning {
+                    id: "reasoning-1".to_string(),
+                    summary: Vec::new(),
+                    content: Vec::new(),
+                },
+            }),
+        );
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::ReasoningSummaryPartAdded(ReasoningSummaryPartAddedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: "reasoning-1".to_string(),
+                summary_index: 0,
+            }),
+        );
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::ReasoningSummaryTextDelta(ReasoningSummaryTextDeltaNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: "reasoning-1".to_string(),
+                summary_index: 0,
+                delta: "step".to_string(),
+            }),
+        );
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::ReasoningTextDelta(ReasoningTextDeltaNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item_id: "reasoning-1".to_string(),
+                content_index: 0,
+                delta: "trace".to_string(),
+            }),
+        );
+        apply_notification_to_loaded_record(
+            &mut record,
+            &ServerNotification::ItemCompleted(ItemCompletedNotification {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item: ThreadItem::Reasoning {
+                    id: "reasoning-1".to_string(),
+                    summary: vec!["step".to_string()],
+                    content: vec!["trace".to_string()],
+                },
+            }),
+        );
+
+        assert_eq!(
+            record.turns["turn-1"].items,
+            vec![ThreadItem::Reasoning {
+                id: "reasoning-1".to_string(),
+                summary: vec!["step".to_string()],
+                content: vec!["trace".to_string()],
+            }]
+        );
+    }
+}

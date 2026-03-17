@@ -121,7 +121,8 @@ export class BrowserCodexRuntime<
     const actualThreadId =
       typeof thread.id === "string" && thread.id.length > 0 ? thread.id : request.threadId;
     this.rememberThreadAlias(request.threadId, actualThreadId);
-    const snapshot = await this.readThreadSnapshot(actualThreadId);
+    const snapshot = this.deps.threadToSnapshot(thread);
+    await this.deps.persistence.saveSession(snapshot);
     return this.deps.buildDispatch(this.deps.withRequestedThreadId(snapshot, request.threadId), [
       {
         method: "thread/started",
@@ -140,7 +141,8 @@ export class BrowserCodexRuntime<
     const actualThreadId =
       typeof thread.id === "string" && thread.id.length > 0 ? thread.id : this.resolveThreadId(request.threadId);
     this.rememberThreadAlias(request.threadId, actualThreadId);
-    const snapshot = await this.readThreadSnapshot(actualThreadId);
+    const snapshot = this.deps.threadToSnapshot(thread);
+    await this.deps.persistence.saveSession(snapshot);
     return this.deps.buildDispatch(this.deps.withRequestedThreadId(snapshot, request.threadId), []);
   }
 

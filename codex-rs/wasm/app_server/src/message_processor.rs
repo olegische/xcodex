@@ -230,6 +230,11 @@ impl MessageProcessor {
         self.codex_message_processor.thread_record(thread_id)
     }
 
+    pub fn sync_thread_state_from_record(&mut self, thread: &ThreadRecord) {
+        self.codex_message_processor
+            .sync_thread_state_from_record(thread);
+    }
+
     pub fn running_thread(&self, thread_id: &str) -> Option<Arc<Codex>> {
         self.codex_message_processor.running_thread(thread_id)
     }

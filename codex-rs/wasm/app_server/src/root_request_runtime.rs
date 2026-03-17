@@ -414,5 +414,6 @@ mod tests {
             response.runtime.record.id,
             "0194c6f0-4d4c-7eb2-a1d2-137d8d7c0abe"
         );
+        assert!(response.runtime.notifications.is_empty());
     }
 }

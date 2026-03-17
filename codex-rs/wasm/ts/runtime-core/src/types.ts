@@ -28,7 +28,7 @@ export type BrowserRuntimeHost = {
   loadUserConfig?(request: JsonValue): Promise<JsonValue>;
   saveUserConfig?(request: JsonValue): Promise<JsonValue>;
   listDiscoverableApps?(request: JsonValue): Promise<JsonValue>;
-  runModelTurn?(request: JsonValue): Promise<JsonValue>;
+  runModelTurn?(request: JsonValue, onEvent?: (event: unknown) => void): Promise<JsonValue>;
   emitNotification?(notification: JsonValue): Promise<void>;
   resolveMcpOauthRedirectUri?(request: JsonValue): Promise<JsonValue>;
   waitForMcpOauthCallback?(request: JsonValue): Promise<JsonValue>;

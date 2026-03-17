@@ -43,8 +43,10 @@ use js_sys::Function;
 use js_sys::Promise;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::sync::mpsc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::JsFuture;
 
@@ -89,7 +91,7 @@ export interface BrowserRuntimeHost {
   deleteThreadSession?(request: unknown): Promise<unknown>;
   listThreadSessions?(request: unknown): Promise<unknown>;
   listDiscoverableApps?(request: unknown): Promise<unknown>;
-  runModelTurn?(request: unknown): Promise<unknown>;
+  runModelTurn?(request: unknown, onEvent?: (event: unknown) => void): Promise<unknown>;
   emitNotification?(notification: unknown): Promise<void>;
   resolveMcpOauthRedirectUri?(request: unknown): Promise<unknown>;
   waitForMcpOauthCallback?(request: unknown): Promise<unknown>;
@@ -210,8 +212,49 @@ impl ModelTransportHost for JsHost {
     async fn run_model_turn(
         &self,
         request: BrowserModelRequest,
-    ) -> HostResult<Vec<BrowserModelEvent>> {
-        call_host_method(&self.host, "runModelTurn", request).await
+        event_tx: mpsc::Sender<BrowserModelEvent>,
+    ) -> HostResult<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let host = self.host.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = async {
+                let function = lookup_function(&host, "runModelTurn")?.ok_or_else(|| {
+                    JsValue::from_str("BrowserRuntimeHost.runModelTurn is required")
+                })?;
+                let request_value = encode_js_value(&request)?;
+                let callback_tx = event_tx.clone();
+                let callback = Closure::wrap(Box::new(move |value: JsValue| {
+                    let event_tx = callback_tx.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let Ok(event) = decode_js_value::<BrowserModelEvent>(value) else {
+                            return;
+                        };
+                        let _ = event_tx.send(event).await;
+                    });
+                }) as Box<dyn FnMut(JsValue)>);
+                let promise = function
+                    .call2(&host, &request_value, callback.as_ref().unchecked_ref())?
+                    .dyn_into::<Promise>()
+                    .map_err(|_| {
+                        JsValue::from_str("BrowserRuntimeHost.runModelTurn must return a Promise")
+                    })?;
+                let response = JsFuture::from(promise).await?;
+                if !response.is_undefined() && !response.is_null() {
+                    let trailing_events: Vec<BrowserModelEvent> = decode_js_value(response)?;
+                    for event in trailing_events {
+                        if event_tx.send(event).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            .await
+            .map_err(js_host_error);
+            let _ = tx.send(result);
+        });
+        rx.await
+            .map_err(|_| js_host_error(JsValue::from_str("host callback cancelled")))?
     }
 }
 

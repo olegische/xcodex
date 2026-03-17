@@ -11,7 +11,7 @@ export type NormalizedModelTurnRequest = {
   requestBody: Record<string, unknown>;
   transportOptions: Record<string, unknown>;
   rawRequest: unknown;
-  emitNotification?: (notification: JsonValue) => Promise<void>;
+  emitModelEvent?: (event: JsonValue) => void | Promise<void>;
 };
 
 export type BrowserRuntimeHostDeps = BrowserHostFileSystem & {
@@ -30,7 +30,7 @@ export type NormalizedModelTurnRunnerParams<TConfig> = {
   requestBody: Record<string, JsonValue>;
   transportOptions: Record<string, unknown>;
   extraHeaders: Record<string, string> | null;
-  emitNotification?: (notification: JsonValue) => Promise<void>;
+  emitModelEvent?: (event: JsonValue) => void | Promise<void>;
 };
 
 export type CreateNormalizedModelTurnRunnerDeps<TConfig, TResult> = {
@@ -69,12 +69,12 @@ export function createBrowserRuntimeHostFromDeps(
       }
       return await deps.listDiscoverableApps(request);
     },
-    async runModelTurn(this: BrowserRuntimeHost, request: JsonValue) {
+    async runModelTurn(this: BrowserRuntimeHost, request: JsonValue, onEvent?: (event: unknown) => void) {
       if (deps.runNormalizedModelTurn === undefined) {
         throw new Error("Browser runtime host does not provide model transport execution");
       }
       return await deps.runNormalizedModelTurn(
-        normalizeModelTurnRequest(request, this.emitNotification),
+        normalizeModelTurnRequest(request, onEvent),
       );
     },
     async resolveMcpOauthRedirectUri(request: JsonValue) {
@@ -94,7 +94,7 @@ export function createBrowserRuntimeHostFromDeps(
 
 export function normalizeModelTurnRequest(
   request: unknown,
-  emitNotification?: BrowserRuntimeHost["emitNotification"],
+  emitModelEvent?: (event: unknown) => void,
 ): NormalizedModelTurnRequest {
   const requestRecord = asJsonRecord(normalizeHostValuePreservingStrings(request));
   return {
@@ -105,7 +105,12 @@ export function normalizeModelTurnRequest(
       normalizeHostValuePreservingStrings(requestRecord.transportOptions),
     ),
     rawRequest: request,
-    emitNotification,
+    emitModelEvent:
+      emitModelEvent === undefined
+        ? undefined
+        : async (event: JsonValue) => {
+            emitModelEvent(event);
+          },
   };
 }
 
@@ -143,7 +148,7 @@ export function createNormalizedModelTurnRunner<TConfig, TResult>(
       requestBody: request.requestBody as Record<string, JsonValue>,
       transportOptions: request.transportOptions,
       extraHeaders,
-      emitNotification: request.emitNotification,
+      emitModelEvent: request.emitModelEvent,
     });
   };
 }

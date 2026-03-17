@@ -364,21 +364,34 @@ impl ModelClientSession {
             if tx.send(Ok(ResponseEvent::Created)).await.is_err() {
                 return;
             }
+            let (model_tx, mut model_rx) = mpsc::channel(32);
+            let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+            spawn_detached(async move {
+                let result = host.run_model_turn(request, model_tx).await;
+                let _ = done_tx.send(result);
+            });
 
-            match host.run_model_turn(request).await {
-                Ok(events) => {
-                    for event in events {
-                        let Some(mapped) = map_browser_model_event(event) else {
-                            continue;
-                        };
-                        if tx.send(Ok(mapped)).await.is_err() {
-                            return;
-                        }
-                    }
+            while let Some(event) = model_rx.recv().await {
+                let Some(mapped) = map_browser_model_event(event) else {
+                    continue;
+                };
+                if tx.send(Ok(mapped)).await.is_err() {
+                    return;
                 }
-                Err(error) => {
+            }
+
+            match done_rx.await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
                     let _ = tx
                         .send(Err(CodexErr::UnsupportedOperation(error.message)))
+                        .await;
+                }
+                Err(_) => {
+                    let _ = tx
+                        .send(Err(CodexErr::UnsupportedOperation(
+                            "browser model transport task cancelled".to_string(),
+                        )))
                         .await;
                 }
             }

@@ -836,6 +836,20 @@ impl CodexMessageProcessor {
         &self.thread_state
     }
 
+    pub fn sync_thread_state_from_record(&mut self, thread: &ThreadRecord) {
+        let Some(active_turn_id) = thread.active_turn_id.clone() else {
+            self.thread_state.reset_current_turn();
+            return;
+        };
+        let Some(active_turn) = thread.turns.get(&active_turn_id) else {
+            self.thread_state.reset_current_turn();
+            return;
+        };
+        self.thread_state.active_turn_id = Some(active_turn_id);
+        self.thread_state.turn_summary.last_error = active_turn.error.clone();
+        self.thread_state.current_turn_items = active_turn.items.clone();
+    }
+
     pub fn register_thread(&mut self, thread: ThreadRecord) {
         self.app_server_state.upsert_thread(thread);
     }

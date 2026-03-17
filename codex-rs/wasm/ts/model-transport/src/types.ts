@@ -6,7 +6,7 @@ export type ModelTransportTurnParams<TConfig> = {
   requestBody: Record<string, unknown>;
   extraHeaders: Record<string, string> | null;
   transportOptions?: Record<string, unknown>;
-  emitNotification?: (notification: JsonValue) => Promise<void>;
+  emitModelEvent?: (event: JsonValue) => void | Promise<void>;
 };
 
 export type ModelDiscoveryResult<TModel> = {

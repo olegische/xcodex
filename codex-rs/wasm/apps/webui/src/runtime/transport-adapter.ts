@@ -32,7 +32,7 @@ export const webUiModelTransportAdapter: ModelTransportAdapter<
       requestBody: params.requestBody,
       extraHeaders: params.extraHeaders,
       transportOptions: params.transportOptions,
-      emitNotification: params.emitNotification,
+      emitModelEvent: params.emitModelEvent,
     });
   },
   async runXrouterTurn(params) {
@@ -42,7 +42,7 @@ export const webUiModelTransportAdapter: ModelTransportAdapter<
       requestBody: params.requestBody,
       extraHeaders: params.extraHeaders,
       transportOptions: params.transportOptions,
-      emitNotification: params.emitNotification,
+      emitModelEvent: params.emitModelEvent,
     });
   },
 });

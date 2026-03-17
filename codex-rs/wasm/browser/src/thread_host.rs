@@ -20,18 +20,29 @@ pub(crate) async fn install_loaded_thread(
 ) {
     let thread_id = loaded.runtime.record.id.clone();
     let app_server = Arc::new(Mutex::new(loaded.runtime.processor));
-    {
+    let record = loaded.runtime.record.clone();
+    let codex = Arc::clone(&loaded.runtime.codex);
+    let should_spawn = {
         let mut state = state.lock().await;
-        state.threads.insert(
-            thread_id.clone(),
-            LoadedThread {
-                app_server,
-                codex: Arc::clone(&loaded.runtime.codex),
-                record: loaded.runtime.record.clone(),
-            },
-        );
+        if let Some(existing) = state.threads.get_mut(&thread_id) {
+            existing.app_server = app_server;
+            existing.record = record;
+            false
+        } else {
+            state.threads.insert(
+                thread_id.clone(),
+                LoadedThread {
+                    app_server,
+                    codex: Arc::clone(&codex),
+                    record,
+                },
+            );
+            true
+        }
+    };
+    if should_spawn {
+        spawn_event_pump(state, thread_id, codex);
     }
-    spawn_event_pump(state, thread_id, loaded.runtime.codex);
 }
 
 pub(crate) async fn loaded_thread_app_server(
@@ -116,7 +127,7 @@ fn spawn_event_pump(state: &Arc<Mutex<RuntimeState>>, thread_id: String, codex: 
 mod tests {
     use std::collections::HashMap;
     use std::path::Path;
-    
+
     use std::sync::Arc;
     use std::sync::Mutex as StdMutex;
 
@@ -449,5 +460,135 @@ mod tests {
             resumed_turn.response["turn"]["status"].as_str(),
             Some("inProgress")
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reinstalling_same_thread_keeps_single_runtime_entry() {
+        let root = std::env::temp_dir().join(format!(
+            "codex-wasm-browser-reinstall-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        std::fs::create_dir_all(root.join("sessions")).expect("create sessions dir");
+        let thread_storage_host = Arc::new(InMemoryThreadStorageHost::default());
+        let bootstrap = runtime_bootstrap(&root, Arc::clone(&thread_storage_host));
+
+        let mut root_processor = MessageProcessor::new(MessageProcessorArgs {
+            api_version: ApiVersion::V2,
+            config_warnings: Vec::new(),
+        });
+        root_processor.set_runtime_bootstrap(bootstrap.clone());
+        let started = process_root_or_thread_start_request(
+            &mut root_processor,
+            ClientRequest::ThreadStart {
+                request_id: RequestId::Integer(1),
+                params: ThreadStartParams {
+                    model: Some("gpt-test".to_string()),
+                    model_provider: None,
+                    service_tier: None,
+                    cwd: Some(root.display().to_string()),
+                    approval_policy: None,
+                    sandbox: None,
+                    config: None,
+                    service_name: None,
+                    base_instructions: None,
+                    developer_instructions: None,
+                    personality: None,
+                    ephemeral: Some(true),
+                    dynamic_tools: None,
+                    mock_experimental_field: None,
+                    experimental_raw_events: false,
+                    persist_extended_history: false,
+                },
+            },
+            Some(&bootstrap),
+        )
+        .await
+        .expect("thread/start succeeds");
+        let RootRequestResult::LoadedThreadReady(started) = started else {
+            panic!("expected loaded thread result");
+        };
+        let thread_id = started.runtime.record.id.clone();
+        let state = new_runtime_state();
+        install_loaded_thread(&state, started).await;
+        let original_codex = {
+            let state = state.lock().await;
+            Arc::clone(&state.threads[&thread_id].codex)
+        };
+
+        thread_storage_host
+            .save_thread_session(SaveThreadSessionRequest {
+                session: StoredThreadSession {
+                    metadata: StoredThreadSessionMetadata {
+                        thread_id: thread_id.clone(),
+                        rollout_id: format!("rollout-2026-03-16T12-00-00-{thread_id}.jsonl"),
+                        created_at: 1,
+                        updated_at: 2,
+                        archived: false,
+                        name: Some("Stored Thread".to_string()),
+                        preview: "Stored prompt".to_string(),
+                        cwd: root.display().to_string(),
+                        model_provider: "openai".to_string(),
+                    },
+                    items: vec![RolloutItem::SessionMeta(SessionMetaLine {
+                        meta: SessionMeta {
+                            id: codex_protocol::ThreadId::from_string(&thread_id)
+                                .expect("thread id"),
+                            forked_from_id: None,
+                            timestamp: codex_wasm_core::time::now_rfc3339(),
+                            cwd: root.clone(),
+                            originator: "wasm".to_string(),
+                            cli_version: env!("CARGO_PKG_VERSION").to_string(),
+                            source: SessionSource::Unknown,
+                            agent_nickname: None,
+                            agent_role: None,
+                            model_provider: Some("openai".to_string()),
+                            base_instructions: None,
+                            dynamic_tools: None,
+                            memory_mode: None,
+                        },
+                        git: None,
+                    })],
+                },
+            })
+            .await
+            .expect("seed stored session for resume");
+
+        let resumed = process_root_or_thread_start_request(
+            &mut root_processor,
+            ClientRequest::ThreadResume {
+                request_id: RequestId::Integer(2),
+                params: ThreadResumeParams {
+                    thread_id: thread_id.clone(),
+                    history: None,
+                    path: None,
+                    model: None,
+                    model_provider: None,
+                    service_tier: None,
+                    cwd: None,
+                    approval_policy: None,
+                    sandbox: None,
+                    config: None,
+                    base_instructions: None,
+                    developer_instructions: None,
+                    personality: None,
+                    persist_extended_history: false,
+                },
+            },
+            Some(&bootstrap),
+        )
+        .await
+        .expect("thread/resume succeeds");
+        let RootRequestResult::LoadedThreadReady(resumed) = resumed else {
+            panic!("expected loaded thread result");
+        };
+        install_loaded_thread(&state, resumed).await;
+
+        let state = state.lock().await;
+        assert_eq!(state.threads.len(), 1);
+        assert!(Arc::ptr_eq(
+            &state.threads[&thread_id].codex,
+            &original_codex
+        ));
     }
 }

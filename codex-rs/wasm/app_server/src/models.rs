@@ -176,12 +176,7 @@ pub fn build_thread(record: &ThreadRecord, include_turns: bool, status: ThreadSt
         git_info: None,
         name: record.name.clone(),
         turns: if include_turns {
-            record
-                .turns
-                .values()
-                .cloned()
-                .map(turn_to_protocol)
-                .collect()
+            record.turns.values().map(turn_to_protocol).collect()
         } else {
             Vec::new()
         },
@@ -285,11 +280,63 @@ pub fn turn_start_response(turn_id: String) -> TurnStartResponse {
     }
 }
 
-pub fn turn_to_protocol(turn: TurnRecord) -> Turn {
+pub fn turn_to_protocol(turn: &TurnRecord) -> Turn {
     Turn {
-        id: turn.id,
-        items: turn.items,
-        status: turn.status,
-        error: turn.error,
+        id: turn.id.clone(),
+        items: if turn.status == TurnStatus::InProgress {
+            Vec::new()
+        } else {
+            turn.items.clone()
+        },
+        status: turn.status.clone(),
+        error: turn.error.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use codex_app_server_protocol::ThreadItem;
+    use codex_app_server_protocol::TurnStatus;
+    use pretty_assertions::assert_eq;
+
+    use super::TurnRecord;
+    use super::turn_to_protocol;
+
+    #[test]
+    fn turn_to_protocol_hides_items_while_turn_is_in_progress() {
+        let turn = TurnRecord {
+            id: "turn-1".to_string(),
+            items: vec![ThreadItem::AgentMessage {
+                id: "item-1".to_string(),
+                text: "partial".to_string(),
+                phase: None,
+            }],
+            status: TurnStatus::InProgress,
+            error: None,
+        };
+
+        let protocol_turn = turn_to_protocol(&turn);
+
+        assert_eq!(protocol_turn.items, Vec::new());
+        assert_eq!(protocol_turn.status, TurnStatus::InProgress);
+    }
+
+    #[test]
+    fn turn_to_protocol_keeps_items_after_turn_completion() {
+        let turn = TurnRecord {
+            id: "turn-1".to_string(),
+            items: vec![ThreadItem::AgentMessage {
+                id: "item-1".to_string(),
+                text: "done".to_string(),
+                phase: None,
+            }],
+            status: TurnStatus::Completed,
+            error: None,
+        };
+
+        let protocol_turn = turn_to_protocol(&turn);
+
+        assert_eq!(protocol_turn.items, turn.items);
+        assert_eq!(protocol_turn.status, TurnStatus::Completed);
     }
 }

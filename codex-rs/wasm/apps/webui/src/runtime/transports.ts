@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
 import {
   createXrouterBrowserClient,
   mapXrouterOutputItemToCodexResponseItem,
@@ -24,11 +23,10 @@ export async function runResponsesApiTurn(params: {
   requestBody: Record<string, unknown>;
   extraHeaders: Record<string, string> | null;
   transportOptions?: Record<string, unknown>;
-  emitNotification?: (notification: JsonValue) => Promise<void>;
+  emitModelEvent?: (event: JsonValue) => void | Promise<void>;
 }): Promise<JsonValue> {
   const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
-  const streamState = createStreamingState(params.transportOptions);
-  let notificationChain = Promise.resolve();
+  let eventChain = enqueueModelEvent(Promise.resolve(), params.emitModelEvent, modelEvents[0]);
 
   try {
     await runResponsesStreamingExecutor({
@@ -50,12 +48,8 @@ export async function runResponsesApiTurn(params: {
         const nextModelEvent = mapResponsesStreamEventToBrowserModelEvent(event, params.requestId);
         if (nextModelEvent !== null) {
           modelEvents.push(nextModelEvent);
+          eventChain = enqueueModelEvent(eventChain, params.emitModelEvent, nextModelEvent);
         }
-        notificationChain = enqueueNotifications(
-          notificationChain,
-          params.emitNotification,
-          notificationsFromResponsesEvent(event, streamState),
-        );
       },
       onDelta(outputTextDelta) {
         logStreamDelta(params.requestId, outputTextDelta);
@@ -75,13 +69,15 @@ export async function runResponsesApiTurn(params: {
     }
     throw error;
   }
-  await notificationChain;
+  const completedEvent = { type: "completed", requestId: params.requestId } satisfies JsonValue;
+  modelEvents.push(completedEvent);
+  eventChain = enqueueModelEvent(eventChain, params.emitModelEvent, completedEvent);
+  await eventChain;
 
   logStreamCompleted(params.requestId, collectAssistantTextFromModelEvents(modelEvents), {
     provider: "responses",
   });
-  modelEvents.push({ type: "completed", requestId: params.requestId });
-  return modelEvents;
+  return params.emitModelEvent === undefined ? modelEvents : [];
 }
 
 export async function runXrouterTurn(params: {
@@ -90,13 +86,13 @@ export async function runXrouterTurn(params: {
   requestBody: Record<string, unknown>;
   extraHeaders: Record<string, string> | null;
   transportOptions?: Record<string, unknown>;
-  emitNotification?: (notification: JsonValue) => Promise<void>;
+  emitModelEvent?: (event: JsonValue) => void | Promise<void>;
 }): Promise<JsonValue> {
   const client = await createXrouterClient(params.codexConfig);
   const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
   let streamError: JsonValue | null = null;
   const streamState = createStreamingState(params.transportOptions);
-  let notificationChain = Promise.resolve();
+  let eventChain = enqueueModelEvent(Promise.resolve(), params.emitModelEvent, modelEvents[0]);
   const normalizedRequestBody = prepareXrouterResponsesRequest(
     params.requestBody as OpenAI.Responses.ResponseCreateParams,
   );
@@ -137,11 +133,7 @@ export async function runXrouterTurn(params: {
       onEvent(payload) {
         const nextModelEvents = mapXrouterEventToBrowserModelEvents(payload, params.requestId, streamState);
         modelEvents.push(...nextModelEvents);
-        notificationChain = enqueueNotifications(
-          notificationChain,
-          params.emitNotification,
-          notificationsFromXrouterEvent(payload, streamState),
-        );
+        eventChain = enqueueModelEvents(eventChain, params.emitModelEvent, nextModelEvents);
       },
       onDelta(delta) {
         logStreamDelta(params.requestId, delta);
@@ -167,16 +159,25 @@ export async function runXrouterTurn(params: {
             },
           });
         }
-        notificationChain = enqueueNotifications(
-          notificationChain,
-          params.emitNotification,
-          notificationsFromCompletedItems(normalizedOutputItems, streamState),
+        eventChain = enqueueModelEvents(
+          eventChain,
+          params.emitModelEvent,
+          modelEvents.filter(
+            (event) =>
+              event !== null &&
+              typeof event === "object" &&
+              !Array.isArray(event) &&
+              event.requestId === params.requestId &&
+              event.type === "outputItemDone",
+          ),
         );
         logStreamCompleted(params.requestId, collectAssistantTextFromItems(normalizedOutputItems), {
           provider: "xrouter",
           finishReason: typeof payload.finish_reason === "string" ? payload.finish_reason : null,
         });
-        modelEvents.push({ type: "completed", requestId: params.requestId });
+        const completedEvent = { type: "completed", requestId: params.requestId } satisfies JsonValue;
+        modelEvents.push(completedEvent);
+        eventChain = enqueueModelEvent(eventChain, params.emitModelEvent, completedEvent);
       },
       onErrorEvent(message) {
         streamError = createHostError("unavailable", message);
@@ -200,62 +201,32 @@ export async function runXrouterTurn(params: {
   if (streamError !== null) {
     throw streamError;
   }
-  await notificationChain;
+  await eventChain;
   if (!modelEvents.some((event) => isCompletedEvent(event, params.requestId))) {
     logStreamCompleted(params.requestId, collectAssistantTextFromModelEvents(modelEvents), {
       provider: "xrouter",
       completedEvent: false,
     });
-    modelEvents.push({ type: "completed", requestId: params.requestId });
+    const completedEvent = { type: "completed", requestId: params.requestId } satisfies JsonValue;
+    modelEvents.push(completedEvent);
+    await enqueueModelEvent(Promise.resolve(), params.emitModelEvent, completedEvent);
   }
-  return modelEvents;
+  return params.emitModelEvent === undefined ? modelEvents : [];
 }
 
 type StreamingState = {
-  threadId: string | null;
-  turnId: string | null;
   assistantItemId: string;
-  reasoningItemId: string;
-  assistantStarted: boolean;
-  reasoningStarted: boolean;
   assistantModelStarted: boolean;
 };
-
-type CanonicalStreamThreadItem =
-  | {
-      type: "agentMessage";
-      id: string;
-      text: string;
-      phase: null;
-    }
-  | {
-      type: "reasoning";
-      id: string;
-      summary: string[];
-      content: string[];
-    };
 
 function createStreamingState(transportOptions: Record<string, unknown> | undefined): StreamingState {
   const options =
     transportOptions !== undefined && transportOptions !== null ? transportOptions : {};
-  const threadId =
-    typeof options.conversationId === "string"
-      ? options.conversationId
-      : typeof options.threadId === "string"
-        ? options.threadId
-        : null;
   const turnId = typeof options.turnId === "string" ? options.turnId : null;
   const assistantItemId =
     typeof options.assistantItemId === "string" ? options.assistantItemId : `${turnId ?? "turn"}:assistant`;
-  const reasoningItemId =
-    typeof options.reasoningItemId === "string" ? options.reasoningItemId : `${turnId ?? "turn"}:reasoning`;
   return {
-    threadId,
-    turnId,
     assistantItemId,
-    reasoningItemId,
-    assistantStarted: false,
-    reasoningStarted: false,
     assistantModelStarted: false,
   };
 }
@@ -317,77 +288,6 @@ function mapResponsesStreamEventToBrowserModelEvent(
   return null;
 }
 
-function notificationsFromResponsesEvent(
-  event: ResponsesStreamEvent,
-  state: StreamingState,
-): ServerNotification[] {
-  const base = notificationScope(state);
-  if (base === null) {
-    return [];
-  }
-  if (event.type === "response.output_item.added" && isJsonRecord(event.item)) {
-    return notificationsFromOutputItemAdded(event.item as Record<string, unknown>, state, base);
-  }
-  if (event.type === "response.output_item.done" && isJsonRecord(event.item)) {
-    return notificationsFromOutputItemDone(event.item as Record<string, unknown>, state, base);
-  }
-  if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
-    return [
-      ...ensureAssistantStarted(state, base),
-      {
-        method: "item/agentMessage/delta",
-        params: {
-          ...base,
-          itemId: state.assistantItemId,
-          delta: event.delta,
-        },
-      },
-    ];
-  }
-  if (event.type === "response.reasoning_summary_text.delta" && typeof event.delta === "string") {
-    return [
-      ...ensureReasoningStarted(state, base),
-      {
-        method: "item/reasoning/summaryTextDelta",
-        params: {
-          ...base,
-          itemId: state.reasoningItemId,
-          delta: event.delta,
-          summaryIndex: typeof event.summary_index === "number" ? event.summary_index : 0,
-        },
-      },
-    ];
-  }
-  if (event.type === "response.reasoning_text.delta" && typeof event.delta === "string") {
-    return [
-      ...ensureReasoningStarted(state, base),
-      {
-        method: "item/reasoning/textDelta",
-        params: {
-          ...base,
-          itemId: state.reasoningItemId,
-          delta: event.delta,
-          contentIndex: typeof event.content_index === "number" ? event.content_index : 0,
-        },
-      },
-    ];
-  }
-  if (event.type === "response.reasoning_summary_part.added") {
-    return [
-      ...ensureReasoningStarted(state, base),
-      {
-        method: "item/reasoning/summaryPartAdded",
-        params: {
-          ...base,
-          itemId: state.reasoningItemId,
-          summaryIndex: typeof event.summary_index === "number" ? event.summary_index : 0,
-        },
-      },
-    ];
-  }
-  return [];
-}
-
 function mapXrouterEventToBrowserModelEvents(
   payload: XrouterStreamEventPayload,
   requestId: string,
@@ -404,189 +304,6 @@ function mapXrouterEventToBrowserModelEvents(
     ];
   }
   return [];
-}
-
-function notificationsFromXrouterEvent(
-  payload: XrouterStreamEventPayload,
-  state: StreamingState,
-): ServerNotification[] {
-  const base = notificationScope(state);
-  if (base === null) {
-    return [];
-  }
-  if (payload.type === "output_text_delta" && typeof payload.delta === "string") {
-    return [
-      ...ensureAssistantStarted(state, base),
-      {
-        method: "item/agentMessage/delta",
-        params: {
-          ...base,
-          itemId: state.assistantItemId,
-          delta: payload.delta,
-        },
-      },
-    ];
-  }
-  return [];
-}
-
-function notificationsFromCompletedItems(
-  items: JsonValue[],
-  state: StreamingState,
-): ServerNotification[] {
-  const base = notificationScope(state);
-  if (base === null) {
-    return [];
-  }
-  return items.flatMap((item) => {
-    if (!isJsonRecord(item)) {
-      return [];
-    }
-    return notificationsFromOutputItemDone(item, state, base);
-  });
-}
-
-function notificationsFromOutputItemAdded(
-  item: Record<string, unknown>,
-  state: StreamingState,
-  base: { threadId: string; turnId: string },
-): ServerNotification[] {
-  const threadItem = threadItemFromResponseItem(item, state);
-  if (threadItem === null) {
-    return [];
-  }
-  if (threadItem.type === "agentMessage") {
-    state.assistantStarted = true;
-  } else if (threadItem.type === "reasoning") {
-    state.reasoningStarted = true;
-  }
-  return [
-    {
-      method: "item/started",
-      params: {
-        ...base,
-        item: threadItem,
-      },
-    },
-  ];
-}
-
-function notificationsFromOutputItemDone(
-  item: Record<string, unknown>,
-  state: StreamingState,
-  base: { threadId: string; turnId: string },
-): ServerNotification[] {
-  const threadItem = threadItemFromResponseItem(item, state);
-  if (threadItem === null) {
-    return [];
-  }
-  if (threadItem.type === "agentMessage") {
-    state.assistantStarted = true;
-  } else if (threadItem.type === "reasoning") {
-    state.reasoningStarted = true;
-  }
-  return [
-    {
-      method: "item/completed",
-      params: {
-        ...base,
-        item: threadItem,
-      },
-    },
-  ];
-}
-
-function threadItemFromResponseItem(
-  item: Record<string, unknown>,
-  state: StreamingState,
-): CanonicalStreamThreadItem | null {
-  if (item.type === "message") {
-    return {
-      type: "agentMessage",
-      id: typeof item.id === "string" ? item.id : state.assistantItemId,
-      text: assistantTextFromResponseItem(item) ?? "",
-      phase: null,
-    };
-  }
-  if (item.type === "reasoning") {
-    const summary = Array.isArray(item.summary)
-      ? item.summary.flatMap((entry) =>
-          isJsonRecord(entry) && typeof entry.text === "string" ? [entry.text] : [],
-        )
-      : [];
-    const content = Array.isArray(item.content)
-      ? item.content.flatMap((entry) =>
-          isJsonRecord(entry) && typeof entry.text === "string" ? [entry.text] : [],
-        )
-      : [];
-    return {
-      type: "reasoning",
-      id: typeof item.id === "string" ? item.id : state.reasoningItemId,
-      summary,
-      content,
-    };
-  }
-  return null;
-}
-
-function notificationScope(
-  state: StreamingState,
-): { threadId: string; turnId: string } | null {
-  if (state.threadId === null || state.turnId === null) {
-    return null;
-  }
-  return {
-    threadId: state.threadId,
-    turnId: state.turnId,
-  };
-}
-
-function ensureAssistantStarted(
-  state: StreamingState,
-  base: { threadId: string; turnId: string },
-): ServerNotification[] {
-  if (state.assistantStarted) {
-    return [];
-  }
-  state.assistantStarted = true;
-  return [
-    {
-      method: "item/started",
-      params: {
-        ...base,
-        item: {
-          type: "agentMessage",
-          id: state.assistantItemId,
-          text: "",
-          phase: null,
-        },
-      },
-    },
-  ];
-}
-
-function ensureReasoningStarted(
-  state: StreamingState,
-  base: { threadId: string; turnId: string },
-): ServerNotification[] {
-  if (state.reasoningStarted) {
-    return [];
-  }
-  state.reasoningStarted = true;
-  return [
-    {
-      method: "item/started",
-      params: {
-        ...base,
-        item: {
-          type: "reasoning",
-          id: state.reasoningItemId,
-          summary: [],
-          content: [],
-        },
-      },
-    },
-  ];
 }
 
 function assistantStartedModelEvents(requestId: string, state: StreamingState): JsonValue[] {
@@ -609,19 +326,29 @@ function assistantStartedModelEvents(requestId: string, state: StreamingState): 
   ];
 }
 
-function enqueueNotifications(
+function enqueueModelEvent(
   chain: Promise<void>,
-  emitNotification: ((notification: JsonValue) => Promise<void>) | undefined,
-  notifications: ServerNotification[],
+  emitModelEvent: ((event: JsonValue) => void | Promise<void>) | undefined,
+  event: JsonValue,
 ): Promise<void> {
-  if (emitNotification === undefined || notifications.length === 0) {
+  if (emitModelEvent === undefined) {
     return chain;
   }
   return chain.then(async () => {
-    for (const notification of notifications) {
-      await emitNotification(notification as JsonValue);
-    }
+    await emitModelEvent(event);
   });
+}
+
+function enqueueModelEvents(
+  chain: Promise<void>,
+  emitModelEvent: ((event: JsonValue) => void | Promise<void>) | undefined,
+  events: JsonValue[],
+): Promise<void> {
+  let next = chain;
+  for (const event of events) {
+    next = enqueueModelEvent(next, emitModelEvent, event);
+  }
+  return next;
 }
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {

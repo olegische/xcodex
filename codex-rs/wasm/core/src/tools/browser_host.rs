@@ -3,6 +3,7 @@ use codex_protocol::protocol::RolloutItem;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -427,7 +428,8 @@ pub trait ModelTransportHost: Send + Sync {
     async fn run_model_turn(
         &self,
         request: BrowserModelRequest,
-    ) -> HostResult<Vec<BrowserModelEvent>>;
+        event_tx: mpsc::Sender<BrowserModelEvent>,
+    ) -> HostResult<()>;
 }
 
 #[derive(Debug, Default)]
@@ -438,7 +440,8 @@ impl ModelTransportHost for UnavailableModelTransportHost {
     async fn run_model_turn(
         &self,
         _request: BrowserModelRequest,
-    ) -> HostResult<Vec<BrowserModelEvent>> {
+        _event_tx: mpsc::Sender<BrowserModelEvent>,
+    ) -> HostResult<()> {
         Err(unavailable_host_error("run_model_turn"))
     }
 }

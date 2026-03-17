@@ -65,14 +65,16 @@ pub async fn resume_loaded_thread_runtime(
     let response = root_processor
         .process_initialized_request(ClientRequest::ThreadResume { request_id, params })
         .await?;
-    loaded_thread_result_from_response(
+    let mut result = loaded_thread_result_from_response(
         root_processor,
         response,
         runtime_bootstrap,
         "thread/resume response missing thread id",
         "thread/resume missing thread state",
         "thread/resume missing loaded codex",
-    )
+    )?;
+    result.runtime.notifications.clear();
+    Ok(result)
 }
 
 pub async fn process_loaded_thread_request(
