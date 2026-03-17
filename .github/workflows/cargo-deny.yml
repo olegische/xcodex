@@ -2,8 +2,7 @@ name: cargo-deny
 
 on:
   pull_request:
-  push:
-    branches:
+    branches-ignore:
       - main
 
 jobs:

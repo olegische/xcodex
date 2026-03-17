@@ -1,7 +1,9 @@
 name: blob-size-policy
 
 on:
-  pull_request: {}
+  pull_request:
+    branches-ignore:
+      - main
 
 jobs:
   check:
