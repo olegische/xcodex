@@ -1,6 +1,7 @@
 name: wasm-rust-ci
 
 on:
+  # Keep this branch-scoped so experimental WASM CI can run on direct pushes.
   pull_request:
     branches:
       - wasm
