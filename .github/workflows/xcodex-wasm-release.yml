@@ -1,0 +1,147 @@
+name: xcodex-wasm-release
+
+on:
+  workflow_run:
+    workflows:
+      - wasm-rust-ci
+    types:
+      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: xcodex-wasm-release
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    name: Build and publish xcodex-wasm
+    runs-on: ubuntu-24.04
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'wasm'
+      )
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@1.93.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            codex-rs -> codex-rs/target
+
+      - name: Install wasm-bindgen
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen
+
+      - name: Build xcodex-wasm runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/xcodex-wasm/current
+          cargo build \
+            --manifest-path codex-rs/Cargo.toml \
+            -p codex-wasm-browser \
+            --target wasm32-unknown-unknown \
+            --release
+          wasm-bindgen \
+            codex-rs/target/wasm32-unknown-unknown/release/codex_wasm_browser.wasm \
+            --target web \
+            --out-dir dist/xcodex-wasm/current \
+            --out-name xcodex
+
+      - name: Write build manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_id="${{ github.event.workflow_run.head_sha || github.sha }}"
+          cat > dist/xcodex-wasm/manifest.json <<EOF
+          {
+            "buildId": "${build_id}",
+            "entry": "/xcodex-wasm/current/xcodex.js",
+            "wasm": "/xcodex-wasm/current/xcodex_bg.wasm"
+          }
+          EOF
+
+      - name: Add release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > dist/xcodex-wasm/README.md <<'EOF'
+          # xcodex-wasm
+
+          Rolling wasm branch build of the browser WASM runtime for xcodex.
+
+          Files:
+          - current/xcodex.js
+          - current/xcodex_bg.wasm
+          - current/xcodex.d.ts
+          - manifest.json
+          EOF
+
+      - name: Package release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C dist -czf dist/xcodex-wasm-wasm.tar.gz xcodex-wasm
+          sha256sum dist/xcodex-wasm-wasm.tar.gz > dist/xcodex-wasm-wasm.tar.gz.sha256
+          cat > dist/xcodex-wasm-release.txt <<EOF
+          xcodex-wasm rolling wasm build
+          commit=${{ github.event.workflow_run.head_sha || github.sha }}
+          ref=${{ github.event.workflow_run.head_branch || github.ref_name }}
+          run_id=${GITHUB_RUN_ID}
+          artifact=xcodex-wasm-wasm.tar.gz
+          entry=/xcodex-wasm/current/xcodex.js
+          wasm=/xcodex-wasm/current/xcodex_bg.wasm
+          manifest=/xcodex-wasm/manifest.json
+          EOF
+
+      - name: Move rolling release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f xcodex-wasm-wasm "${{ github.event.workflow_run.head_sha || github.sha }}"
+          git push origin refs/tags/xcodex-wasm-wasm --force
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<EOF
+          Automated rolling browser/WASM build for \`xcodex-wasm\`.
+
+          - branch: \`${{ github.event.workflow_run.head_branch || github.ref_name }}\`
+          - commit: \`${{ github.event.workflow_run.head_sha || github.sha }}\`
+          - artifact: \`xcodex-wasm-wasm.tar.gz\`
+          - entrypoint: \`xcodex.js\`
+          - wasm binary: \`xcodex_bg.wasm\`
+          - manifest: \`manifest.json\`
+
+          This release is updated after successful \`wasm-rust-ci\` runs on \`wasm\`.
+          EOF
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: xcodex-wasm-wasm
+          name: xcodex-wasm wasm
+          prerelease: true
+          body_path: release-notes.md
+          overwrite_files: true
+          files: |
+            dist/xcodex-wasm-wasm.tar.gz
+            dist/xcodex-wasm-wasm.tar.gz.sha256
+            dist/xcodex-wasm-release.txt
