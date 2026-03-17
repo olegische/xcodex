@@ -1,0 +1,10 @@
+# Local JS dependencies
+/node_modules/
+/apps/webui/node_modules/
+
+# Generated web UI artifacts
+/apps/webui/dist/
+/apps/webui/pkg/
+/apps/webui/public/pkg/
+/apps/webui/public/xrouter-browser/
+/apps/webui/xrouter-browser-pkg/
