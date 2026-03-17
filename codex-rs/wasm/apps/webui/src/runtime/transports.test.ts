@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { prepareXrouterResponsesRequest } from "./xrouter-transport.ts";
+import { prepareXrouterResponsesRequest } from "@browser-codex/wasm-model-transport";
 
 test("prepareXrouterResponsesRequest converts function_call_output content items to plain text", () => {
   const requestBody = {

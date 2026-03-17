@@ -248,7 +248,7 @@ impl ToolRouter {
             )?)
         } else {
             Box::new(FunctionToolOutput::from_text(
-                format!("tool {} is not implemented in wasm_v2 yet", call.tool_name),
+                format!("tool {} is not implemented in wasm yet", call.tool_name),
                 Some(false),
             ))
         };

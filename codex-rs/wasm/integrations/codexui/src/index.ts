@@ -1,4 +1,5 @@
-import type { AppServerClientEvent } from "../../../apps/webui/src/runtime/app-server-client";
+import type { ClientRequest } from "../../../../app-server-protocol/schema/typescript/ClientRequest";
+import type { AppServerClientEvent } from "@browser-codex/wasm-runtime-core/app-server-client";
 import {
   CODEX_UI_COMPAT_METHOD_CATALOG,
   CODEX_UI_COMPAT_NOTIFICATION_CATALOG
@@ -122,7 +123,7 @@ export async function createCodexUiAdapter(options: CodexUiAdapterOptions): Prom
         id: `codexui:${crypto.randomUUID()}`,
         method: body.method,
         params: body.params ?? null
-      });
+      } as ClientRequest);
     },
 
     subscribeNotifications(cb) {

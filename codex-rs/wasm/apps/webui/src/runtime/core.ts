@@ -2,7 +2,7 @@ import { DEFAULT_CODEX_CONFIG, DEFAULT_DEMO_INSTRUCTIONS, THREAD_ID, TURN_PREFIX
 import { createAppServerBrowserRuntime } from "./app-server";
 import { loadRuntimeModule } from "./assets";
 import { createBrowserRuntimeHost } from "./host";
-import { discoverModelsForConfig } from "./model-discovery";
+import { webUiModelTransportAdapter } from "./transport-adapter";
 import { buildOutputFromDispatch, assertRuntimeDispatch, snapshotToTranscript } from "./transcript";
 import {
   clearStoredAuthState,
@@ -389,7 +389,7 @@ async function syncBootstrapState(state: DemoState): Promise<DemoState> {
   const modelResult =
     apiKey.length === 0
       ? { data: [], nextCursor: null as string | null }
-      : await discoverModelsForConfig(state.codexConfig);
+      : await webUiModelTransportAdapter.discoverModels(state.codexConfig);
   const codexConfig = {
     ...state.codexConfig,
     model: selectModelId(modelResult.data, state.codexConfig.model),

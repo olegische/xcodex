@@ -212,6 +212,46 @@ pub trait ConfigStorageHost: Send + Sync {
     ) -> HostResult<SaveUserConfigResponse>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveMcpOauthRedirectUriRequest {
+    pub server_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveMcpOauthRedirectUriResponse {
+    pub redirect_uri: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitForMcpOauthCallbackRequest {
+    pub server_name: String,
+    pub authorization_url: String,
+    pub timeout_secs: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaitForMcpOauthCallbackResponse {
+    pub code: String,
+    pub state: String,
+}
+
+#[async_trait]
+pub trait McpOauthHost: Send + Sync {
+    async fn resolve_mcp_oauth_redirect_uri(
+        &self,
+        request: ResolveMcpOauthRedirectUriRequest,
+    ) -> HostResult<ResolveMcpOauthRedirectUriResponse>;
+
+    async fn wait_for_mcp_oauth_callback(
+        &self,
+        request: WaitForMcpOauthCallbackRequest,
+    ) -> HostResult<WaitForMcpOauthCallbackResponse>;
+}
+
 #[derive(Debug, Default)]
 pub struct UnavailableHostFs;
 
@@ -279,6 +319,26 @@ impl ConfigStorageHost for UnavailableConfigStorageHost {
         _request: SaveUserConfigRequest,
     ) -> HostResult<SaveUserConfigResponse> {
         Err(unavailable_host_error("save_user_config"))
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct UnavailableMcpOauthHost;
+
+#[async_trait]
+impl McpOauthHost for UnavailableMcpOauthHost {
+    async fn resolve_mcp_oauth_redirect_uri(
+        &self,
+        _request: ResolveMcpOauthRedirectUriRequest,
+    ) -> HostResult<ResolveMcpOauthRedirectUriResponse> {
+        Err(unavailable_host_error("resolve_mcp_oauth_redirect_uri"))
+    }
+
+    async fn wait_for_mcp_oauth_callback(
+        &self,
+        _request: WaitForMcpOauthCallbackRequest,
+    ) -> HostResult<WaitForMcpOauthCallbackResponse> {
+        Err(unavailable_host_error("wait_for_mcp_oauth_callback"))
     }
 }
 

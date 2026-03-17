@@ -1,5 +1,11 @@
 <script lang="ts">
   import { readRemoteMcpServers } from "../../apsix/workspace";
+  import {
+    getRemoteMcpAuthStatusLabel,
+    getRemoteMcpToolName,
+    isRemoteMcpAuthenticated,
+    isRemoteMcpUnsupported,
+  } from "../../runtime/mcp";
   import { remoteMcpStore } from "../../stores/remote-mcp";
   import type { WorkspaceFileSummary } from "../../types";
 
@@ -17,16 +23,19 @@
       name: seeded?.name ?? prettifyServerName(server.serverName),
       url: server.serverUrl,
       status: server.authStatus,
+      statusLabel: getRemoteMcpAuthStatusLabel(server.authStatus),
+      authenticated: isRemoteMcpAuthenticated(server),
+      unsupported: isRemoteMcpUnsupported(server),
       latencyMs: seeded?.latencyMs ?? 0,
       scopes: server.scopes,
-      tools: server.tools.map((tool) => tool.originalName),
+      tools: server.tools.map(getRemoteMcpToolName),
       description:
         seeded?.description ?? `Remote MCP capability lane for ${prettifyServerName(server.serverName)}.`,
       expiresAt: server.expiresAt,
       lastError: server.lastError,
     };
   });
-  $: connectedCount = servers.filter((server) => server.status === "connected").length;
+  $: connectedCount = servers.filter((server) => server.authenticated).length;
 
   function prettifyServerName(serverName: string) {
     return serverName
@@ -114,7 +123,7 @@
       <article class="signal-card">
         <div class="card-topline">
           <strong>{server.name}</strong>
-          <span class:warning={server.status !== "connected"} class="status-tag">{server.status}</span>
+          <span class:warning={!server.authenticated} class="status-tag">{server.statusLabel}</span>
         </div>
         <div class="card-subtitle">{server.url}</div>
         <details class="mcp-tools-disclosure">
@@ -143,14 +152,14 @@
           <div class="mcp-inline-error">{server.lastError}</div>
         {/if}
         <div class="mcp-server-actions">
-          {#if server.status === "connected"}
+          {#if server.authenticated}
             <button class="button secondary mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.refreshServer(server.id)}>
               {isBusy(server.id) ? "Refreshing..." : "Refresh tools"}
             </button>
             <button class="button ghost mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.disconnect(server.id)}>
               Disconnect
             </button>
-          {:else if server.status !== "unsupported"}
+          {:else if !server.unsupported}
             <button class="button primary mcp-action-button" disabled={isBusy(server.id)} on:click={() => void remoteMcpStore.connect(server.id)}>
               {isBusy(server.id) ? "Authorizing..." : "Connect"}
             </button>

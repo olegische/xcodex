@@ -68,12 +68,13 @@ mod tests {
     use codex_app_server_protocol::ClientRequest;
     use codex_app_server_protocol::ModelListParams;
     use codex_app_server_protocol::RequestId;
-    use codex_wasm_v2_core::UnavailableConfigStorageHost;
-    use codex_wasm_v2_core::UnavailableDiscoverableAppsProvider;
-    use codex_wasm_v2_core::UnavailableHostFs;
-    use codex_wasm_v2_core::UnavailableModelTransportHost;
-    use codex_wasm_v2_core::UnavailableThreadStorageHost;
-    use codex_wasm_v2_core::config::Config;
+    use codex_wasm_core::UnavailableConfigStorageHost;
+    use codex_wasm_core::UnavailableDiscoverableAppsProvider;
+    use codex_wasm_core::UnavailableHostFs;
+    use codex_wasm_core::UnavailableMcpOauthHost;
+    use codex_wasm_core::UnavailableModelTransportHost;
+    use codex_wasm_core::UnavailableThreadStorageHost;
+    use codex_wasm_core::config::Config;
 
     use super::RootRequestResult;
     use super::process_root_or_thread_start_request;
@@ -112,6 +113,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         };
 
         let response = process_root_or_thread_start_request(
@@ -185,6 +187,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         };
         processor.set_runtime_bootstrap(bootstrap);
 

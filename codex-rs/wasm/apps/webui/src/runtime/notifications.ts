@@ -107,7 +107,6 @@ function mapItemStarted(params: Record<string, unknown>): RuntimeActivity | null
   console.info("[webui] notifications:item-started", {
     turnId,
     itemType: typeof item?.type === "string" ? item.type : null,
-    item,
   });
   if (turnId === null || item === null || typeof item.type !== "string") {
     return null;
@@ -118,7 +117,7 @@ function mapItemStarted(params: Record<string, unknown>): RuntimeActivity | null
       turnId,
       callId: typeof item.id === "string" ? item.id : null,
       toolName: typeof item.tool === "string" ? item.tool : null,
-      arguments: (item.arguments as JsonValue | undefined) ?? null,
+      hasArguments: item.arguments !== undefined,
     });
     return {
       type: "toolCall",
@@ -140,7 +139,7 @@ function mapItemStarted(params: Record<string, unknown>): RuntimeActivity | null
       turnId,
       callId: typeof item.id === "string" ? item.id : null,
       toolName,
-      arguments: (item.arguments as JsonValue | undefined) ?? null,
+      hasArguments: item.arguments !== undefined,
     });
     return {
       type: "toolCall",
@@ -169,7 +168,6 @@ function mapItemCompleted(params: Record<string, unknown>): RuntimeActivity | nu
   console.info("[webui] notifications:item-completed", {
     turnId,
     itemType: typeof item?.type === "string" ? item.type : null,
-    item,
   });
   if (turnId === null || item === null || typeof item.type !== "string") {
     return null;
@@ -179,10 +177,8 @@ function mapItemCompleted(params: Record<string, unknown>): RuntimeActivity | nu
     console.info("[webui] notifications:item-completed:mapped-tool-output", {
       turnId,
       callId: typeof item.id === "string" ? item.id : null,
-      output:
-        (item.contentItems as JsonValue | undefined) ??
-        (item.success as JsonValue | undefined) ??
-        null,
+      success: typeof item.success === "boolean" ? item.success : null,
+      hasContentItems: Array.isArray(item.contentItems),
     });
     return {
       type: "toolOutput",
@@ -199,10 +195,8 @@ function mapItemCompleted(params: Record<string, unknown>): RuntimeActivity | nu
     console.info("[webui] notifications:item-completed:mapped-mcp-tool-output", {
       turnId,
       callId: typeof item.id === "string" ? item.id : null,
-      output:
-        (item.result as JsonValue | undefined) ??
-        (item.error as JsonValue | undefined) ??
-        null,
+      hasResult: item.result !== undefined,
+      hasError: item.error !== undefined,
     });
     return {
       type: "toolOutput",

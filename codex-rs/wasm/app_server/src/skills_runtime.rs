@@ -13,12 +13,12 @@ use codex_app_server_protocol::SkillsConfigWriteParams;
 use codex_app_server_protocol::SkillsConfigWriteResponse;
 use codex_app_server_protocol::SkillsListParams;
 use codex_app_server_protocol::SkillsListResponse;
-use codex_wasm_v2_core::HostErrorCode;
-use codex_wasm_v2_core::LoadUserConfigRequest;
-use codex_wasm_v2_core::SaveUserConfigRequest;
-use codex_wasm_v2_core::plugins::PluginsManager;
-use codex_wasm_v2_core::skills::SkillError;
-use codex_wasm_v2_core::skills::SkillsManager;
+use codex_wasm_core::HostErrorCode;
+use codex_wasm_core::LoadUserConfigRequest;
+use codex_wasm_core::SaveUserConfigRequest;
+use codex_wasm_core::plugins::PluginsManager;
+use codex_wasm_core::skills::SkillError;
+use codex_wasm_core::skills::SkillsManager;
 
 use crate::RuntimeBootstrap;
 
@@ -176,7 +176,7 @@ fn write_skill_config_entry(user_config: &mut toml::Table, path: &str, enabled: 
     }
 }
 
-fn bundled_skills_enabled(config: &codex_wasm_v2_core::config::Config) -> bool {
+fn bundled_skills_enabled(config: &codex_wasm_core::config::Config) -> bool {
     config
         .config_layer_stack
         .effective_config()
@@ -191,7 +191,7 @@ fn bundled_skills_enabled(config: &codex_wasm_v2_core::config::Config) -> bool {
 }
 
 fn skills_to_info(
-    skills: &[codex_wasm_v2_core::skills::SkillMetadata],
+    skills: &[codex_wasm_core::skills::SkillMetadata],
     disabled_paths: &HashSet<PathBuf>,
 ) -> Vec<SkillMetadata> {
     skills
@@ -268,7 +268,8 @@ mod tests {
 
     use codex_app_server_protocol::SkillsListExtraRootsForCwd;
     use codex_app_server_protocol::SkillsListParams;
-    use codex_wasm_v2_core::UnavailableConfigStorageHost;
+    use codex_wasm_core::UnavailableConfigStorageHost;
+    use codex_wasm_core::UnavailableMcpOauthHost;
     use pretty_assertions::assert_eq;
 
     use super::bundled_skills_enabled;
@@ -283,20 +284,21 @@ mod tests {
         ));
         std::fs::create_dir_all(&root).expect("create temp root");
         let bootstrap = RuntimeBootstrap {
-            config: codex_wasm_v2_core::config::Config {
+            config: codex_wasm_core::config::Config {
                 codex_home: root.clone(),
                 cwd: root.clone(),
-                ..codex_wasm_v2_core::config::Config::default()
+                ..codex_wasm_core::config::Config::default()
             },
             auth: None,
             model_catalog: None,
-            browser_fs: Arc::new(codex_wasm_v2_core::UnavailableHostFs),
+            browser_fs: Arc::new(codex_wasm_core::UnavailableHostFs),
             discoverable_apps_provider: Arc::new(
-                codex_wasm_v2_core::UnavailableDiscoverableAppsProvider,
+                codex_wasm_core::UnavailableDiscoverableAppsProvider,
             ),
-            model_transport_host: Arc::new(codex_wasm_v2_core::UnavailableModelTransportHost),
+            model_transport_host: Arc::new(codex_wasm_core::UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
-            thread_storage_host: Arc::new(codex_wasm_v2_core::UnavailableThreadStorageHost),
+            thread_storage_host: Arc::new(codex_wasm_core::UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         };
 
         let error = skills_list_response(
@@ -322,7 +324,7 @@ mod tests {
     #[test]
     fn bundled_skills_enabled_defaults_to_true() {
         assert!(bundled_skills_enabled(
-            &codex_wasm_v2_core::config::Config::default()
+            &codex_wasm_core::config::Config::default()
         ));
     }
 }

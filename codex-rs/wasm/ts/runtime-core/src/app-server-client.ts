@@ -1,11 +1,11 @@
-import type { ClientNotification } from "../../../../../app-server-protocol/schema/typescript/ClientNotification";
-import type { ClientRequest } from "../../../../../app-server-protocol/schema/typescript/ClientRequest";
-import type { InitializeCapabilities } from "../../../../../app-server-protocol/schema/typescript/InitializeCapabilities";
-import type { InitializeParams } from "../../../../../app-server-protocol/schema/typescript/InitializeParams";
-import type { RequestId } from "../../../../../app-server-protocol/schema/typescript/RequestId";
-import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
-import type { ServerRequest } from "../../../../../app-server-protocol/schema/typescript/ServerRequest";
-import { normalizeHostValue } from "./utils";
+import type { ClientNotification } from "../../../../app-server-protocol/schema/typescript/ClientNotification";
+import type { ClientRequest } from "../../../../app-server-protocol/schema/typescript/ClientRequest";
+import type { InitializeCapabilities } from "../../../../app-server-protocol/schema/typescript/InitializeCapabilities";
+import type { InitializeParams } from "../../../../app-server-protocol/schema/typescript/InitializeParams";
+import type { RequestId } from "../../../../app-server-protocol/schema/typescript/RequestId";
+import type { ServerNotification } from "../../../../app-server-protocol/schema/typescript/ServerNotification";
+import type { ServerRequest } from "../../../../app-server-protocol/schema/typescript/ServerRequest";
+import { normalizeHostValue } from "./host-values";
 import type { JsonValue, WasmProtocolRuntime } from "./types";
 
 const DEFAULT_CHANNEL_CAPACITY = 128;
@@ -226,7 +226,7 @@ export class AppServerClient {
 
   private async pump() {
     while (!this.closed) {
-      const raw = normalizeHostValue(await this.runtime.nextMessage()) as JsonValue;
+      const raw = normalizeHostValue(await this.runtime.nextMessage());
       if (raw === null) {
         continue;
       }
@@ -293,23 +293,27 @@ function buildInitializeParams(args: AppServerClientStartArgs): InitializeParams
   };
 }
 
-function isServerNotification(value: JsonValue): value is ServerNotification {
+function isServerNotification(value: unknown): value is ServerNotification {
+  const record =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
   return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof value.method === "string" &&
-    !("id" in value)
+    record !== null &&
+    typeof record.method === "string" &&
+    !("id" in record)
   );
 }
 
-function isServerRequest(value: JsonValue): value is ServerRequest {
+function isServerRequest(value: unknown): value is ServerRequest {
+  const record =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
   return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof value.method === "string" &&
-    "id" in value
+    record !== null &&
+    typeof record.method === "string" &&
+    "id" in record
   );
 }
 

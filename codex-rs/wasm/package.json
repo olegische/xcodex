@@ -1,0 +1,11 @@
+{
+  "name": "codex-wasm-ts-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/webui",
+    "integrations/codexui",
+    "ts/browser-host",
+    "ts/model-transport",
+    "ts/runtime-core"
+  ]
+}

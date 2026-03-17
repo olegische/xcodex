@@ -639,7 +639,7 @@ pub fn process_loaded_thread_event(
         event,
     );
     let mut updated_record = thread_record.clone();
-    updated_record.updated_at = codex_wasm_v2_core::time::now_unix_seconds();
+    updated_record.updated_at = codex_wasm_core::time::now_unix_seconds();
     updated_record.apply_in_process_thread_handle(thread);
     notifications.extend(effect.notifications);
 

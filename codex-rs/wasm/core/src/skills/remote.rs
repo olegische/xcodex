@@ -26,7 +26,7 @@ pub async fn list_remote_skills(
     _product_surface: RemoteSkillProductSurface,
     _enabled: Option<bool>,
 ) -> Result<Vec<RemoteSkillSummary>> {
-    anyhow::bail!("remote skills are disabled in wasm_v2")
+    anyhow::bail!("remote skills are disabled in wasm")
 }
 
 pub async fn export_remote_skill(
@@ -34,5 +34,5 @@ pub async fn export_remote_skill(
     _auth: Option<&CodexAuth>,
     _hazelnut_id: &str,
 ) -> Result<RemoteSkillDownloadResult> {
-    anyhow::bail!("remote skills are disabled in wasm_v2")
+    anyhow::bail!("remote skills are disabled in wasm")
 }

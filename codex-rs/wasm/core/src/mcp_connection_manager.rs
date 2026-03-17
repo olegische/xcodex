@@ -170,7 +170,7 @@ impl McpConnectionManager {
         _arguments: Option<serde_json::Value>,
     ) -> anyhow::Result<CallToolResult> {
         Ok(CallToolResult::from_error_text(
-            "mcp tool execution is not implemented in wasm_v2 yet".to_string(),
+            "mcp tool execution is not implemented in wasm yet".to_string(),
         ))
     }
 

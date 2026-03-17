@@ -1,12 +1,22 @@
-import { DEFAULT_DEMO_INSTRUCTIONS, WORKSPACE_ROOT } from "./constants";
+import { WORKSPACE_ROOT } from "@browser-codex/wasm-browser-host/constants";
+import {
+  createNormalizedModelTurnRunner,
+  createBrowserRuntimeHostFromDeps,
+} from "@browser-codex/wasm-browser-host/runtime-host";
+import {
+  buildBrowserRuntimeBootstrap,
+  createRemoteMcpOauthHostHandlers,
+} from "@browser-codex/wasm-browser-host";
+import { DEFAULT_DEMO_INSTRUCTIONS } from "./constants";
 import { loadStoredAuthState, loadStoredCodexConfig, loadStoredDemoInstructions } from "./storage";
-import { runResponsesApiTurn, runXrouterTurn } from "./transports";
+import { webUiModelTransportAdapter } from "./transport-adapter";
 import { applyWorkspacePatch, listWorkspaceDir, readWorkspaceFile, searchWorkspace } from "./workspace";
-import { activeProviderApiKey, getActiveProvider, normalizeHostValuePreservingStrings } from "./utils";
-import type { BrowserRuntimeHost, JsonValue } from "./types";
+import { activeProviderApiKey, getActiveProvider } from "./utils";
+import type { BrowserRuntimeHost } from "./types";
 
 export function createBrowserRuntimeHost(): BrowserRuntimeHost {
-  return {
+  return createBrowserRuntimeHostFromDeps({
+    ...createRemoteMcpOauthHostHandlers(),
     async loadBootstrap() {
       const [authState, codexConfig, demoInstructions] = await Promise.all([
         loadStoredAuthState(),
@@ -18,26 +28,15 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
       const developerInstructions = demoInstructions.agentsInstructions.trim();
       const userInstructions = buildSkillInstructions(demoInstructions);
 
-      return {
+      return buildBrowserRuntimeBootstrap({
         codexHome: "/codex-home",
         cwd: WORKSPACE_ROOT,
         model: codexConfig.model.trim() || null,
         modelProviderId: codexConfig.modelProvider,
         modelProvider: {
           name: provider.name,
-          base_url: provider.baseUrl,
-          env_key: provider.envKey,
-          env_key_instructions: null,
-          experimental_bearer_token: null,
-          wire_api: "responses",
-          query_params: null,
-          http_headers: null,
-          env_http_headers: null,
-          request_max_retries: null,
-          stream_max_retries: null,
-          stream_idle_timeout_ms: null,
-          requires_openai_auth: false,
-          supports_websockets: false,
+          baseUrl: provider.baseUrl,
+          envKey: provider.envKey,
         },
         reasoningEffort: codexConfig.modelReasoningEffort,
         personality: codexConfig.personality,
@@ -49,7 +48,7 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
             ? authState.openaiApiKey
             : apiKey || null,
         ephemeral: false,
-      };
+      });
     },
     readFile: readWorkspaceFile,
     listDir: listWorkspaceDir,
@@ -58,77 +57,17 @@ export function createBrowserRuntimeHost(): BrowserRuntimeHost {
     async listDiscoverableApps() {
       return [];
     },
-    async runModelTurn(request) {
-      const requestRecord = asJsonRecord(normalizeHostValuePreservingStrings(request));
-      const codexConfig = await loadStoredCodexConfig();
-      const provider = getActiveProvider(codexConfig);
-      const requestId =
-        typeof requestRecord.requestId === "string" ? requestRecord.requestId : crypto.randomUUID();
-      const requestBody = asJsonRecord(normalizeHostValuePreservingStrings(requestRecord.requestBody));
-      const transportOptions = asJsonRecord(normalizeHostValuePreservingStrings(requestRecord.transportOptions));
-      const extraHeaders = extraHeadersFromTransportOptions(transportOptions);
-      const responseInputItems = Array.isArray(requestBody.input)
-        ? (requestBody.input as JsonValue[])
-        : null;
-      console.info("[webui] host.run-model-turn", {
-        requestId,
-        providerKind: provider.providerKind,
-        requestBodyKeys: Object.keys(requestBody),
-        inputSummary: summarizeHostInput(responseInputItems),
-        transportOptions: transportOptions,
-      });
-      console.info(
-        "[webui] host.run-model-turn:json",
-        JSON.stringify(
-          {
-            requestId,
-            providerKind: provider.providerKind,
-            requestBody,
-            transportOptions,
-          },
-          null,
-          2,
-        ),
-      );
-
-      if (provider.providerKind === "xrouter_browser") {
-        return runXrouterTurn({
-          requestId,
-          codexConfig,
-          requestBody,
-          extraHeaders,
-        });
-      }
-
-      return runResponsesApiTurn({
-        requestId,
-        baseUrl: provider.baseUrl,
-        apiKey: activeProviderApiKey(codexConfig),
-        requestBody: requestBody as Record<string, JsonValue>,
-        extraHeaders,
-      });
-    },
-  };
-}
-
-function asJsonRecord(value: unknown): Record<string, unknown> {
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
-
-function extraHeadersFromTransportOptions(
-  transportOptions: Record<string, unknown>,
-): Record<string, string> | null {
-  const extraHeaders = asJsonRecord(transportOptions.extraHeaders);
-  const entries = Object.entries(extraHeaders).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string",
-  );
-  if (entries.length === 0) {
-    return null;
-  }
-  return Object.fromEntries(entries);
+    runNormalizedModelTurn: createNormalizedModelTurnRunner({
+      scope: "webui",
+      loadConfig: loadStoredCodexConfig,
+      getProviderKind(config) {
+        return getActiveProvider(config).providerKind;
+      },
+      async runModelTurn(params) {
+        return await webUiModelTransportAdapter.runModelTurn(params);
+      },
+    }),
+  });
 }
 
 function buildSkillInstructions(demoInstructions: Awaited<ReturnType<typeof loadStoredDemoInstructions>>): string | null {
@@ -142,21 +81,4 @@ function buildSkillInstructions(demoInstructions: Awaited<ReturnType<typeof load
     "",
     skillContents,
   ].join("\n");
-}
-
-function summarizeHostInput(input: JsonValue[] | null): Record<string, unknown> | null {
-  if (input === null) {
-    return null;
-  }
-  return {
-    count: input.length,
-    itemTypes: input.map((item) =>
-      item !== null &&
-      typeof item === "object" &&
-      !Array.isArray(item) &&
-      typeof (item as Record<string, unknown>).type === "string"
-        ? ((item as Record<string, unknown>).type as string)
-        : "<invalid>",
-    ),
-  };
 }

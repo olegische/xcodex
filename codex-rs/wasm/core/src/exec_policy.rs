@@ -26,7 +26,7 @@ pub struct ExecPolicyManager {
 
 #[derive(Debug, Error)]
 pub enum ExecPolicyUpdateError {
-    #[error("exec policy updates are not implemented in wasm_v2")]
+    #[error("exec policy updates are not implemented in wasm")]
     Unsupported,
 }
 

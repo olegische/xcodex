@@ -26,10 +26,10 @@ use codex_protocol::request_user_input::RequestUserInputResponse;
 #[cfg(test)]
 use crate::state::ThreadRecord;
 #[cfg(test)]
-use codex_wasm_v2_app_server::TurnRecord;
+use codex_wasm_app_server::TurnRecord;
 
 pub fn initialize_user_agent() -> String {
-    format!("codex-wasm-v2-browser/{}", env!("CARGO_PKG_VERSION"))
+    format!("codex-wasm-browser/{}", env!("CARGO_PKG_VERSION"))
 }
 
 #[cfg(test)]

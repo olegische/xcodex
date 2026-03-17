@@ -5,13 +5,14 @@ use codex_app_server_protocol::AskForApproval;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_protocol::config_types::SandboxMode as CoreSandboxMode;
 use codex_protocol::openai_models::ModelsResponse;
-use codex_wasm_v2_core::CodexAuth;
-use codex_wasm_v2_core::ConfigStorageHost;
-use codex_wasm_v2_core::DiscoverableAppsProvider;
-use codex_wasm_v2_core::HostFs;
-use codex_wasm_v2_core::ModelTransportHost;
-use codex_wasm_v2_core::ThreadStorageHost;
-use codex_wasm_v2_core::config::Config;
+use codex_wasm_core::CodexAuth;
+use codex_wasm_core::ConfigStorageHost;
+use codex_wasm_core::DiscoverableAppsProvider;
+use codex_wasm_core::HostFs;
+use codex_wasm_core::McpOauthHost;
+use codex_wasm_core::ModelTransportHost;
+use codex_wasm_core::ThreadStorageHost;
+use codex_wasm_core::config::Config;
 
 #[derive(Clone)]
 pub struct RuntimeBootstrap {
@@ -23,6 +24,7 @@ pub struct RuntimeBootstrap {
     pub model_transport_host: Arc<dyn ModelTransportHost>,
     pub config_storage_host: Arc<dyn ConfigStorageHost>,
     pub thread_storage_host: Arc<dyn ThreadStorageHost>,
+    pub mcp_oauth_host: Arc<dyn McpOauthHost>,
 }
 
 pub fn apply_thread_start_overrides(config: &mut Config, params: &ThreadStartParams) {

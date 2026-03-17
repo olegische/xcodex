@@ -69,20 +69,41 @@ pub(crate) struct ElicitationResponse {
 
 #[cfg(target_arch = "wasm32")]
 pub(crate) async fn supports_oauth_login(_url: &str) -> anyhow::Result<bool> {
-    Ok(false)
+    codex_rmcp_client::supports_oauth_login(_url).await
 }
 
 #[cfg(target_arch = "wasm32")]
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn determine_streamable_http_auth_status(
     _server_name: &str,
-    _url: &str,
-    _bearer_token_env_var: Option<&str>,
-    _http_headers: Option<std::collections::HashMap<String, String>>,
-    _env_http_headers: Option<std::collections::HashMap<String, String>>,
+    url: &str,
+    bearer_token_env_var: Option<&str>,
+    http_headers: Option<std::collections::HashMap<String, String>>,
+    env_http_headers: Option<std::collections::HashMap<String, String>>,
     _store_mode: OAuthCredentialsStoreMode,
 ) -> anyhow::Result<McpAuthStatus> {
-    Ok(McpAuthStatus::Unsupported)
+    if bearer_token_env_var.is_some() {
+        return Ok(McpAuthStatus::BearerToken);
+    }
+
+    let has_authorization_header = http_headers.as_ref().is_some_and(|headers| {
+        headers
+            .keys()
+            .any(|key| key.eq_ignore_ascii_case("authorization"))
+    }) || env_http_headers.as_ref().is_some_and(|headers| {
+        headers
+            .keys()
+            .any(|key| key.eq_ignore_ascii_case("authorization"))
+    });
+    if has_authorization_header {
+        return Ok(McpAuthStatus::BearerToken);
+    }
+
+    match codex_rmcp_client::supports_oauth_login(url).await {
+        Ok(true) => Ok(McpAuthStatus::NotLoggedIn),
+        Ok(false) => Ok(McpAuthStatus::Unsupported),
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

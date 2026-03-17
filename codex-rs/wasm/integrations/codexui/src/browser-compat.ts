@@ -40,7 +40,11 @@ function createCloseEvent(): CloseEvent {
   return new CloseEvent("close");
 }
 
-class CompatEventSource implements EventSource {
+class CompatEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
+
   readonly CONNECTING = 0;
   readonly OPEN = 1;
   readonly CLOSED = 2;
@@ -59,7 +63,7 @@ class CompatEventSource implements EventSource {
     queueMicrotask(() => {
       this.readyState = this.OPEN;
       const openEvent = createOpenEvent();
-      this.onopen?.call(this, openEvent);
+      this.onopen?.call(this as unknown as EventSource, openEvent);
       this.dispatchEvent(openEvent);
     });
     this.unsubscribe = adapter.subscribeNotifications((notification) => {
@@ -67,7 +71,7 @@ class CompatEventSource implements EventSource {
         return;
       }
       const event = createMessageEvent(JSON.stringify(notification));
-      this.onmessage?.call(this, event);
+      this.onmessage?.call(this as unknown as EventSource, event);
       this.dispatchTypedEvent("message", event);
     });
   }
@@ -122,7 +126,7 @@ class CompatEventSource implements EventSource {
   }
 }
 
-class CompatWebSocket implements WebSocket {
+class CompatWebSocket {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
   static readonly CLOSING = 2;
@@ -151,7 +155,7 @@ class CompatWebSocket implements WebSocket {
     queueMicrotask(() => {
       this.readyState = CompatWebSocket.OPEN;
       const openEvent = createOpenEvent();
-      this.onopen?.call(this, openEvent);
+      this.onopen?.call(this as unknown as WebSocket, openEvent);
       this.dispatchTypedEvent("open", openEvent);
     });
     this.unsubscribe = adapter.subscribeNotifications((notification) => {
@@ -159,7 +163,7 @@ class CompatWebSocket implements WebSocket {
         return;
       }
       const event = createMessageEvent(JSON.stringify(notification));
-      this.onmessage?.call(this, event);
+      this.onmessage?.call(this as unknown as WebSocket, event);
       this.dispatchTypedEvent("message", event);
     });
   }
@@ -202,7 +206,7 @@ class CompatWebSocket implements WebSocket {
     this.unsubscribe?.();
     this.unsubscribe = null;
     const closeEvent = createCloseEvent();
-    this.onclose?.call(this, closeEvent);
+    this.onclose?.call(this as unknown as WebSocket, closeEvent);
     this.dispatchTypedEvent("close", closeEvent);
   }
 
@@ -256,7 +260,7 @@ export function installCodexUiBrowserCompat(
       }
       super(normalized.toString(), adapter);
     }
-  } as typeof EventSource;
+  } as unknown as typeof EventSource;
 
   globals.WebSocket = class WebSocketCompat extends CompatWebSocket {
     constructor(url: string | URL, protocols?: string | string[]) {
@@ -277,12 +281,12 @@ export function installCodexUiBrowserCompat(
       if (originalEventSource) {
         globals.EventSource = originalEventSource;
       } else {
-        delete globals.EventSource;
+        delete (globals as { EventSource?: typeof EventSource }).EventSource;
       }
       if (originalWebSocket) {
         globals.WebSocket = originalWebSocket;
       } else {
-        delete globals.WebSocket;
+        delete (globals as { WebSocket?: typeof WebSocket }).WebSocket;
       }
     }
   };

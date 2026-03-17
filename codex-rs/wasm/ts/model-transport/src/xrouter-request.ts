@@ -1,22 +1,24 @@
 import type OpenAI from "openai";
-import type { JsonValue } from "./types";
+import type { JsonValue } from "../../../../app-server-protocol/schema/typescript/serde_json/JsonValue";
 
 export function prepareXrouterResponsesRequest(
   requestBody: OpenAI.Responses.ResponseCreateParams,
 ): OpenAI.Responses.ResponseCreateParams {
   const normalizedInput = Array.isArray(requestBody.input)
-    ? requestBody.input.map((item) => normalizeResponsesInputItemForXrouter(item as JsonValue))
+    ? requestBody.input.map((item: unknown) =>
+        normalizeResponsesInputItemForXrouter(item as JsonValue),
+      )
     : requestBody.input;
   const normalizedTools = Array.isArray(requestBody.tools)
     ? requestBody.tools
-        .map((tool) => normalizeTransportToolForXrouter(tool as JsonValue))
-        .filter((tool): tool is JsonValue => tool !== null)
+        .map((tool: unknown) => normalizeTransportToolForXrouter(tool as JsonValue))
+        .filter((tool: JsonValue | null): tool is JsonValue => tool !== null)
     : requestBody.tools;
   return {
     ...requestBody,
     ...(normalizedInput === undefined ? {} : { input: normalizedInput }),
     ...(normalizedTools === undefined ? {} : { tools: normalizedTools }),
-  };
+  } as OpenAI.Responses.ResponseCreateParams;
 }
 
 function normalizeResponsesInputItemForXrouter(item: JsonValue): JsonValue {
@@ -25,10 +27,7 @@ function normalizeResponsesInputItemForXrouter(item: JsonValue): JsonValue {
   }
 
   const record = item as Record<string, unknown>;
-  if (
-    record.type !== "function_call_output" &&
-    record.type !== "custom_tool_call_output"
-  ) {
+  if (record.type !== "function_call_output" && record.type !== "custom_tool_call_output") {
     return item;
   }
 
@@ -83,6 +82,6 @@ function normalizeTransportToolForXrouter(tool: JsonValue): JsonValue | null {
             type: "object",
             properties: {},
             additionalProperties: false,
-      },
+          },
   };
 }

@@ -99,9 +99,12 @@ pub use tools::browser_host::LoadThreadSessionRequest;
 pub use tools::browser_host::LoadThreadSessionResponse;
 pub use tools::browser_host::LoadUserConfigRequest;
 pub use tools::browser_host::LoadUserConfigResponse;
+pub use tools::browser_host::McpOauthHost;
 pub use tools::browser_host::ModelTransportHost;
 pub use tools::browser_host::ReadFileRequest;
 pub use tools::browser_host::ReadFileResponse;
+pub use tools::browser_host::ResolveMcpOauthRedirectUriRequest;
+pub use tools::browser_host::ResolveMcpOauthRedirectUriResponse;
 pub use tools::browser_host::SaveThreadSessionRequest;
 pub use tools::browser_host::SaveUserConfigRequest;
 pub use tools::browser_host::SaveUserConfigResponse;
@@ -113,9 +116,28 @@ pub use tools::browser_host::StoredThreadSessionMetadata;
 pub use tools::browser_host::ThreadStorageHost;
 pub use tools::browser_host::UnavailableConfigStorageHost;
 pub use tools::browser_host::UnavailableHostFs;
+pub use tools::browser_host::UnavailableMcpOauthHost;
 pub use tools::browser_host::UnavailableModelTransportHost;
 pub use tools::browser_host::UnavailableThreadStorageHost;
+pub use tools::browser_host::WaitForMcpOauthCallbackRequest;
+pub use tools::browser_host::WaitForMcpOauthCallbackResponse;
 pub use tools::format_exec_output_str;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn spawn_background_task<F>(future: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    compat::task::spawn_detached(future);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn spawn_background_task<F>(future: F)
+where
+    F: std::future::Future<Output = ()> + 'static,
+{
+    compat::task::spawn_detached(future);
+}
 
 pub fn ws_version_from_features(config: &config::Config) -> bool {
     config

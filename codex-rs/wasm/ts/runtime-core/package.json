@@ -1,0 +1,12 @@
+{
+  "name": "@browser-codex/wasm-runtime-core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./app-server-client": "./src/app-server-client.ts",
+    "./host-values": "./src/host-values.ts",
+    "./types": "./src/types.ts"
+  }
+}

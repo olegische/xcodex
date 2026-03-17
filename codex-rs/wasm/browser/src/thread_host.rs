@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::RequestId;
-use codex_wasm_v2_app_server::LoadedThreadStartResult;
-use codex_wasm_v2_app_server::MessageProcessor;
-use codex_wasm_v2_core::codex::Codex;
+use codex_wasm_app_server::LoadedThreadStartResult;
+use codex_wasm_app_server::MessageProcessor;
+use codex_wasm_core::codex::Codex;
 use tokio::sync::Mutex;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
@@ -81,7 +81,7 @@ pub(crate) async fn sync_loaded_thread_record(
     root_app_server: &Arc<Mutex<MessageProcessor>>,
     id: RequestId,
     thread_id: &str,
-    updated_record: codex_wasm_v2_app_server::ThreadRecord,
+    updated_record: codex_wasm_app_server::ThreadRecord,
 ) -> Result<(), JSONRPCError> {
     let synced_record = {
         let mut state = state.lock().await;
@@ -91,7 +91,7 @@ pub(crate) async fn sync_loaded_thread_record(
         loaded.record = updated_record;
         loaded.record.clone()
     };
-    codex_wasm_v2_app_server::sync_loaded_thread_record(
+    codex_wasm_app_server::sync_loaded_thread_record(
         &mut *root_app_server.lock().await,
         synced_record,
     );

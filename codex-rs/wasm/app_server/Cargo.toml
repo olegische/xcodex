@@ -1,11 +1,11 @@
 [package]
-name = "codex-wasm-v2-app-server"
+name = "codex-wasm-app-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "codex_wasm_v2_app_server"
+name = "codex_wasm_app_server"
 path = "src/lib.rs"
 
 [lints]
@@ -15,7 +15,7 @@ workspace = true
 codex-app-server-protocol = { workspace = true }
 codex-protocol = { workspace = true }
 codex-utils-absolute-path = { workspace = true }
-codex-wasm-v2-core = { path = "../core" }
+codex-wasm-core = { path = "../core" }
 serde_json = { workspace = true }
 toml = { workspace = true }
 

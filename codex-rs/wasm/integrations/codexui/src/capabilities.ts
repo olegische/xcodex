@@ -1,8 +1,8 @@
-import { WORKSPACE_ROOT } from "../../../apps/webui/src/runtime/constants";
+import { WORKSPACE_ROOT } from "@browser-codex/wasm-browser-host/constants";
 import {
   loadStoredWorkspaceSnapshot,
   normalizeWorkspaceDirectoryPath
-} from "../../../apps/webui/src/runtime/storage";
+} from "@browser-codex/wasm-browser-host/workspace-storage";
 import type { CodexUiAdapter, JsonRecord } from "./types";
 
 const WORKSPACE_ROOTS_STATE_KEY = "codex.wasm.codexui.workspace-roots-state";

@@ -1,15 +1,29 @@
 import { collaborationStore } from "../stores/collaboration";
-import type { ClientRequest } from "../../../../../app-server-protocol/schema/typescript/ClientRequest";
-import type { DynamicToolCallOutputContentItem } from "../../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallOutputContentItem";
 import type { DynamicToolCallParams } from "../../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallParams";
 import type { DynamicToolCallResponse } from "../../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallResponse";
 import type { DynamicToolSpec } from "../../../../../app-server-protocol/schema/typescript/v2/DynamicToolSpec";
+import type { ConfigReadResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ConfigReadResponse";
+import type { ListMcpServerStatusResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ListMcpServerStatusResponse";
+import type { McpServerOauthLoginCompletedNotification } from "../../../../../app-server-protocol/schema/typescript/v2/McpServerOauthLoginCompletedNotification";
+import type { McpServerStatus } from "../../../../../app-server-protocol/schema/typescript/v2/McpServerStatus";
 import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ServerRequest } from "../../../../../app-server-protocol/schema/typescript/ServerRequest";
-import { AppServerClient } from "./app-server-client";
+import {
+  AppServerClient,
+  asDynamicToolContentItems,
+  BrowserAppServerRuntimeCore,
+  startBrowserAppServerClient,
+  threadToSessionSnapshot,
+  turnIdFromNotification,
+} from "@browser-codex/wasm-runtime-core";
+import {
+  installRemoteMcpController,
+  type BrowserRemoteMcpController,
+  type BrowserRemoteMcpServer,
+  type BrowserRemoteMcpTool,
+} from "@browser-codex/wasm-browser-host";
 import { createBrowserAwareToolExecutor } from "./browser-tools";
 import { emitActivitiesFromNotifications } from "./notifications";
-import { discoverProviderModels, discoverRouterModels } from "./transports";
 import {
   loadStoredAuthState,
   loadStoredCodexConfig,
@@ -17,6 +31,7 @@ import {
   saveStoredAuthState,
   saveStoredSession,
 } from "./storage";
+import { webUiModelTransportAdapter } from "./transport-adapter";
 import { formatError, getActiveProvider, normalizeHostValue } from "./utils";
 import type {
   Account,
@@ -32,24 +47,12 @@ import type {
 
 const browserToolExecutor = createBrowserAwareToolExecutor();
 
-type PendingTurn = {
-  threadId: string;
-  turnId: string | null;
-  events: RuntimeEvent[];
-  resolve: (dispatch: RuntimeDispatch) => void;
-  reject: (error: unknown) => void;
-};
-
-export class AppServerBrowserRuntime implements BrowserRuntime {
-  private readonly client: AppServerClient;
-  private nextRequestId = 1;
-  private readonly pendingTurns = new Map<string, PendingTurn>();
-  private readonly pendingThreadTurns = new Map<string, PendingTurn>();
-  private readonly threadAliases = new Map<string, string>();
-
+export class AppServerBrowserRuntime
+  extends BrowserAppServerRuntimeCore<RuntimeDispatch, RuntimeEvent, SessionSnapshot>
+  implements BrowserRuntime
+{
   constructor(client: AppServerClient) {
-    this.client = client;
-    void this.startPump();
+    super(client);
   }
 
   async loadAuthState(): Promise<AuthState | null> {
@@ -103,11 +106,7 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
     nextCursor: string | null;
   }> {
     const codexConfig = await loadStoredCodexConfig();
-    const provider = getActiveProvider(codexConfig);
-    if (provider.providerKind === "xrouter_browser") {
-      return discoverRouterModels(codexConfig);
-    }
-    return discoverProviderModels(codexConfig);
+    return await webUiModelTransportAdapter.discoverModels(codexConfig);
   }
 
   async refreshAuth(_context: {
@@ -139,7 +138,7 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
     const thread = normalizeHostValue((response as { thread?: unknown }).thread) as Record<string, unknown>;
     const actualThreadId =
       typeof thread.id === "string" && thread.id.length > 0 ? thread.id : request.threadId;
-    this.threadAliases.set(request.threadId, actualThreadId);
+    this.rememberThreadAlias(request.threadId, actualThreadId);
     const snapshot = await this.readThreadSnapshot(actualThreadId);
     return {
       value: { ...snapshot, threadId: request.threadId },
@@ -157,10 +156,7 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
   async resumeThread(request: { threadId: string }): Promise<RuntimeDispatch> {
     const stored = await loadStoredSession(request.threadId);
     if (stored !== null) {
-      const actualThreadId = this.actualThreadIdFromSnapshot(stored);
-      if (actualThreadId !== null) {
-        this.threadAliases.set(request.threadId, actualThreadId);
-      }
+      this.adoptThreadAliasFromSnapshot(request.threadId, stored);
       return { value: stored, events: [] };
     }
     const actualThreadId = this.resolveThreadId(request.threadId);
@@ -207,16 +203,7 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
       });
     });
 
-    const dispatchPromise = new Promise<RuntimeDispatch>((resolve, reject) => {
-      const actualThreadId = this.resolveThreadId(request.threadId);
-      this.pendingThreadTurns.set(request.threadId, {
-        threadId: actualThreadId,
-        turnId: null,
-        events: [],
-        resolve,
-        reject,
-      });
-    });
+    const dispatchPromise = this.createPendingTurnDispatch(request.threadId);
 
     const turnStartParams = {
       threadId: this.resolveThreadId(request.threadId),
@@ -234,23 +221,13 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
       model: turnStartParams.model,
       effort: turnStartParams.effort,
       personality: turnStartParams.personality,
-      input,
-      codexInput: textInputs,
+      inputCount: input.length,
+      codexInputCount: textInputs.length,
+      hasAuthState:
+        modelPayload.authState !== null &&
+        typeof modelPayload.authState === "object" &&
+        !Array.isArray(modelPayload.authState),
     });
-    console.info(
-      "[webui] codex.turn-input:json",
-      JSON.stringify(
-        {
-          requestedThreadId: request.threadId,
-          requestedTurnId: request.turnId,
-          params: turnStartParams,
-          modelPayload,
-          originalInput: input,
-        },
-        null,
-        2,
-      ),
-    );
 
     const response = (await this.request("turn/start", turnStartParams)) as { turn?: { id?: string } };
 
@@ -261,106 +238,67 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
       requestedTurnId: request.turnId,
       actualTurnId: turnId,
     });
-    const pending = this.pendingThreadTurns.get(request.threadId);
-    if (pending !== undefined) {
-      this.pendingThreadTurns.delete(request.threadId);
-      pending.turnId = turnId;
-      this.pendingTurns.set(turnId, pending);
-    }
+    this.activatePendingThreadTurn(request.threadId, turnId);
     return dispatchPromise;
   }
 
   async cancelModelTurn(requestId: string): Promise<void> {
-    const pending = this.pendingTurns.get(requestId);
-    if (pending === undefined) {
-      return;
-    }
-    await this.request("turn/interrupt", {
-      threadId: pending.threadId,
-      turnId: requestId,
-    });
+    await this.interruptPendingTurn(requestId);
   }
 
-  private async startPump() {
-    while (true) {
-      const event = await this.client.nextEvent();
-      if (event === null) {
-        return;
-      }
-      if (event.type === "lagged") {
-        console.warn("[webui] app-server:lagged", event);
-        continue;
-      }
-      if (event.type === "serverRequest") {
-        console.info("[webui] app-server:request", summarizeServerRequest(event.request));
-        console.info("[webui] app-server:request:json", JSON.stringify(event.request, null, 2));
-        await this.handleServerRequest(event.request);
-        continue;
-      }
-      console.info("[webui] app-server:notification", summarizeServerNotification(event.notification));
-      console.info("[webui] app-server:notification:json", JSON.stringify(event.notification, null, 2));
-      this.handleServerNotification(event.notification);
-    }
-  }
-
-  private handleServerNotification(notification: ServerNotification) {
-    const event = {
+  protected eventFromNotification(notification: ServerNotification): RuntimeEvent {
+    return {
       method: notification.method,
       params: ("params" in notification ? notification.params : null) as JsonValue,
     } satisfies RuntimeEvent;
+  }
 
+  protected handleRuntimeEvent(event: RuntimeEvent): void {
     emitActivitiesFromNotifications([event]);
-
-    const turnId = turnIdFromNotification(event);
-    if (turnId !== null) {
-      const pending = this.pendingTurns.get(turnId);
-      if (pending !== undefined) {
-        pending.events.push(event);
-        if (event.method === "turn/completed") {
-          void this.resolveTurn(turnId, pending);
-        }
-      }
+    if (event.method === "mcpServer/oauthLogin/completed") {
+      this.resolvePendingMcpLogin(event.params);
     }
   }
 
-  private async resolveTurn(turnId: string, pending: PendingTurn) {
-    this.pendingTurns.delete(turnId);
-    try {
-      const snapshot = await this.readThreadSnapshot(pending.threadId);
-      console.info("[webui] app-server:turn-resolved", {
-        turnId,
-        threadId: pending.threadId,
-        eventCount: pending.events.length,
-        eventMethods: pending.events.map((event) => event.method),
-      });
-      pending.resolve({
-        value: snapshot,
-        events: pending.events,
-      });
-    } catch (error) {
-      pending.reject(error);
-    }
+  protected turnIdFromRuntimeEvent(event: RuntimeEvent): string | null {
+    return turnIdFromNotification(event);
   }
 
-  private async handleServerRequest(request: ServerRequest) {
+  protected isTurnCompletedEvent(event: RuntimeEvent): boolean {
+    return event.method === "turn/completed";
+  }
+
+  protected onLagged(event: { type: "lagged"; skipped: number }): void {
+    console.warn("[webui] app-server:lagged", event);
+  }
+
+  protected buildResolvedDispatch(snapshot: SessionSnapshot, events: RuntimeEvent[]): RuntimeDispatch {
+    console.info("[webui] app-server:turn-resolved", {
+      threadId: snapshot.threadId,
+      eventCount: events.length,
+      eventMethods: events.map((event) => event.method),
+    });
+    return {
+      value: snapshot,
+      events,
+    };
+  }
+
+  protected async handleServerRequest(request: ServerRequest): Promise<void> {
     const result = await this.resolveServerRequest(request);
     console.info("[webui] app-server:request:result", {
       id: request.id,
       method: request.method,
-      result,
+      success:
+        result !== null &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        ("success" in result ? (result as Record<string, unknown>).success : null),
+      keys:
+        result !== null && typeof result === "object" && !Array.isArray(result)
+          ? Object.keys(result)
+          : [],
     });
-    console.info(
-      "[webui] app-server:request:result:json",
-      JSON.stringify(
-        {
-          id: request.id,
-          method: request.method,
-          result,
-        },
-        null,
-        2,
-      ),
-    );
     await this.client.resolveServerRequest(request.id, result as JsonValue);
   }
 
@@ -445,49 +383,7 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
     }
   }
 
-  private async request(method: string, params: Record<string, unknown>): Promise<unknown> {
-    const id = `browser-${this.nextRequestId++}`;
-    console.info("[webui] app-server:client-request", {
-      id,
-      method,
-      params,
-    });
-    console.info(
-      "[webui] app-server:client-request:json",
-      JSON.stringify(
-        {
-          id,
-          method,
-          params,
-        },
-        null,
-        2,
-      ),
-    );
-    const response = await this.client.request<unknown>({
-      id,
-      method,
-      params,
-    } as ClientRequest);
-    console.info("[webui] app-server:client-response", summarizeClientResponse(method, id, response));
-    console.info(
-      "[webui] app-server:client-response:json",
-      JSON.stringify(
-        {
-          requestId: id,
-          method,
-          response: {
-            result: response,
-          },
-        },
-        null,
-        2,
-      ),
-    );
-    return response ?? null;
-  }
-
-  private async readThreadSnapshot(threadId: string): Promise<SessionSnapshot> {
+  protected async readThreadSnapshot(threadId: string): Promise<SessionSnapshot> {
     const response = (await this.request("thread/read", {
       threadId,
       includeTurns: true,
@@ -501,11 +397,7 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
     return snapshot;
   }
 
-  private resolveThreadId(threadId: string): string {
-    return this.threadAliases.get(threadId) ?? threadId;
-  }
-
-  private actualThreadIdFromSnapshot(snapshot: SessionSnapshot): string | null {
+  protected actualThreadIdFromSnapshot(snapshot: SessionSnapshot): string | null {
     if (
       snapshot.metadata !== null &&
       typeof snapshot.metadata === "object" &&
@@ -516,15 +408,159 @@ export class AppServerBrowserRuntime implements BrowserRuntime {
     }
     return null;
   }
+
+  async listRemoteMcpServers(): Promise<BrowserRemoteMcpServer[]> {
+    const [statusResponse, configResponse] = await Promise.all([
+      this.listRemoteMcpServerStatus(),
+      this.readConfigSnapshot(),
+    ]);
+    const configuredServers = readConfiguredMcpServers(configResponse);
+    return statusResponse.data.map((status) => mapRemoteMcpServer(status, configuredServers[status.name]));
+  }
+
+  async addRemoteMcpServer(input: {
+    serverUrl: string;
+    serverName?: string | null;
+  }): Promise<BrowserRemoteMcpServer> {
+    const configResponse = await this.readConfigSnapshot();
+    const configuredServers = readConfiguredMcpServers(configResponse);
+    const serverName = resolveRemoteMcpServerName(input, configuredServers);
+    configuredServers[serverName] = {
+      url: input.serverUrl,
+    };
+    await this.writeRemoteMcpServers(configuredServers);
+    await this.reloadRemoteMcpServers();
+    return await this.readRemoteMcpServer(serverName);
+  }
+
+  async removeRemoteMcpServer(serverName: string): Promise<void> {
+    const configResponse = await this.readConfigSnapshot();
+    const configuredServers = readConfiguredMcpServers(configResponse);
+    if (!(serverName in configuredServers)) {
+      return;
+    }
+    delete configuredServers[serverName];
+    await this.writeRemoteMcpServers(configuredServers);
+    await this.reloadRemoteMcpServers();
+  }
+
+  async refreshRemoteMcpServer(serverName: string): Promise<BrowserRemoteMcpServer> {
+    await this.reloadRemoteMcpServers();
+    return await this.readRemoteMcpServer(serverName);
+  }
+
+  async logoutRemoteMcpServer(serverName: string): Promise<void> {
+    throw new Error(`MCP logout is not supported in wasm browser runtime for '${serverName}'`);
+  }
+
+  async beginRemoteMcpLogin(input: {
+    serverName: string;
+    scopes?: string[] | null;
+    timeoutSecs?: number | null;
+  }): Promise<BrowserRemoteMcpServer> {
+    const pending = createDeferred<void>();
+    this.pendingMcpLogins.delete(input.serverName);
+    this.pendingMcpLogins.set(input.serverName, pending);
+    try {
+      await this.request("mcpServer/oauth/login", {
+      name: input.serverName,
+      scopes: input.scopes ?? null,
+      timeoutSecs: input.timeoutSecs ?? null,
+      });
+      await pending.promise;
+      await this.reloadRemoteMcpServers();
+      return await this.readRemoteMcpServer(input.serverName);
+    } finally {
+      this.pendingMcpLogins.delete(input.serverName);
+    }
+  }
+
+  private readonly pendingMcpLogins = new Map<
+    string,
+    {
+      promise: Promise<void>;
+      resolve: () => void;
+      reject: (error: unknown) => void;
+    }
+  >();
+
+  private async readRemoteMcpServer(serverName: string): Promise<BrowserRemoteMcpServer> {
+    const servers = await this.listRemoteMcpServers();
+    const server = servers.find((candidate) => candidate.serverName === serverName);
+    if (server === undefined) {
+      throw new Error(`MCP server '${serverName}' was not found`);
+    }
+    return server;
+  }
+
+  private async listRemoteMcpServerStatus(): Promise<ListMcpServerStatusResponse> {
+    const pages: McpServerStatus[] = [];
+    let cursor: string | null = null;
+    while (true) {
+      const response = (await this.request("mcpServerStatus/list", {
+        cursor,
+        limit: null,
+      })) as ListMcpServerStatusResponse;
+      pages.push(...response.data);
+      if (response.nextCursor === null) {
+        return {
+          data: pages,
+          nextCursor: null,
+        };
+      }
+      cursor = response.nextCursor;
+    }
+  }
+
+  private async readConfigSnapshot(): Promise<ConfigReadResponse> {
+    return (await this.request("config/read", {
+      includeLayers: false,
+      cwd: null,
+    })) as ConfigReadResponse;
+  }
+
+  private async writeRemoteMcpServers(mcpServers: Record<string, unknown>): Promise<void> {
+    await this.request("config/value/write", {
+      keyPath: "mcp_servers",
+      value: mcpServers,
+      mergeStrategy: "replace",
+      filePath: null,
+      expectedVersion: null,
+    });
+  }
+
+  private async reloadRemoteMcpServers(): Promise<void> {
+    await this.request("config/mcpServer/reload", {});
+  }
+
+  private resolvePendingMcpLogin(params: JsonValue): void {
+    const notification =
+      params !== null && typeof params === "object" && !Array.isArray(params)
+        ? (params as McpServerOauthLoginCompletedNotification)
+        : null;
+    if (notification === null || typeof notification.name !== "string") {
+      return;
+    }
+    const pending = this.pendingMcpLogins.get(notification.name);
+    if (pending === undefined) {
+      return;
+    }
+    if (notification.success) {
+      pending.resolve();
+      return;
+    }
+    pending.reject(new Error(notification.error ?? `MCP login failed for '${notification.name}'`));
+  }
 }
 
 export async function createAppServerBrowserRuntime(
   runtimeModule: RuntimeModule,
   host: unknown,
 ): Promise<BrowserRuntime> {
-  const runtime = new runtimeModule.WasmBrowserRuntime(host);
-  const client = await AppServerClient.start(runtime, { experimentalApi: true });
-  return new AppServerBrowserRuntime(client);
+  const client = await startBrowserAppServerClient(runtimeModule, host, { experimentalApi: true });
+  const runtime = new AppServerBrowserRuntime(client);
+  installRemoteMcpController(createRemoteMcpController(runtime));
+  return runtime;
 }
 
 async function listBrowserDynamicTools(): Promise<DynamicToolSpec[]> {
@@ -539,103 +575,158 @@ async function listBrowserDynamicTools(): Promise<DynamicToolSpec[]> {
   }));
 }
 
-function asDynamicToolContentItems(output: JsonValue): DynamicToolCallOutputContentItem[] {
-  if (typeof output === "string") {
-    return [{ type: "inputText", text: output }];
-  }
-
-  return [
-    {
-      type: "inputText",
-      text: JSON.stringify(output, null, 2),
-    },
-  ];
+function createRemoteMcpController(runtime: AppServerBrowserRuntime): BrowserRemoteMcpController {
+  return {
+    listServers: () => runtime.listRemoteMcpServers(),
+    addServer: (input) => runtime.addRemoteMcpServer(input),
+    removeServer: (serverName) => runtime.removeRemoteMcpServer(serverName),
+    refreshServerTools: (serverName) => runtime.refreshRemoteMcpServer(serverName),
+    logoutServer: (serverName) => runtime.logoutRemoteMcpServer(serverName),
+    beginLogin: (input) => runtime.beginRemoteMcpLogin(input),
+  };
 }
 
-function threadToSessionSnapshot(thread: Record<string, unknown>): SessionSnapshot {
-  const turns = Array.isArray(thread.turns) ? thread.turns : [];
-  const items = turns.flatMap((turn) => {
-    if (turn === null || typeof turn !== "object" || Array.isArray(turn)) {
+function readConfiguredMcpServers(configResponse: ConfigReadResponse): Record<string, Record<string, unknown>> {
+  const rawServers = configResponse.config.mcp_servers;
+  if (rawServers === null || rawServers === undefined || typeof rawServers !== "object" || Array.isArray(rawServers)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(rawServers).filter(
+      (entry): entry is [string, Record<string, unknown>] =>
+        entry[1] !== null && typeof entry[1] === "object" && !Array.isArray(entry[1]),
+    ),
+  );
+}
+
+function mapRemoteMcpServer(
+  status: McpServerStatus,
+  configured: Record<string, unknown> | undefined,
+): BrowserRemoteMcpServer {
+  return {
+    serverName: status.name,
+    serverUrl: readConfiguredServerUrl(configured),
+    authStatus: status.authStatus,
+    connectionState: "idle",
+    scopes: readConfiguredScopes(configured),
+    tools: mapRemoteMcpTools(status.tools),
+    expiresAt: null,
+    lastError: null,
+    clientId: readConfiguredClientId(configured),
+  };
+}
+
+function readConfiguredServerUrl(configured: Record<string, unknown> | undefined): string {
+  const url = configured?.url;
+  return typeof url === "string" ? url : "";
+}
+
+function readConfiguredScopes(configured: Record<string, unknown> | undefined): string[] {
+  const scopes = configured?.scopes;
+  return Array.isArray(scopes) ? scopes.filter((scope): scope is string => typeof scope === "string") : [];
+}
+
+function readConfiguredClientId(configured: Record<string, unknown> | undefined): string | null {
+  const clientId = configured?.client_id;
+  return typeof clientId === "string" ? clientId : null;
+}
+
+function mapRemoteMcpTools(tools: McpServerStatus["tools"]): BrowserRemoteMcpTool[] {
+  return Object.entries(tools).flatMap(([qualifiedName, tool]) => {
+    if (tool === undefined || tool === null) {
       return [];
     }
-    const record = turn as Record<string, unknown>;
-    return Array.isArray(record.items) ? record.items : [];
+    const name = typeof tool.name === "string" && tool.name.length > 0 ? tool.name : qualifiedName;
+    const parsed = splitQualifiedToolName(qualifiedName, name);
+    return [
+      {
+        toolName: parsed.toolName,
+        toolNamespace: parsed.toolNamespace,
+        tool,
+      },
+    ];
   });
+}
+
+function splitQualifiedToolName(
+  qualifiedName: string,
+  fallbackName: string,
+): {
+  toolName: string;
+  toolNamespace: string | null;
+} {
+  const separator = qualifiedName.lastIndexOf("__");
+  if (separator <= 0 || separator >= qualifiedName.length - 2) {
+    return {
+      toolName: fallbackName,
+      toolNamespace: null,
+    };
+  }
 
   return {
-    threadId: typeof thread.id === "string" ? thread.id : "thread",
-    metadata: thread as JsonValue,
-    items: items as JsonValue[],
+    toolName: qualifiedName.slice(separator + 2),
+    toolNamespace: qualifiedName.slice(0, separator),
   };
 }
 
-function turnIdFromNotification(event: RuntimeEvent): string | null {
-  const params =
-    event.params !== null && typeof event.params === "object" && !Array.isArray(event.params)
-      ? (event.params as Record<string, unknown>)
-      : null;
-  if (params === null) {
+function resolveRemoteMcpServerName(
+  input: {
+    serverUrl: string;
+    serverName?: string | null;
+  },
+  configuredServers: Record<string, unknown>,
+): string {
+  const preferred = normalizeRemoteMcpServerName(input.serverName);
+  if (preferred !== null) {
+    return ensureUniqueRemoteMcpServerName(preferred, configuredServers);
+  }
+
+  const derived = normalizeRemoteMcpServerName(deriveRemoteMcpServerName(input.serverUrl)) ?? "remote_mcp";
+  return ensureUniqueRemoteMcpServerName(derived, configuredServers);
+}
+
+function deriveRemoteMcpServerName(serverUrl: string): string {
+  try {
+    const url = new URL(serverUrl);
+    return [url.hostname, ...url.pathname.split("/")].filter((part) => part.length > 0).join("_");
+  } catch {
+    return serverUrl;
+  }
+}
+
+function normalizeRemoteMcpServerName(serverName: string | null | undefined): string | null {
+  if (serverName === null || serverName === undefined) {
     return null;
   }
-  if (typeof params.turnId === "string") {
-    return params.turnId;
-  }
-  if (
-    params.turn !== null &&
-    typeof params.turn === "object" &&
-    !Array.isArray(params.turn) &&
-    typeof (params.turn as Record<string, unknown>).id === "string"
-  ) {
-    return (params.turn as Record<string, unknown>).id as string;
-  }
-  return null;
+  const normalized = serverName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized.length > 0 ? normalized : null;
 }
 
-function summarizeServerNotification(notification: ServerNotification): Record<string, unknown> {
-  return {
-    method: notification.method,
-    keys: Object.keys(("params" in notification ? notification.params : {}) ?? {}),
-    turnId: extractTurnId(("params" in notification ? notification.params : undefined) as Record<string, unknown> | undefined),
-  };
+function ensureUniqueRemoteMcpServerName(
+  serverName: string,
+  configuredServers: Record<string, unknown>,
+): string {
+  if (!(serverName in configuredServers)) {
+    return serverName;
+  }
+  let suffix = 2;
+  while (`${serverName}_${suffix}` in configuredServers) {
+    suffix += 1;
+  }
+  return `${serverName}_${suffix}`;
 }
 
-function summarizeServerRequest(request: ServerRequest): Record<string, unknown> {
-  return {
-    id: request.id,
-    method: request.method,
-    keys: Object.keys(request.params ?? {}),
-    turnId: extractTurnId(request.params),
-  };
-}
-
-function summarizeClientResponse(
-  method: string,
-  requestId: string,
-  result: unknown,
-): Record<string, unknown> {
-  return {
-    requestId,
-    method,
-    hasResult: result !== undefined,
-    hasError: false,
-    errorMessage: null,
-  };
-}
-
-function extractTurnId(params: Record<string, unknown> | undefined): string | null {
-  if (params === undefined) {
-    return null;
-  }
-  if (typeof params.turnId === "string") {
-    return params.turnId;
-  }
-  if (
-    params.turn !== null &&
-    typeof params.turn === "object" &&
-    !Array.isArray(params.turn) &&
-    typeof (params.turn as Record<string, unknown>).id === "string"
-  ) {
-    return (params.turn as Record<string, unknown>).id as string;
-  }
-  return null;
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
 }

@@ -1,0 +1,17 @@
+{
+  "name": "@browser-codex/wasm-browser-host",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "@browser-codex/wasm-runtime-core": "file:../runtime-core"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./constants": "./src/constants.ts",
+    "./mcp": "./src/mcp.ts",
+    "./runtime-host": "./src/runtime-host.ts",
+    "./workspace-storage": "./src/workspace-storage.ts"
+  }
+}

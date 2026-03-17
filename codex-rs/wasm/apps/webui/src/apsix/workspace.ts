@@ -1,9 +1,13 @@
-import type { RemoteMcpServerState } from "../../../../../wasm-arch/ts/host-runtime/src/mcp";
 import {
   loadStoredWorkspaceSnapshot,
   saveStoredWorkspaceSnapshot,
   upsertWorkspaceFile,
 } from "../runtime/storage";
+import {
+  getRemoteMcpToolName,
+  isRemoteMcpAuthenticated,
+  listRemoteMcpServers,
+} from "../runtime/mcp";
 import type {
   ApsixActorSummary,
   ApsixAnchorSummary,
@@ -16,6 +20,8 @@ import type {
   WorkspaceFileSummary,
 } from "../types";
 import { ensureWorkspaceDocument, upsertWorkspaceDocument } from "../ui/workspace";
+
+type RemoteMcpServerState = Awaited<ReturnType<typeof listRemoteMcpServers>>[number];
 
 const LEGACY_APSIX_ROOT = "/workspace/apsix";
 export const APSIX_ROOT = "/workspace/codex";
@@ -199,10 +205,10 @@ export async function saveRemoteMcpServersSnapshot(states: RemoteMcpServerState[
         url: state.serverUrl,
         status: state.authStatus,
         authMode: "oauth",
-        login: state.authStatus === "connected" ? "authenticated" : "required",
+        login: isRemoteMcpAuthenticated(state) ? "authenticated" : "required",
         latencyMs: previous?.latencyMs ?? 0,
         scopes: state.scopes,
-        tools: state.tools.map((tool) => tool.originalName),
+        tools: state.tools.map(getRemoteMcpToolName),
         description: previous?.description ?? `Remote MCP capability lane for ${prettifyServerName(state.serverName)}.`,
         expiresAt: state.expiresAt,
         lastError: state.lastError,

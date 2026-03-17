@@ -479,8 +479,12 @@ fn browser_log_model_stream_request(
             )
         })
         .unwrap_or_else(|| format!("provider={}", provider.name));
+    let header_keys = extra_headers
+        .as_object()
+        .map(|headers| headers.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
     web_sys::console::info_1(&wasm_bindgen::JsValue::from_str(&format!(
-        "[wasm_v2/core] model.stream host transport {summary} headers={extra_headers}"
+        "[wasm/core] model.stream host transport {summary} header_keys={header_keys:?}"
     )));
 }
 

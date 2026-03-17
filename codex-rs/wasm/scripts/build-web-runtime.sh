@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: build-web-runtime.sh --app <apps/webui|examples/browser-chat-demo|examples/webui-runtime-profiles|examples/browser-terminal-demo|examples/browser-codex-demo|wasm/examples/...|wasm-arch/examples/...> [--runtime <wasm|wasm-arch|wasm_v2|1|2|v1|v2|arch|legacy>]
+Usage: build-web-runtime.sh --app <apps/webui|examples/browser-chat-demo|examples/webui-runtime-profiles|examples/browser-terminal-demo|examples/browser-codex-demo|wasm/examples/...|wasm-arch/examples/...> [--runtime <wasm|wasm-arch|1|v1|arch|legacy>]
 
 Builds the selected browser runtime package and prepares web assets for the selected app.
 
@@ -57,10 +57,10 @@ case "${RUNTIME_KIND}" in
     RUNTIME_CRATE="codex-wasm-core"
     RUNTIME_WASM_BASENAME="codex_wasm_core"
     ;;
-  wasm|wasm_v2|2|v2)
+  wasm)
     RUNTIME_KIND="wasm"
-    RUNTIME_CRATE="codex-wasm-v2-core"
-    RUNTIME_WASM_BASENAME="codex_wasm_v2_core"
+    RUNTIME_CRATE="codex-wasm-core"
+    RUNTIME_WASM_BASENAME="codex_wasm_core"
     ;;
   *)
     echo "Unsupported runtime: ${RUNTIME_KIND}" >&2
@@ -109,8 +109,8 @@ require_command wasm-bindgen
 if [[ "${RUNTIME_KIND}" == "wasm-arch" ]]; then
   RUNTIME_CRATE_MANIFEST="${CODEX_RS_ROOT}/wasm-arch/core/Cargo.toml"
 else
-  RUNTIME_CRATE="codex-wasm-v2-browser"
-  RUNTIME_WASM_BASENAME="codex_wasm_v2_browser"
+  RUNTIME_CRATE="codex-wasm-browser"
+  RUNTIME_WASM_BASENAME="codex_wasm_browser"
   RUNTIME_CRATE_MANIFEST="${CODEX_RS_ROOT}/wasm/browser/Cargo.toml"
 fi
 

@@ -1,4 +1,4 @@
-import { WORKSPACE_ROOT } from "./constants";
+import { WORKSPACE_ROOT } from "@browser-codex/wasm-browser-host/constants";
 import {
   loadStoredWorkspaceSnapshot,
   normalizeWorkspaceDirectoryPath,
@@ -8,7 +8,7 @@ import {
   saveStoredWorkspaceSnapshot,
   type WorkspaceSnapshot,
   upsertWorkspaceFile,
-} from "./storage";
+} from "@browser-codex/wasm-browser-host/workspace-storage";
 import type { JsonValue, WorkspaceDebugFile } from "./types";
 import { createHostError, normalizeHostValue } from "./utils";
 

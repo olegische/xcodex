@@ -1,6 +1,6 @@
 //! Browser compatibility shim for `core` shell metadata.
 //!
-//! `wasm_v2` does not provide a native shell. These values are retained only so
+//! `wasm` does not provide a native shell. These values are retained only so
 //! mirrored `core` code can carry the same shell selection metadata shape.
 
 use serde::Deserialize;

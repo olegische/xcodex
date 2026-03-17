@@ -58,7 +58,7 @@ fn apply_thread_rollback(mut thread: ThreadRecord, num_turns: u32) -> ThreadReco
         thread.turns.remove(&turn_id);
     }
     thread.preview = preview_from_turns(&thread);
-    thread.updated_at = codex_wasm_v2_core::time::now_unix_seconds();
+    thread.updated_at = codex_wasm_core::time::now_unix_seconds();
     thread
 }
 

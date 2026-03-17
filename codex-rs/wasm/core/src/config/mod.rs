@@ -68,7 +68,7 @@ impl NetworkProxySpec {
     ) -> anyhow::Result<StartedNetworkProxy> {
         let _ = self;
         Err(anyhow::anyhow!(
-            "managed network proxy is not implemented in wasm_v2 yet"
+            "managed network proxy is not implemented in wasm yet"
         ))
     }
 }

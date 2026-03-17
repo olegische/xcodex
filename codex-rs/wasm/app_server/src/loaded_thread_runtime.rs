@@ -5,7 +5,7 @@ use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadStartParams;
-use codex_wasm_v2_core::codex::Codex;
+use codex_wasm_core::codex::Codex;
 
 use crate::ApiVersion;
 use crate::MessageProcessor;

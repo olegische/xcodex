@@ -23,7 +23,7 @@ use codex_app_server_protocol::TurnStatus;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::protocol::SessionSource;
-use codex_wasm_v2_core::codex::Codex;
+use codex_wasm_core::codex::Codex;
 
 use crate::InProcessThreadHandle;
 use crate::InProcessTurnRecord;

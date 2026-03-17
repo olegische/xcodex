@@ -1,5 +1,5 @@
-import type { BrowserRuntimeHost, RuntimeModule, WasmProtocolRuntime } from "../../../apps/webui/src/runtime/types";
-import type { AppServerClientStartArgs } from "../../../apps/webui/src/runtime/app-server-client";
+import type { AppServerClientStartArgs } from "@browser-codex/wasm-runtime-core/app-server-client";
+import type { BrowserRuntimeHost, RuntimeModule, WasmProtocolRuntime } from "@browser-codex/wasm-runtime-core/types";
 import type { RequestId } from "../../../../app-server-protocol/schema/typescript/RequestId";
 
 export type JsonRecord = Record<string, unknown>;

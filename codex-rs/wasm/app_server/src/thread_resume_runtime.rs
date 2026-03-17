@@ -9,11 +9,11 @@ use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::ResumedHistory;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource;
-use codex_wasm_v2_core::BrowserCodexSpawnArgs;
-use codex_wasm_v2_core::LoadThreadSessionRequest;
-use codex_wasm_v2_core::StoredThreadSession;
-use codex_wasm_v2_core::codex::Codex;
-use codex_wasm_v2_core::spawn_browser_codex;
+use codex_wasm_core::BrowserCodexSpawnArgs;
+use codex_wasm_core::LoadThreadSessionRequest;
+use codex_wasm_core::StoredThreadSession;
+use codex_wasm_core::codex::Codex;
+use codex_wasm_core::spawn_browser_codex;
 
 use crate::AppServerState;
 use crate::LoadedThread;
@@ -273,7 +273,7 @@ fn parse_thread_id(thread_id: &str) -> Result<codex_protocol::ThreadId, JSONRPCE
 
 fn map_load_error(
     thread_id: &str,
-) -> impl FnOnce(codex_wasm_v2_core::HostError) -> JSONRPCErrorError + '_ {
+) -> impl FnOnce(codex_wasm_core::HostError) -> JSONRPCErrorError + '_ {
     move |error| {
         invalid_request_error(format!(
             "no rollout found for thread id {thread_id}: {}",

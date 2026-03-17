@@ -1,0 +1,306 @@
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { McpAuthStatus } from "../../../../app-server-protocol/schema/typescript/v2/McpAuthStatus";
+
+export type BrowserRemoteMcpConnectionState = "idle" | "refreshing" | "error";
+
+export type BrowserRemoteMcpTool = {
+  toolName: string;
+  toolNamespace: string | null;
+  tool: Tool;
+};
+
+export type BrowserRemoteMcpServer = {
+  serverName: string;
+  serverUrl: string;
+  authStatus: McpAuthStatus;
+  connectionState: BrowserRemoteMcpConnectionState;
+  scopes: string[];
+  tools: BrowserRemoteMcpTool[];
+  expiresAt: number | null;
+  lastError: string | null;
+  clientId: string | null;
+};
+
+type BrowserRemoteMcpLoginRequest = {
+  serverName: string;
+  scopes?: string[] | null;
+  timeoutSecs?: number | null;
+};
+
+type BrowserRemoteMcpAddServerRequest = {
+  serverUrl: string;
+  serverName?: string | null;
+};
+
+export type BrowserRemoteMcpController = {
+  listServers(): Promise<BrowserRemoteMcpServer[]>;
+  addServer(input: BrowserRemoteMcpAddServerRequest): Promise<BrowserRemoteMcpServer>;
+  removeServer(serverName: string): Promise<void>;
+  refreshServerTools(serverName: string): Promise<BrowserRemoteMcpServer>;
+  logoutServer(serverName: string): Promise<void>;
+  beginLogin(input: BrowserRemoteMcpLoginRequest): Promise<BrowserRemoteMcpServer>;
+};
+
+declare global {
+  interface Window {
+    __codexMcp?: BrowserRemoteMcpController;
+  }
+}
+
+type RemoteMcpCallbackMessage = {
+  type: "codex:mcp-callback";
+  serverName: string;
+  callbackUrl: string;
+};
+
+const REMOTE_MCP_CALLBACK_TYPE = "codex:mcp-callback";
+
+export function handleRemoteMcpPopupCallback(): boolean {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("mcp_callback") !== "1") {
+    return false;
+  }
+  if (window.opener === null) {
+    return false;
+  }
+
+  const serverName = url.searchParams.get("mcp_server");
+  if (serverName === null || serverName.length === 0) {
+    return false;
+  }
+
+  window.opener.postMessage(
+    {
+      type: REMOTE_MCP_CALLBACK_TYPE,
+      serverName,
+      callbackUrl: url.toString(),
+    } satisfies RemoteMcpCallbackMessage,
+    window.location.origin,
+  );
+
+  document.title = `WASM Codex | ${serverName} MCP Login`;
+  if (document.body !== null) {
+    document.body.innerHTML = `
+      <main style="min-height:100vh;display:grid;place-items:center;background:#060816;color:#d7e3ff;font:16px/1.5 'IBM Plex Sans',sans-serif;padding:24px;">
+        <section style="max-width:32rem;padding:24px 28px;border:1px solid rgba(95,223,255,.22);border-radius:20px;background:rgba(10,18,36,.88);box-shadow:0 24px 80px rgba(0,0,0,.45);">
+          <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#5fdfff;">Remote MCP</div>
+          <h1 style="margin:12px 0 0;font-size:32px;line-height:1.05;">Login captured</h1>
+          <p style="margin:12px 0 0;color:#96a5c6;">The authorization result was sent back to WASM Codex. This window can close now.</p>
+        </section>
+      </main>
+    `;
+  }
+  window.setTimeout(() => window.close(), 120);
+  return true;
+}
+
+export async function listRemoteMcpServers(): Promise<BrowserRemoteMcpServer[]> {
+  return getRemoteMcpController().listServers();
+}
+
+export async function addRemoteMcpServer(input: {
+  serverUrl: string;
+  serverName?: string | null;
+}): Promise<BrowserRemoteMcpServer> {
+  return getRemoteMcpController().addServer(input);
+}
+
+export async function removeRemoteMcpServer(serverName: string): Promise<void> {
+  await getRemoteMcpController().removeServer(serverName);
+}
+
+export async function refreshRemoteMcpServer(serverName: string): Promise<BrowserRemoteMcpServer> {
+  return getRemoteMcpController().refreshServerTools(serverName);
+}
+
+export async function logoutRemoteMcpServer(serverName: string): Promise<void> {
+  await getRemoteMcpController().logoutServer(serverName);
+}
+
+export async function connectRemoteMcpServer(serverName: string): Promise<BrowserRemoteMcpServer> {
+  return await getRemoteMcpController().beginLogin({
+    serverName,
+  });
+}
+
+export function getRemoteMcpToolName(tool: BrowserRemoteMcpTool): string {
+  return tool.toolNamespace === null ? tool.toolName : `${tool.toolNamespace}__${tool.toolName}`;
+}
+
+export function getRemoteMcpAuthStatusLabel(authStatus: McpAuthStatus): string {
+  switch (authStatus) {
+    case "unsupported":
+      return "Unsupported";
+    case "notLoggedIn":
+      return "Not logged in";
+    case "bearerToken":
+      return "Bearer token";
+    case "oAuth":
+      return "OAuth";
+  }
+}
+
+export function isRemoteMcpAuthenticated(server: BrowserRemoteMcpServer): boolean {
+  return server.authStatus === "oAuth" || server.authStatus === "bearerToken";
+}
+
+export function isRemoteMcpUnsupported(server: BrowserRemoteMcpServer): boolean {
+  return server.authStatus === "unsupported";
+}
+
+export function installRemoteMcpController(controller: BrowserRemoteMcpController | null): void {
+  if (controller === null) {
+    delete window.__codexMcp;
+    return;
+  }
+  window.__codexMcp = controller;
+}
+
+function getRemoteMcpController(): BrowserRemoteMcpController {
+  const controller = window.__codexMcp;
+  if (controller === undefined) {
+    throw new Error("Remote MCP controller is not ready yet");
+  }
+  return controller;
+}
+
+function buildRemoteMcpRedirectUri(serverName: string): string {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("mcp_callback", "1");
+  url.searchParams.set("mcp_server", serverName);
+  return url.toString();
+}
+
+export async function resolveRemoteMcpOauthRedirectUri(input: {
+  serverName: string;
+}): Promise<{ redirectUri: string }> {
+  return {
+    redirectUri: buildRemoteMcpRedirectUri(input.serverName),
+  };
+}
+
+export async function waitForRemoteMcpOauthCallback(input: {
+  serverName: string;
+  authorizationUrl: string;
+  timeoutSecs?: number | null;
+}): Promise<{
+  code: string;
+  state: string;
+}> {
+  const loginTab = window.open(input.authorizationUrl, "_blank");
+  if (loginTab === null) {
+    throw new Error("Browser blocked the MCP login tab");
+  }
+  loginTab.focus();
+
+  const callbackUrl = await waitForRemoteMcpCallbackUrl({
+    popup: loginTab,
+    serverName: input.serverName,
+    timeoutMs: Math.max(1, input.timeoutSecs ?? 120) * 1000,
+  });
+  return parseRemoteMcpCallbackUrl(callbackUrl, input.serverName);
+}
+
+export function createRemoteMcpOauthHostHandlers(): Pick<
+  NonNullable<import("@browser-codex/wasm-runtime-core/types").BrowserRuntimeHost>,
+  "resolveMcpOauthRedirectUri" | "waitForMcpOauthCallback"
+> {
+  return {
+    async resolveMcpOauthRedirectUri(request) {
+      const serverName =
+        request !== null &&
+        typeof request === "object" &&
+        !Array.isArray(request) &&
+        typeof (request as { serverName?: unknown }).serverName === "string"
+          ? (request as { serverName: string }).serverName
+          : "";
+      return await resolveRemoteMcpOauthRedirectUri({ serverName });
+    },
+    async waitForMcpOauthCallback(request) {
+      const payload =
+        request !== null && typeof request === "object" && !Array.isArray(request)
+          ? (request as {
+              serverName?: unknown;
+              authorizationUrl?: unknown;
+              timeoutSecs?: unknown;
+            })
+          : {};
+      return await waitForRemoteMcpOauthCallback({
+        serverName: typeof payload.serverName === "string" ? payload.serverName : "",
+        authorizationUrl:
+          typeof payload.authorizationUrl === "string" ? payload.authorizationUrl : "",
+        timeoutSecs: typeof payload.timeoutSecs === "number" ? payload.timeoutSecs : null,
+      });
+    },
+  };
+}
+
+function waitForRemoteMcpCallbackUrl(input: {
+  popup: Window;
+  serverName: string;
+  timeoutMs: number;
+}): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const closedWatcher = window.setInterval(() => {
+      if (!input.popup.closed) {
+        return;
+      }
+      cleanup();
+      reject(new Error(`MCP login tab closed before ${input.serverName} completed authorization`));
+    }, 300);
+
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out while waiting for ${input.serverName} MCP login`));
+    }, input.timeoutMs);
+
+    const onMessage = (event: MessageEvent<RemoteMcpCallbackMessage>) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      const payload = event.data;
+      if (
+        payload === null ||
+        typeof payload !== "object" ||
+        payload.type !== REMOTE_MCP_CALLBACK_TYPE ||
+        payload.serverName !== input.serverName
+      ) {
+        return;
+      }
+      cleanup();
+      resolve(payload.callbackUrl);
+    };
+
+    function cleanup() {
+      window.clearInterval(closedWatcher);
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", onMessage);
+    }
+
+    window.addEventListener("message", onMessage);
+  });
+}
+
+function parseRemoteMcpCallbackUrl(
+  callbackUrl: string,
+  serverName: string,
+): {
+  code: string;
+  state: string;
+} {
+  const url = new URL(callbackUrl);
+  const errorDescription = url.searchParams.get("error_description") ?? url.searchParams.get("error");
+  if (errorDescription !== null) {
+    throw new Error(`MCP login failed for ${serverName}: ${errorDescription}`);
+  }
+
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  if (code === null || state === null) {
+    throw new Error(`MCP login callback for ${serverName} did not include code/state`);
+  }
+
+  return { code, state };
+}

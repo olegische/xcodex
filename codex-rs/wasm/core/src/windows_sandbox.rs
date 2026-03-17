@@ -1,6 +1,6 @@
 //! Browser-only compatibility shim for `core/src/windows_sandbox.rs`.
 //!
-//! `wasm_v2` never enables any Windows sandbox behavior. The mirrored runtime
+//! `wasm` never enables any Windows sandbox behavior. The mirrored runtime
 //! still references this module, so we keep the same extension point but force
 //! the effective level to `Disabled`.
 

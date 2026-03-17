@@ -3,7 +3,7 @@ pub struct Originator {
     pub value: String,
 }
 
-pub const DEFAULT_ORIGINATOR: &str = "codex_wasm_v2";
+pub const DEFAULT_ORIGINATOR: &str = "codex_wasm";
 
 pub fn originator() -> Originator {
     Originator {

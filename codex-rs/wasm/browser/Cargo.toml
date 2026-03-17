@@ -1,12 +1,12 @@
 [package]
 edition.workspace = true
 license.workspace = true
-name = "codex-wasm-v2-browser"
+name = "codex-wasm-browser"
 version.workspace = true
 
 [lib]
 doctest = false
-name = "codex_wasm_v2_browser"
+name = "codex_wasm_browser"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
@@ -20,8 +20,8 @@ async-trait = { workspace = true }
 console_error_panic_hook = "0.1.7"
 codex-app-server-protocol = { workspace = true }
 codex-protocol = { workspace = true }
-codex-wasm-v2-app-server = { path = "../app_server" }
-codex-wasm-v2-core = { path = "../core" }
+codex-wasm-app-server = { path = "../app_server" }
+codex-wasm-core = { path = "../core" }
 js-sys = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde-wasm-bindgen = { workspace = true }

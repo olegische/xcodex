@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
+    "baseUrl": ".",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
@@ -11,7 +12,16 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "allowJs": false,
-    "types": ["svelte"]
+    "types": ["svelte"],
+    "paths": {
+      "@browser-codex/wasm-browser-host": ["../../ts/browser-host/src/index.ts"],
+      "@browser-codex/wasm-browser-host/*": ["../../ts/browser-host/src/*"],
+      "@browser-codex/wasm-model-transport": ["../../ts/model-transport/src/index.ts"],
+      "@browser-codex/wasm-model-transport/*": ["../../ts/model-transport/src/*"],
+      "@browser-codex/wasm-runtime-core": ["../../ts/runtime-core/src/index.ts"],
+      "@browser-codex/wasm-runtime-core/*": ["../../ts/runtime-core/src/*"],
+      "openai": ["./node_modules/openai/index.d.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.svelte", "vite.config.ts"]
 }

@@ -29,13 +29,13 @@ use crate::RuntimeBootstrap;
 
 pub struct ConfigApi<'a> {
     runtime_bootstrap: &'a mut RuntimeBootstrap,
-    loaded_threads: Vec<Arc<codex_wasm_v2_core::codex::Codex>>,
+    loaded_threads: Vec<Arc<codex_wasm_core::codex::Codex>>,
 }
 
 impl<'a> ConfigApi<'a> {
     pub fn new(
         runtime_bootstrap: &'a mut RuntimeBootstrap,
-        loaded_threads: Vec<Arc<codex_wasm_v2_core::codex::Codex>>,
+        loaded_threads: Vec<Arc<codex_wasm_core::codex::Codex>>,
     ) -> Self {
         Self {
             runtime_bootstrap,
@@ -104,7 +104,7 @@ impl<'a> ConfigApi<'a> {
         let saved = self
             .runtime_bootstrap
             .config_storage_host
-            .save_user_config(codex_wasm_v2_core::SaveUserConfigRequest {
+            .save_user_config(codex_wasm_core::SaveUserConfigRequest {
                 file_path: Some(current.file_path.clone()),
                 expected_version: params.expected_version.or(current.version.clone()),
                 content,
@@ -135,7 +135,12 @@ impl<'a> ConfigApi<'a> {
     }
 }
 
-fn protocol_config(config: &codex_wasm_v2_core::config::Config) -> Config {
+fn protocol_config(config: &codex_wasm_core::config::Config) -> Config {
+    let mut additional = std::collections::HashMap::new();
+    if let Ok(mcp_servers) = serde_json::to_value(config.mcp_servers.get()) {
+        additional.insert("mcp_servers".to_string(), mcp_servers);
+    }
+
     Config {
         model: config.model.clone(),
         review_model: config.review_model.clone(),
@@ -160,7 +165,7 @@ fn protocol_config(config: &codex_wasm_v2_core::config::Config) -> Config {
         service_tier: config.service_tier,
         analytics: None,
         apps: None,
-        additional: Default::default(),
+        additional,
     }
 }
 
@@ -304,7 +309,7 @@ async fn load_current_user_config(
 ) -> Result<LoadedUserConfig, JSONRPCErrorError> {
     match runtime_bootstrap
         .config_storage_host
-        .load_user_config(codex_wasm_v2_core::LoadUserConfigRequest {})
+        .load_user_config(codex_wasm_core::LoadUserConfigRequest {})
         .await
     {
         Ok(response) => Ok(LoadedUserConfig {
@@ -314,7 +319,7 @@ async fn load_current_user_config(
                 config_validation_error(format!("invalid user config: {error}"))
             })?,
         }),
-        Err(error) if error.code == codex_wasm_v2_core::HostErrorCode::NotFound => {
+        Err(error) if error.code == codex_wasm_core::HostErrorCode::NotFound => {
             let file_path = runtime_bootstrap
                 .config
                 .codex_home
@@ -332,7 +337,7 @@ async fn load_current_user_config(
 }
 
 fn apply_effective_user_config(
-    config: &mut codex_wasm_v2_core::config::Config,
+    config: &mut codex_wasm_core::config::Config,
     user_config: &toml::Value,
 ) {
     let Some(table) = user_config.as_table() else {
@@ -560,12 +565,12 @@ fn map_merge_error(error: MergeError) -> JSONRPCErrorError {
     }
 }
 
-fn map_host_write_error(error: codex_wasm_v2_core::HostError) -> JSONRPCErrorError {
+fn map_host_write_error(error: codex_wasm_core::HostError) -> JSONRPCErrorError {
     match error.code {
-        codex_wasm_v2_core::HostErrorCode::Conflict => {
+        codex_wasm_core::HostErrorCode::Conflict => {
             config_write_error(ConfigWriteErrorCode::ConfigVersionConflict, error.message)
         }
-        codex_wasm_v2_core::HostErrorCode::PermissionDenied => {
+        codex_wasm_core::HostErrorCode::PermissionDenied => {
             config_write_error(ConfigWriteErrorCode::ConfigLayerReadonly, error.message)
         }
         _ => internal_error(error.message),

@@ -1,14 +1,16 @@
 import { get, writable } from "svelte/store";
-import type { RemoteMcpServerState } from "../../../../../wasm-arch/ts/host-runtime/src/mcp";
 import { saveRemoteMcpServersSnapshot } from "../apsix/workspace";
 import {
   addRemoteMcpServer,
   connectRemoteMcpServer,
+  isRemoteMcpUnsupported,
   listRemoteMcpServers,
   logoutRemoteMcpServer,
   refreshRemoteMcpServer,
   removeRemoteMcpServer,
 } from "../runtime/mcp";
+
+type RemoteMcpServerState = Awaited<ReturnType<typeof listRemoteMcpServers>>[number];
 
 type RemoteMcpStoreState = {
   servers: RemoteMcpServerState[];
@@ -109,7 +111,7 @@ function createRemoteMcpStore() {
           ...state,
           actionServer: null,
           error:
-            server?.authStatus === "unsupported"
+            server !== undefined && isRemoteMcpUnsupported(server)
               ? null
               : error instanceof Error
                 ? error.message

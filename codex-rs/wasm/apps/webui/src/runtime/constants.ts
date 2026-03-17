@@ -1,3 +1,7 @@
+import {
+  WORKSPACE_ROOT,
+  WORKSPACE_STORAGE_KEY,
+} from "@browser-codex/wasm-browser-host/constants";
 import type { CodexCompatibleConfig, DemoInstructions, XrouterProvider } from "./types";
 
 export const THREAD_ID = "codex-browser-terminal-thread";
@@ -13,11 +17,9 @@ export const DEEPSEEK_API_BASE_URL = "https://api.deepseek.com";
 export const PREFERRED_API_MODELS = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini"];
 export const PROVIDER_CONFIG_KEY = "current";
 export const INSTRUCTIONS_STORAGE_KEY = "codex.wasm.instructions.codex-browser-terminal-thread";
-export const WORKSPACE_STORAGE_KEY = "codex.wasm.workspace.codex-browser-terminal";
 export const UI_THEME_REVISION_STORAGE_KEY = "codex.wasm.ui-theme-revision.codex-browser-terminal";
 export const UI_THEME_REVISION = "codex-terminal-v1";
 export const ENABLE_PAGE_TELEMETRY = false;
-export const WORKSPACE_ROOT = "/workspace";
 export const OPENAI_PROVIDER_ID = "openai";
 export const XROUTER_BROWSER_PROVIDER_ID = "xrouter-browser";
 export const OPENAI_COMPATIBLE_PROVIDER_ID = "external";

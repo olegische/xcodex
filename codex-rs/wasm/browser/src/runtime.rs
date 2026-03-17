@@ -33,12 +33,12 @@ use crate::thread_host::install_started_thread;
 use crate::thread_host::loaded_thread_app_server;
 use crate::thread_host::pending_server_response_target;
 use crate::thread_host::sync_loaded_thread_record;
-use codex_wasm_v2_app_server::RequestTarget;
-use codex_wasm_v2_app_server::RootRequestResult;
-use codex_wasm_v2_app_server::process_loaded_thread_request;
-use codex_wasm_v2_app_server::process_loaded_thread_server_response;
-use codex_wasm_v2_app_server::process_root_or_thread_start_request;
-use codex_wasm_v2_app_server::request_target;
+use codex_wasm_app_server::RequestTarget;
+use codex_wasm_app_server::RootRequestResult;
+use codex_wasm_app_server::process_loaded_thread_request;
+use codex_wasm_app_server::process_loaded_thread_server_response;
+use codex_wasm_app_server::process_root_or_thread_start_request;
+use codex_wasm_app_server::request_target;
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,9 +77,9 @@ impl WasmBrowserRuntime {
     #[wasm_bindgen(js_name = runtimeInfo)]
     pub fn runtime_info(&self) -> Result<JsValue, JsValue> {
         encode_js_value(&RuntimeInfo {
-            runtime_family: "wasm_v2",
+            runtime_family: "wasm",
             status: "app_server_v2",
-            message: "wasm_v2 browser runtime exposes an in-memory app-server protocol facade over the mirror-track browser core.",
+            message: "wasm browser runtime exposes an in-memory app-server protocol facade over the mirror-track browser core.",
         })
     }
 

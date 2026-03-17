@@ -1,6 +1,6 @@
 //! Browser compatibility shim for `core` exec request/result types.
 //!
-//! These types stay in `wasm_v2` only because copied `core` orchestration and
+//! These types stay in `wasm` only because copied `core` orchestration and
 //! tests reference the same contract. No local process execution exists here.
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 //! Browser compatibility shim for the `core` file watcher layer.
 //!
-//! `wasm_v2` does not watch the host filesystem directly. The mirrored runtime
+//! `wasm` does not watch the host filesystem directly. The mirrored runtime
 //! still expects this boundary, so we expose a no-op event source instead.
 
 use std::path::PathBuf;

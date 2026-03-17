@@ -285,6 +285,8 @@ export type BrowserRuntimeHost = {
   applyPatch(request: JsonValue): Promise<JsonValue>;
   listDiscoverableApps?(request: JsonValue): Promise<JsonValue>;
   runModelTurn?(request: JsonValue): Promise<JsonValue>;
+  resolveMcpOauthRedirectUri?(request: JsonValue): Promise<JsonValue>;
+  waitForMcpOauthCallback?(request: JsonValue): Promise<JsonValue>;
 };
 
 export type WasmProtocolRuntime = {

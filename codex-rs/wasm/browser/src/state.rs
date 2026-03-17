@@ -7,10 +7,10 @@ use async_channel::Receiver;
 use async_channel::Sender;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
-use codex_wasm_v2_app_server::ApiVersion;
-use codex_wasm_v2_app_server::MessageProcessor;
-use codex_wasm_v2_app_server::MessageProcessorArgs;
-use codex_wasm_v2_core::codex::Codex;
+use codex_wasm_app_server::ApiVersion;
+use codex_wasm_app_server::MessageProcessor;
+use codex_wasm_app_server::MessageProcessorArgs;
+use codex_wasm_core::codex::Codex;
 use tokio::sync::Mutex;
 
 const RECENT_NOTIFICATION_KEY_LIMIT: usize = 512;
@@ -80,8 +80,8 @@ pub struct LoadedThread {
     pub record: ThreadRecord,
 }
 
-pub type RuntimeBootstrap = codex_wasm_v2_app_server::RuntimeBootstrap;
-pub type ThreadRecord = codex_wasm_v2_app_server::ThreadRecord;
+pub type RuntimeBootstrap = codex_wasm_app_server::RuntimeBootstrap;
+pub type ThreadRecord = codex_wasm_app_server::ThreadRecord;
 
 fn notification_dedupe_key(notification: &ServerNotification) -> Option<String> {
     match notification {

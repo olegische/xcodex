@@ -56,7 +56,7 @@ impl SessionTask for UndoTask {
             UndoCompletedEvent {
                 success: false,
                 message: Some(
-                    "Undo is not available in the browser runtime because wasm_v2 does not manage native ghost snapshots."
+                    "Undo is not available in the browser runtime because wasm does not manage native ghost snapshots."
                         .to_string(),
                 ),
             }

@@ -13,6 +13,7 @@ use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::TurnContextItem;
 use serde_json::Map;
 use serde_json::Value;
+use tracing::info;
 
 #[derive(Debug, Clone, Default)]
 pub struct TotalTokenUsageBreakdown;
@@ -211,7 +212,7 @@ pub fn build_request_payload(
         Value::Object(map) => map,
         other => {
             return Err(BuildRequestPayloadError {
-                message: "wasm_v2 expected model payload object".to_string(),
+                message: "wasm expected model payload object".to_string(),
                 data: Some(other),
             });
         }
@@ -221,6 +222,24 @@ pub fn build_request_payload(
     let serialized_response_input_items = Value::Array(response_input_items.clone());
     let transport_payload =
         build_transport_payload(&payload, response_input_items, transport_tools)?;
+
+    let response_input_item_types = serialized_response_input_items
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(json_item_type_for_logging)
+        .collect::<Vec<_>>();
+    let response_input_count = serialized_response_input_items
+        .as_array()
+        .map_or(0, Vec::len);
+    let transport_input_count = transport_payload
+        .as_object()
+        .and_then(|payload| payload.get("input"))
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    info!(
+        "[wasm/core] request payload built response_input_count={response_input_count} response_input_item_types={response_input_item_types:?} transport_input_count={transport_input_count}"
+    );
 
     Ok(Value::Object(Map::from_iter([
         (
@@ -240,7 +259,7 @@ fn build_transport_payload(
         .get("model")
         .cloned()
         .ok_or_else(|| BuildRequestPayloadError {
-            message: "wasm_v2 expected model payload to include `model`".to_string(),
+            message: "wasm expected model payload to include `model`".to_string(),
             data: None,
         })?;
     let base_instructions = payload
@@ -310,6 +329,15 @@ pub fn transport_tools_from_host_specs(
         })
         .collect::<Vec<_>>();
     Value::Array(tools)
+}
+
+fn json_item_type_for_logging(value: &Value) -> String {
+    value
+        .as_object()
+        .and_then(|item| item.get("type"))
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 #[cfg(test)]

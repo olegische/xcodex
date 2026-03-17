@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use codex_wasm_v2_core::LoadUserConfigRequest;
-use codex_wasm_v2_core::config::Config;
+use codex_wasm_core::LoadUserConfigRequest;
+use codex_wasm_core::config::Config;
 use tokio::sync::Mutex;
 use wasm_bindgen::JsValue;
 
@@ -29,6 +29,7 @@ pub(crate) async fn ensure_bootstrap_loaded(
     let model_transport_host = host.model_transport_host();
     let config_storage_host = host.config_storage_host();
     let thread_storage_host = host.thread_storage_host();
+    let mcp_oauth_host = host.mcp_oauth_host();
     let config = build_bootstrap_config(&bootstrap, config_storage_host.as_ref()).await;
     let bootstrap = RuntimeBootstrap {
         auth: bootstrap.auth(),
@@ -39,6 +40,7 @@ pub(crate) async fn ensure_bootstrap_loaded(
         model_transport_host,
         config_storage_host,
         thread_storage_host,
+        mcp_oauth_host,
     };
 
     let app_server = {
@@ -60,7 +62,7 @@ pub(crate) async fn ensure_bootstrap_loaded(
 
 async fn build_bootstrap_config(
     bootstrap: &BrowserBootstrap,
-    config_storage_host: &dyn codex_wasm_v2_core::ConfigStorageHost,
+    config_storage_host: &dyn codex_wasm_core::ConfigStorageHost,
 ) -> Config {
     let mut config = Config {
         codex_home: PathBuf::from(bootstrap.codex_home.clone()),
@@ -77,7 +79,7 @@ async fn build_bootstrap_config(
         model_provider: bootstrap
             .model_provider
             .clone()
-            .unwrap_or_else(codex_wasm_v2_core::ModelProviderInfo::create_openai_provider),
+            .unwrap_or_else(codex_wasm_core::ModelProviderInfo::create_openai_provider),
         service_tier: bootstrap.service_tier.unwrap_or(None),
         model_reasoning_effort: bootstrap.reasoning_effort,
         model_reasoning_summary: bootstrap.reasoning_summary,

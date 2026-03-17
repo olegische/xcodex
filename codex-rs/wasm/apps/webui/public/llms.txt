@@ -32,8 +32,8 @@
 
 ## Files worth reading
 
-- `/workspace/ai-aware/README.md`
-- `/workspace/ai-aware/mcp-servers.json`
-- `/workspace/ai-aware/web-signals.json`
-- `/workspace/ai-aware/mission-state.json`
-- `/workspace/ai-aware/page-runtime.json`
+- `/workspace/codex/README.md`
+- `/workspace/codex/mcp-servers.json`
+- `/workspace/codex/web-signals.json`
+- `/workspace/codex/zone-state.json`
+- `/workspace/codex/page-runtime.json`

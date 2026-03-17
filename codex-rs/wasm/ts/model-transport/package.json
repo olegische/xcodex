@@ -1,0 +1,17 @@
+{
+  "name": "@browser-codex/wasm-model-transport",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "openai": "latest"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser-adapter": "./src/browser-adapter.ts",
+    "./http": "./src/http.ts",
+    "./responses-executor": "./src/responses-executor.ts",
+    "./xrouter-request": "./src/xrouter-request.ts",
+    "./types": "./src/types.ts"
+  }
+}

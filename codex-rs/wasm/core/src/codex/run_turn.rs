@@ -275,6 +275,18 @@ pub(crate) async fn run_turn(
             .collect::<Vec<ResponseItem>>();
 
         if !pending_response_items.is_empty() {
+            let pending_item_types = pending_response_items
+                .iter()
+                .map(describe_response_item_for_logging)
+                .collect::<Vec<_>>();
+            info!(
+                "[wasm/core] follow-up pending input turn_id={} count={} item_types={pending_item_types:?}",
+                turn_context.sub_id,
+                pending_response_items.len(),
+            );
+        }
+
+        if !pending_response_items.is_empty() {
             for response_item in pending_response_items {
                 if let Some(TurnItem::UserMessage(user_message)) =
                     crate::parse_turn_item::parse_turn_item(&response_item)
@@ -415,6 +427,7 @@ pub(crate) async fn run_turn(
                             continue;
                         }
                     }
+
                     if stop_outcome.should_stop {
                         break;
                     }
@@ -511,6 +524,44 @@ pub(crate) async fn run_turn(
     }
 
     last_agent_message
+}
+
+fn describe_response_item_for_logging(item: &ResponseItem) -> String {
+    match item {
+        ResponseItem::Message { role, .. } => format!("message:{role}"),
+        ResponseItem::Reasoning { .. } => "reasoning".to_string(),
+        ResponseItem::LocalShellCall { call_id, .. } => {
+            format!("local_shell_call:{}", call_id.as_deref().unwrap_or("none"))
+        }
+        ResponseItem::FunctionCall { name, call_id, .. } => {
+            format!("function_call:{name}:{call_id}")
+        }
+        ResponseItem::ToolSearchCall { call_id, .. } => {
+            format!("tool_search_call:{}", call_id.as_deref().unwrap_or("none"))
+        }
+        ResponseItem::FunctionCallOutput { call_id, .. } => {
+            format!("function_call_output:{call_id}")
+        }
+        ResponseItem::CustomToolCall { name, call_id, .. } => {
+            format!("custom_tool_call:{name}:{call_id}")
+        }
+        ResponseItem::CustomToolCallOutput { call_id, .. } => {
+            format!("custom_tool_call_output:{call_id}")
+        }
+        ResponseItem::ToolSearchOutput { call_id, .. } => {
+            format!(
+                "tool_search_output:{}",
+                call_id.as_deref().unwrap_or("none")
+            )
+        }
+        ResponseItem::WebSearchCall { .. } => "web_search_call".to_string(),
+        ResponseItem::ImageGenerationCall { id, .. } => {
+            format!("image_generation_call:{id}")
+        }
+        ResponseItem::GhostSnapshot { .. } => "ghost_snapshot".to_string(),
+        ResponseItem::Compaction { .. } => "compaction".to_string(),
+        ResponseItem::Other => "other".to_string(),
+    }
 }
 
 async fn run_pre_sampling_compact(

@@ -17,7 +17,7 @@ pub(crate) async fn process_core_event(
     event: Event,
 ) -> Result<(), JsValue> {
     browser_log(&format!(
-        "[wasm_v2/browser] process_core_event type={}",
+        "[wasm/browser] process_core_event type={}",
         event_name(&event.msg)
     ));
     let mut outgoing_notifications = Vec::new();
@@ -50,7 +50,7 @@ pub(crate) async fn process_core_event(
     };
     let effect = {
         let mut app_server = app_server.lock().await;
-        codex_wasm_v2_app_server::process_loaded_thread_event(
+        codex_wasm_app_server::process_loaded_thread_event(
             &mut app_server,
             thread_id,
             &thread_record,
@@ -103,14 +103,16 @@ pub(crate) async fn enqueue_server_notification(
         let mut state = state.lock().await;
         if !state.should_enqueue_notification(&notification) {
             browser_log(&format!(
-                "[wasm_v2/browser] suppressed duplicate server notification {notification}"
+                "[wasm/browser] suppressed duplicate server notification method={}",
+                notification_method(&notification)
             ));
             return;
         }
         state.outgoing_tx.clone()
     };
     browser_log(&format!(
-        "[wasm_v2/browser] enqueue_server_notification {notification}"
+        "[wasm/browser] enqueue_server_notification method={}",
+        notification_method(&notification)
     ));
     let message = JSONRPCMessage::Notification(server_notification_to_jsonrpc(notification));
     let _ = tx.send(message).await;
@@ -164,6 +166,19 @@ fn event_name(event: &EventMsg) -> &'static str {
         EventMsg::TurnDiff(_) => "TurnDiff",
         _ => "Other",
     }
+}
+
+fn notification_method(notification: &codex_app_server_protocol::ServerNotification) -> String {
+    serde_json::to_value(notification)
+        .ok()
+        .and_then(|value| {
+            value
+                .as_object()
+                .and_then(|object| object.get("method"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 #[cfg(target_arch = "wasm32")]

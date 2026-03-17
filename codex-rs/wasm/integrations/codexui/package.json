@@ -1,7 +1,12 @@
 {
   "name": "@browser-codex/wasm-codexui",
   "private": true,
+  "version": "0.1.0",
   "type": "module",
+  "dependencies": {
+    "@browser-codex/wasm-browser-host": "file:../../ts/browser-host",
+    "@browser-codex/wasm-runtime-core": "file:../../ts/runtime-core"
+  },
   "exports": {
     ".": "./src/index.ts"
   }

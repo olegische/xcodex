@@ -1,5 +1,11 @@
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::JSONRPCErrorError;
+use codex_app_server_protocol::ListMcpServerStatusResponse;
+use codex_app_server_protocol::McpServerOauthLoginCompletedNotification;
+use codex_app_server_protocol::McpServerOauthLoginParams;
+use codex_app_server_protocol::McpServerOauthLoginResponse;
+use codex_app_server_protocol::McpServerRefreshResponse;
+use codex_app_server_protocol::McpServerStatus;
 use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::ThreadArchiveResponse;
 use codex_app_server_protocol::ThreadArchivedNotification;
@@ -14,12 +20,15 @@ use codex_app_server_protocol::TurnSteerResponse;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::InitialHistory;
+use codex_protocol::protocol::McpServerRefreshConfig;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::AppServerState;
 use crate::LoadedThread;
@@ -40,16 +49,18 @@ use crate::runtime_bootstrap::RuntimeBootstrap;
 use crate::runtime_bootstrap::apply_thread_start_overrides;
 use crate::runtime_bootstrap::effective_approval_policy;
 use crate::runtime_bootstrap::resolve_model;
-use codex_wasm_v2_core::BrowserCodexSpawnArgs;
-use codex_wasm_v2_core::HostErrorCode;
-use codex_wasm_v2_core::ListThreadSessionsRequest;
-use codex_wasm_v2_core::LoadThreadSessionRequest;
-use codex_wasm_v2_core::SaveThreadSessionRequest;
-use codex_wasm_v2_core::StoredThreadSession;
-use codex_wasm_v2_core::StoredThreadSessionMetadata;
-use codex_wasm_v2_core::codex::Codex;
-use codex_wasm_v2_core::codex::SteerInputError;
-use codex_wasm_v2_core::spawn_browser_codex;
+use codex_wasm_core::BrowserCodexSpawnArgs;
+use codex_wasm_core::HostErrorCode;
+use codex_wasm_core::ListThreadSessionsRequest;
+use codex_wasm_core::LoadThreadSessionRequest;
+use codex_wasm_core::SaveThreadSessionRequest;
+use codex_wasm_core::StoredThreadSession;
+use codex_wasm_core::StoredThreadSessionMetadata;
+use codex_wasm_core::codex::Codex;
+use codex_wasm_core::codex::SteerInputError;
+use codex_wasm_core::mcp::auth::compute_auth_statuses;
+use codex_wasm_core::mcp::auth::perform_browser_oauth_login_return_url;
+use codex_wasm_core::spawn_browser_codex;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ApiVersion {
@@ -74,6 +85,7 @@ pub struct CodexMessageProcessor {
     app_server_state: AppServerState,
     runtime_bootstrap: Option<RuntimeBootstrap>,
     outgoing: ThreadScopedOutgoingMessageSender,
+    runtime_mcp_oauth_servers: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl CodexMessageProcessor {
@@ -84,6 +96,7 @@ impl CodexMessageProcessor {
             app_server_state: AppServerState::default(),
             runtime_bootstrap: None,
             outgoing: ThreadScopedOutgoingMessageSender::new(args.outgoing),
+            runtime_mcp_oauth_servers: Arc::new(Mutex::new(BTreeSet::new())),
         }
     }
 
@@ -142,7 +155,7 @@ impl CodexMessageProcessor {
                 .map_err(internal_error)?;
 
                 let thread_id = spawn.thread_id.to_string();
-                let timestamp = codex_wasm_v2_core::time::now_unix_seconds();
+                let timestamp = codex_wasm_core::time::now_unix_seconds();
                 let record = ThreadRecord {
                     id: thread_id,
                     preview: String::new(),
@@ -266,6 +279,121 @@ impl CodexMessageProcessor {
                 )
                 .map_err(internal_error)
             }
+            ClientRequest::McpServerStatusList {
+                request_id: _,
+                params,
+            } => {
+                let bootstrap =
+                    self.runtime_bootstrap
+                        .as_ref()
+                        .ok_or_else(|| JSONRPCErrorError {
+                            code: -32603,
+                            data: None,
+                            message: "mcpServerStatus/list requires runtime bootstrap".to_string(),
+                        })?;
+                let config = bootstrap.config.clone();
+                let auth_statuses = compute_auth_statuses(
+                    config.mcp_servers.get().iter(),
+                    config.mcp_oauth_credentials_store_mode,
+                )
+                .await;
+                let connected_servers = self
+                    .runtime_mcp_oauth_servers
+                    .lock()
+                    .map_or_else(|_| BTreeSet::new(), |servers| servers.clone());
+
+                let mut server_names: Vec<String> = config
+                    .mcp_servers
+                    .get()
+                    .keys()
+                    .cloned()
+                    .chain(auth_statuses.keys().cloned())
+                    .collect();
+                server_names.sort();
+                server_names.dedup();
+
+                let total = server_names.len();
+                let limit = params.limit.unwrap_or(total as u32).max(1) as usize;
+                let effective_limit = limit.min(total);
+                let start = match params.cursor {
+                    Some(cursor) => cursor
+                        .parse::<usize>()
+                        .map_err(|_| invalid_request_error(format!("invalid cursor: {cursor}")))?,
+                    None => 0,
+                };
+
+                if start > total {
+                    return Err(invalid_request_error(format!(
+                        "cursor {start} exceeds total MCP servers {total}"
+                    )));
+                }
+
+                let end = start.saturating_add(effective_limit).min(total);
+                let data: Vec<McpServerStatus> = server_names[start..end]
+                    .iter()
+                    .map(|name| McpServerStatus {
+                        name: name.clone(),
+                        tools: Default::default(),
+                        resources: Vec::new(),
+                        resource_templates: Vec::new(),
+                        auth_status: if connected_servers.contains(name) {
+                            codex_protocol::protocol::McpAuthStatus::OAuth.into()
+                        } else {
+                            auth_statuses
+                                .get(name)
+                                .map(|entry| entry.auth_status)
+                                .unwrap_or(codex_protocol::protocol::McpAuthStatus::Unsupported)
+                                .into()
+                        },
+                    })
+                    .collect();
+                serde_json::to_value(ListMcpServerStatusResponse {
+                    data,
+                    next_cursor: (end < total).then(|| end.to_string()),
+                })
+                .map_err(internal_error)
+            }
+            ClientRequest::McpServerRefresh {
+                request_id: _,
+                params: _,
+            } => {
+                let bootstrap =
+                    self.runtime_bootstrap
+                        .as_ref()
+                        .ok_or_else(|| JSONRPCErrorError {
+                            code: -32603,
+                            data: None,
+                            message: "config/mcpServer/reload requires runtime bootstrap"
+                                .to_string(),
+                        })?;
+                let mcp_servers = serde_json::to_value(bootstrap.config.mcp_servers.get())
+                    .map_err(internal_error)?;
+                let mcp_oauth_credentials_store_mode =
+                    serde_json::to_value(bootstrap.config.mcp_oauth_credentials_store_mode)
+                        .map_err(internal_error)?;
+                let refresh_config = McpServerRefreshConfig {
+                    mcp_servers,
+                    mcp_oauth_credentials_store_mode,
+                };
+                let loaded_threads = self
+                    .app_server_state
+                    .loaded_thread_ids()
+                    .into_iter()
+                    .filter_map(|thread_id| self.app_server_state.running_thread(&thread_id))
+                    .collect::<Vec<_>>();
+                for thread in loaded_threads {
+                    let _ = thread
+                        .submit(Op::RefreshMcpServers {
+                            config: refresh_config.clone(),
+                        })
+                        .await;
+                }
+                serde_json::to_value(McpServerRefreshResponse {}).map_err(internal_error)
+            }
+            ClientRequest::McpServerOauthLogin {
+                request_id: _,
+                params,
+            } => self.mcp_server_oauth_login(params).await,
             ClientRequest::SkillsList {
                 request_id: _,
                 params,
@@ -333,7 +461,7 @@ impl CodexMessageProcessor {
                 request_id: _,
                 params,
             } => {
-                let normalized = codex_wasm_v2_core::util::normalize_thread_name(&params.name)
+                let normalized = codex_wasm_core::util::normalize_thread_name(&params.name)
                     .ok_or_else(|| JSONRPCErrorError {
                         code: -32600,
                         data: None,
@@ -394,7 +522,7 @@ impl CodexMessageProcessor {
                     &params.thread_id,
                     |metadata| {
                         metadata.archived = true;
-                        metadata.updated_at = codex_wasm_v2_core::time::now_unix_seconds();
+                        metadata.updated_at = codex_wasm_core::time::now_unix_seconds();
                     },
                 )
                 .await?
@@ -430,7 +558,7 @@ impl CodexMessageProcessor {
                     &params.thread_id,
                     |metadata| {
                         metadata.archived = false;
-                        metadata.updated_at = codex_wasm_v2_core::time::now_unix_seconds();
+                        metadata.updated_at = codex_wasm_core::time::now_unix_seconds();
                     },
                 )
                 .await?
@@ -562,7 +690,7 @@ impl CodexMessageProcessor {
                     .threads
                     .get_mut(&params.thread_id)
                     .ok_or_else(|| loaded_thread_error("turn/start"))?;
-                thread.updated_at = codex_wasm_v2_core::time::now_unix_seconds();
+                thread.updated_at = codex_wasm_core::time::now_unix_seconds();
                 thread.active_turn_id = Some(turn_id.clone());
                 thread.turns.insert(
                     turn_id.clone(),
@@ -745,6 +873,78 @@ impl CodexMessageProcessor {
         self.app_server_state.models = models;
     }
 
+    async fn mcp_server_oauth_login(
+        &self,
+        params: McpServerOauthLoginParams,
+    ) -> Result<serde_json::Value, JSONRPCErrorError> {
+        let bootstrap = self
+            .runtime_bootstrap
+            .as_ref()
+            .ok_or_else(|| JSONRPCErrorError {
+                code: -32603,
+                data: None,
+                message: "mcpServer/oauth/login requires runtime bootstrap".to_string(),
+            })?;
+        let config = bootstrap.config.clone();
+        let McpServerOauthLoginParams {
+            name,
+            scopes,
+            timeout_secs,
+        } = params;
+        let Some(server) = config.mcp_servers.get().get(&name).cloned() else {
+            return Err(invalid_request_error(format!(
+                "No MCP server named '{name}' found."
+            )));
+        };
+        let (url, oauth_resource) = match &server.transport {
+            codex_wasm_core::config::types::McpServerTransportConfig::StreamableHttp {
+                url,
+                ..
+            } => (url.clone(), server.oauth_resource.clone()),
+            _ => {
+                return Err(invalid_request_error(
+                    "OAuth login is only supported for streamable HTTP servers.".to_string(),
+                ));
+            }
+        };
+
+        let handle = perform_browser_oauth_login_return_url(
+            Arc::clone(&bootstrap.mcp_oauth_host),
+            &name,
+            &url,
+            scopes
+                .as_deref()
+                .unwrap_or(server.scopes.as_deref().unwrap_or_default()),
+            oauth_resource.as_deref(),
+            timeout_secs,
+        )
+        .await
+        .map_err(internal_error)?;
+        let authorization_url = handle.authorization_url().to_string();
+        let connected_servers = Arc::clone(&self.runtime_mcp_oauth_servers);
+        let outgoing = self.outgoing.clone();
+        codex_wasm_core::spawn_background_task(async move {
+            let (success, error) = match handle.wait().await {
+                Ok(()) => {
+                    if let Ok(mut servers) = connected_servers.lock() {
+                        servers.insert(name.clone());
+                    }
+                    (true, None)
+                }
+                Err(err) => (false, Some(err.to_string())),
+            };
+            outgoing.send_server_notification(ServerNotification::McpServerOauthLoginCompleted(
+                McpServerOauthLoginCompletedNotification {
+                    name,
+                    success,
+                    error,
+                },
+            ));
+        });
+        serde_json::to_value(McpServerOauthLoginResponse { authorization_url })
+            .map_err(internal_error)
+    }
+
     pub fn set_runtime_bootstrap(&mut self, runtime_bootstrap: RuntimeBootstrap) {
         self.runtime_bootstrap = Some(runtime_bootstrap);
     }
@@ -898,7 +1098,7 @@ fn session_source_from_items(items: &[RolloutItem]) -> SessionSource {
         .unwrap_or(SessionSource::Unknown)
 }
 
-fn map_storage_error(thread_id: &str, error: codex_wasm_v2_core::HostError) -> JSONRPCErrorError {
+fn map_storage_error(thread_id: &str, error: codex_wasm_core::HostError) -> JSONRPCErrorError {
     let code = if error.code == HostErrorCode::NotFound {
         -32600
     } else {

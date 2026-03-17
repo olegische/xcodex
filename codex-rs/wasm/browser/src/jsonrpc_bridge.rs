@@ -11,15 +11,10 @@ pub(crate) fn server_notification_to_jsonrpc(
     notification: codex_app_server_protocol::ServerNotification,
 ) -> JSONRPCNotification {
     let value = match serde_json::to_value(&notification) {
-        Ok(value) => {
-            browser_log(&format!(
-                "[wasm_v2/browser] server_notification_to_jsonrpc serialized={value}"
-            ));
-            value
-        }
+        Ok(value) => value,
         Err(error) => {
             browser_error(&format!(
-                "[wasm_v2/browser] server notification serialization failed: {error}"
+                "[wasm/browser] server notification serialization failed: {error}"
             ));
             unreachable!("server notification should serialize: {error}")
         }
@@ -32,20 +27,27 @@ pub(crate) fn server_notification_to_jsonrpc(
 
 pub(crate) fn server_request_to_jsonrpc(request: ServerRequest) -> JSONRPCRequest {
     let value = match serde_json::to_value(&request) {
-        Ok(value) => {
-            browser_log(&format!(
-                "[wasm_v2/browser] server_request_to_jsonrpc serialized={value}"
-            ));
-            value
-        }
+        Ok(value) => value,
         Err(error) => {
             browser_error(&format!(
-                "[wasm_v2/browser] server request serialization failed: {error}"
+                "[wasm/browser] server request serialization failed: {error}"
             ));
             unreachable!("server request should serialize: {error}")
         }
     };
-    let mut object = jsonrpc_object_from_value(value);
+    let request_object = jsonrpc_object_from_value(value);
+    let request_id = request_object
+        .get("id")
+        .map(serde_json::Value::to_string)
+        .unwrap_or_else(|| "unknown".to_string());
+    let request_method = request_object
+        .get("method")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown");
+    browser_log(&format!(
+        "[wasm/browser] server_request_to_jsonrpc method={request_method} id={request_id}"
+    ));
+    let mut object = request_object;
     let id = object
         .remove("id")
         .map(serde_json::from_value)

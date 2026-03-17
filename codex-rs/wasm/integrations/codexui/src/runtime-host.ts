@@ -1,4 +1,4 @@
-import { AppServerClient } from "../../../apps/webui/src/runtime/app-server-client";
+import { AppServerClient } from "@browser-codex/wasm-runtime-core/app-server-client";
 import type { CreatedRuntime, CodexUiAdapterOptions } from "./types";
 
 export async function createRuntimeAndClient(options: CodexUiAdapterOptions): Promise<{

@@ -13,7 +13,7 @@ pub fn archive_thread(
         )));
     };
     thread.archived = true;
-    thread.updated_at = codex_wasm_v2_core::time::now_unix_seconds();
+    thread.updated_at = codex_wasm_core::time::now_unix_seconds();
     app_server_state.running_threads.remove(thread_id);
     Ok(())
 }
@@ -33,7 +33,7 @@ pub fn unarchive_thread(
         )));
     }
     thread.archived = false;
-    thread.updated_at = codex_wasm_v2_core::time::now_unix_seconds();
+    thread.updated_at = codex_wasm_core::time::now_unix_seconds();
     Ok(thread.clone())
 }
 
@@ -42,7 +42,7 @@ pub fn set_thread_name(
     thread_id: &str,
     name: String,
 ) -> Result<String, JSONRPCErrorError> {
-    let Some(normalized) = codex_wasm_v2_core::util::normalize_thread_name(&name) else {
+    let Some(normalized) = codex_wasm_core::util::normalize_thread_name(&name) else {
         return Err(invalid_request_error(
             "thread name must not be empty".to_string(),
         ));
@@ -53,7 +53,7 @@ pub fn set_thread_name(
         )));
     };
     thread.name = Some(normalized.clone());
-    thread.updated_at = codex_wasm_v2_core::time::now_unix_seconds();
+    thread.updated_at = codex_wasm_core::time::now_unix_seconds();
     Ok(normalized)
 }
 

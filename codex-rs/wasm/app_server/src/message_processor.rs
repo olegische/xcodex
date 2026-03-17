@@ -23,7 +23,7 @@ use codex_app_server_protocol::experimental_required_message;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::protocol::Event;
 use codex_protocol::protocol::EventMsg;
-use codex_wasm_v2_core::codex::Codex;
+use codex_wasm_core::codex::Codex;
 
 use crate::ApiVersion;
 use crate::CodexMessageProcessor;
@@ -540,30 +540,35 @@ mod tests {
     use codex_protocol::protocol::SessionSource;
     use codex_protocol::request_user_input::RequestUserInputEvent;
     use codex_protocol::request_user_input::RequestUserInputQuestion;
-    use codex_wasm_v2_core::ConfigStorageHost;
-    use codex_wasm_v2_core::DeleteThreadSessionRequest;
-    use codex_wasm_v2_core::HostError;
-    use codex_wasm_v2_core::HostErrorCode;
-    use codex_wasm_v2_core::HostResult;
-    use codex_wasm_v2_core::ListThreadSessionsRequest;
-    use codex_wasm_v2_core::ListThreadSessionsResponse;
-    use codex_wasm_v2_core::LoadThreadSessionRequest;
-    use codex_wasm_v2_core::LoadThreadSessionResponse;
-    use codex_wasm_v2_core::LoadUserConfigRequest;
-    use codex_wasm_v2_core::LoadUserConfigResponse;
-    use codex_wasm_v2_core::SaveThreadSessionRequest;
-    use codex_wasm_v2_core::SaveUserConfigRequest;
-    use codex_wasm_v2_core::SaveUserConfigResponse;
-    use codex_wasm_v2_core::StoredThreadSession;
-    use codex_wasm_v2_core::StoredThreadSessionMetadata;
-    use codex_wasm_v2_core::ThreadStorageHost;
-    use codex_wasm_v2_core::UnavailableConfigStorageHost;
-    use codex_wasm_v2_core::UnavailableDiscoverableAppsProvider;
-    use codex_wasm_v2_core::UnavailableHostFs;
-    use codex_wasm_v2_core::UnavailableModelTransportHost;
-    use codex_wasm_v2_core::UnavailableThreadStorageHost;
-    use codex_wasm_v2_core::config::Config;
+    use codex_wasm_core::ConfigStorageHost;
+    use codex_wasm_core::DeleteThreadSessionRequest;
+    use codex_wasm_core::HostError;
+    use codex_wasm_core::HostErrorCode;
+    use codex_wasm_core::HostResult;
+    use codex_wasm_core::ListThreadSessionsRequest;
+    use codex_wasm_core::ListThreadSessionsResponse;
+    use codex_wasm_core::LoadThreadSessionRequest;
+    use codex_wasm_core::LoadThreadSessionResponse;
+    use codex_wasm_core::LoadUserConfigRequest;
+    use codex_wasm_core::LoadUserConfigResponse;
+    use codex_wasm_core::SaveThreadSessionRequest;
+    use codex_wasm_core::SaveUserConfigRequest;
+    use codex_wasm_core::SaveUserConfigResponse;
+    use codex_wasm_core::StoredThreadSession;
+    use codex_wasm_core::StoredThreadSessionMetadata;
+    use codex_wasm_core::ThreadStorageHost;
+    use codex_wasm_core::UnavailableConfigStorageHost;
+    use codex_wasm_core::UnavailableDiscoverableAppsProvider;
+    use codex_wasm_core::UnavailableHostFs;
+    use codex_wasm_core::UnavailableMcpOauthHost;
+    use codex_wasm_core::UnavailableModelTransportHost;
+    use codex_wasm_core::UnavailableThreadStorageHost;
+    use codex_wasm_core::config::Config;
+    use codex_wasm_core::config::Constrained;
+    use codex_wasm_core::config::types::McpServerConfig;
+    use codex_wasm_core::config::types::McpServerTransportConfig;
     use std::collections::BTreeMap;
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
 
@@ -979,6 +984,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -1076,6 +1082,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: config_storage_host.clone(),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -1172,6 +1179,105 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn config_read_exposes_remote_mcp_servers_and_status_list() {
+        let mut processor = MessageProcessor::new(MessageProcessorArgs {
+            api_version: ApiVersion::V2,
+            config_warnings: Vec::new(),
+        });
+        let mut session = ConnectionSessionState::default();
+        let root = std::env::temp_dir().join(format!(
+            "codex-wasm-app-server-mcp-config-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        processor.set_runtime_bootstrap(crate::RuntimeBootstrap {
+            config: Config {
+                codex_home: root.clone(),
+                cwd: root,
+                mcp_servers: Constrained::allow_any(HashMap::from([(
+                    "docs".to_string(),
+                    McpServerConfig {
+                        transport: McpServerTransportConfig::StreamableHttp {
+                            url: "https://example.com/mcp".to_string(),
+                            bearer_token_env_var: None,
+                            http_headers: None,
+                            env_http_headers: None,
+                        },
+                        ..McpServerConfig::default()
+                    },
+                )])),
+                ..Config::default()
+            },
+            auth: None,
+            model_catalog: None,
+            browser_fs: Arc::new(UnavailableHostFs),
+            discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
+            model_transport_host: Arc::new(UnavailableModelTransportHost),
+            config_storage_host: Arc::new(InMemoryConfigStorageHost::default()),
+            thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
+        });
+
+        processor
+            .process_client_request(
+                ClientRequest::Initialize {
+                    request_id: RequestId::Integer(1),
+                    params: InitializeParams {
+                        client_info: ClientInfo {
+                            name: "web".to_string(),
+                            title: None,
+                            version: "1.0.0".to_string(),
+                        },
+                        capabilities: Some(InitializeCapabilities {
+                            experimental_api: true,
+                            opt_out_notification_methods: None,
+                        }),
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("initialize succeeds");
+
+        let config_read = processor
+            .process_client_request(
+                ClientRequest::ConfigRead {
+                    request_id: RequestId::Integer(2),
+                    params: ConfigReadParams {
+                        include_layers: false,
+                        cwd: None,
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("config/read succeeds");
+        assert_eq!(
+            config_read["config"]["mcp_servers"]["docs"]["url"].as_str(),
+            Some("https://example.com/mcp")
+        );
+
+        let mcp_status = processor
+            .process_client_request(
+                ClientRequest::McpServerStatusList {
+                    request_id: RequestId::Integer(3),
+                    params: codex_app_server_protocol::ListMcpServerStatusParams {
+                        cursor: None,
+                        limit: None,
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("mcpServerStatus/list succeeds");
+        assert_eq!(mcp_status["data"][0]["name"].as_str(), Some("docs"));
+        assert_eq!(
+            mcp_status["data"][0]["authStatus"].as_str(),
+            Some("unsupported")
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn config_requirements_read_returns_null_when_no_requirements_exist() {
         let mut processor = MessageProcessor::new(MessageProcessorArgs {
             api_version: ApiVersion::V2,
@@ -1196,6 +1302,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(InMemoryConfigStorageHost::default()),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -1258,6 +1365,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: config_storage_host.clone(),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -1350,6 +1458,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -1579,6 +1688,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -1713,9 +1823,9 @@ mod tests {
                                 )
                                 .expect("thread id"),
                                 forked_from_id: None,
-                                timestamp: codex_wasm_v2_core::time::now_rfc3339(),
+                                timestamp: codex_wasm_core::time::now_rfc3339(),
                                 cwd: root.clone(),
-                                originator: "wasm_v2".to_string(),
+                                originator: "wasm".to_string(),
                                 cli_version: env!("CARGO_PKG_VERSION").to_string(),
                                 source: SessionSource::Unknown,
                                 agent_nickname: None,
@@ -1750,6 +1860,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host,
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -1853,6 +1964,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host,
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -1940,9 +2052,9 @@ mod tests {
                                 )
                                 .expect("thread id"),
                                 forked_from_id: None,
-                                timestamp: codex_wasm_v2_core::time::now_rfc3339(),
+                                timestamp: codex_wasm_core::time::now_rfc3339(),
                                 cwd: root.clone(),
-                                originator: "wasm_v2".to_string(),
+                                originator: "wasm".to_string(),
                                 cli_version: env!("CARGO_PKG_VERSION").to_string(),
                                 source: SessionSource::Unknown,
                                 agent_nickname: None,
@@ -1972,6 +2084,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host,
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -2063,6 +2176,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: thread_storage_host.clone(),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -2140,6 +2254,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -2248,6 +2363,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor
@@ -2350,6 +2466,7 @@ mod tests {
             model_transport_host: Arc::new(UnavailableModelTransportHost),
             config_storage_host: Arc::new(UnavailableConfigStorageHost),
             thread_storage_host: Arc::new(UnavailableThreadStorageHost),
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
         });
 
         processor

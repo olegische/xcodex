@@ -219,7 +219,7 @@ impl ToolHandler for UnifiedExecHandler {
         };
         let _ = args.max_output_tokens;
         Err(FunctionCallError::RespondToModel(format!(
-            "exec not implemented in wasm_v2: {}",
+            "exec not implemented in wasm: {}",
             invocation.tool_name
         )))
     }

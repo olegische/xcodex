@@ -4,36 +4,41 @@ use async_trait::async_trait;
 use codex_app_server_protocol::AppInfo;
 use codex_protocol::config_types::ServiceTier;
 use codex_protocol::openai_models::ModelsResponse;
-use codex_wasm_v2_core::ApplyPatchRequest;
-use codex_wasm_v2_core::ApplyPatchResponse;
-use codex_wasm_v2_core::BrowserModelEvent;
-use codex_wasm_v2_core::BrowserModelRequest;
-use codex_wasm_v2_core::CodexAuth;
-use codex_wasm_v2_core::ConfigStorageHost;
-use codex_wasm_v2_core::DeleteThreadSessionRequest;
-use codex_wasm_v2_core::DiscoverableAppsProvider;
-use codex_wasm_v2_core::HostError;
-use codex_wasm_v2_core::HostErrorCode;
-use codex_wasm_v2_core::HostFs;
-use codex_wasm_v2_core::HostResult;
-use codex_wasm_v2_core::ListDirRequest;
-use codex_wasm_v2_core::ListDirResponse;
-use codex_wasm_v2_core::ListThreadSessionsRequest;
-use codex_wasm_v2_core::ListThreadSessionsResponse;
-use codex_wasm_v2_core::LoadThreadSessionRequest;
-use codex_wasm_v2_core::LoadThreadSessionResponse;
-use codex_wasm_v2_core::LoadUserConfigRequest;
-use codex_wasm_v2_core::LoadUserConfigResponse;
-use codex_wasm_v2_core::ModelProviderInfo;
-use codex_wasm_v2_core::ModelTransportHost;
-use codex_wasm_v2_core::ReadFileRequest;
-use codex_wasm_v2_core::ReadFileResponse;
-use codex_wasm_v2_core::SaveThreadSessionRequest;
-use codex_wasm_v2_core::SaveUserConfigRequest;
-use codex_wasm_v2_core::SaveUserConfigResponse;
-use codex_wasm_v2_core::SearchRequest;
-use codex_wasm_v2_core::SearchResponse;
-use codex_wasm_v2_core::ThreadStorageHost;
+use codex_wasm_core::ApplyPatchRequest;
+use codex_wasm_core::ApplyPatchResponse;
+use codex_wasm_core::BrowserModelEvent;
+use codex_wasm_core::BrowserModelRequest;
+use codex_wasm_core::CodexAuth;
+use codex_wasm_core::ConfigStorageHost;
+use codex_wasm_core::DeleteThreadSessionRequest;
+use codex_wasm_core::DiscoverableAppsProvider;
+use codex_wasm_core::HostError;
+use codex_wasm_core::HostErrorCode;
+use codex_wasm_core::HostFs;
+use codex_wasm_core::HostResult;
+use codex_wasm_core::ListDirRequest;
+use codex_wasm_core::ListDirResponse;
+use codex_wasm_core::ListThreadSessionsRequest;
+use codex_wasm_core::ListThreadSessionsResponse;
+use codex_wasm_core::LoadThreadSessionRequest;
+use codex_wasm_core::LoadThreadSessionResponse;
+use codex_wasm_core::LoadUserConfigRequest;
+use codex_wasm_core::LoadUserConfigResponse;
+use codex_wasm_core::McpOauthHost;
+use codex_wasm_core::ModelProviderInfo;
+use codex_wasm_core::ModelTransportHost;
+use codex_wasm_core::ReadFileRequest;
+use codex_wasm_core::ReadFileResponse;
+use codex_wasm_core::ResolveMcpOauthRedirectUriRequest;
+use codex_wasm_core::ResolveMcpOauthRedirectUriResponse;
+use codex_wasm_core::SaveThreadSessionRequest;
+use codex_wasm_core::SaveUserConfigRequest;
+use codex_wasm_core::SaveUserConfigResponse;
+use codex_wasm_core::SearchRequest;
+use codex_wasm_core::SearchResponse;
+use codex_wasm_core::ThreadStorageHost;
+use codex_wasm_core::WaitForMcpOauthCallbackRequest;
+use codex_wasm_core::WaitForMcpOauthCallbackResponse;
 use js_sys::Function;
 use js_sys::Promise;
 use serde::Deserialize;
@@ -85,6 +90,8 @@ export interface BrowserRuntimeHost {
   listThreadSessions?(request: unknown): Promise<unknown>;
   listDiscoverableApps?(request: unknown): Promise<unknown>;
   runModelTurn?(request: unknown): Promise<unknown>;
+  resolveMcpOauthRedirectUri?(request: unknown): Promise<unknown>;
+  waitForMcpOauthCallback?(request: unknown): Promise<unknown>;
 }
 "#;
 
@@ -153,10 +160,14 @@ impl JsHost {
     pub fn thread_storage_host(&self) -> Arc<dyn ThreadStorageHost> {
         Arc::new(self.clone())
     }
+
+    pub fn mcp_oauth_host(&self) -> Arc<dyn McpOauthHost> {
+        Arc::new(self.clone())
+    }
 }
 
 // SAFETY: browser runtimes execute this host wrapper on the single JS main thread. We never move
-// the inner JS object to a real OS thread, but `wasm_v2/core` requires `Send + Sync` host traits.
+// the inner JS object to a real OS thread, but `wasm/core` requires `Send + Sync` host traits.
 #[cfg(target_arch = "wasm32")]
 unsafe impl Send for JsHost {}
 #[cfg(target_arch = "wasm32")]
@@ -242,6 +253,23 @@ impl ConfigStorageHost for JsHost {
         request: SaveUserConfigRequest,
     ) -> HostResult<SaveUserConfigResponse> {
         call_host_method(&self.host, "saveUserConfig", request).await
+    }
+}
+
+#[async_trait]
+impl McpOauthHost for JsHost {
+    async fn resolve_mcp_oauth_redirect_uri(
+        &self,
+        request: ResolveMcpOauthRedirectUriRequest,
+    ) -> HostResult<ResolveMcpOauthRedirectUriResponse> {
+        call_host_method(&self.host, "resolveMcpOauthRedirectUri", request).await
+    }
+
+    async fn wait_for_mcp_oauth_callback(
+        &self,
+        request: WaitForMcpOauthCallbackRequest,
+    ) -> HostResult<WaitForMcpOauthCallbackResponse> {
+        call_host_method(&self.host, "waitForMcpOauthCallback", request).await
     }
 }
 

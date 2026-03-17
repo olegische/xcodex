@@ -2729,14 +2729,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-wasm-v2-app-server"
+name = "codex-wasm-app-server"
 version = "0.0.0"
 dependencies = [
  "async-trait",
  "codex-app-server-protocol",
  "codex-protocol",
  "codex-utils-absolute-path",
- "codex-wasm-v2-core",
+ "codex-wasm-core",
  "pretty_assertions",
  "serde_json",
  "tokio",
@@ -2744,7 +2744,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-wasm-v2-browser"
+name = "codex-wasm-browser"
 version = "0.0.0"
 dependencies = [
  "anyhow",
@@ -2752,8 +2752,8 @@ dependencies = [
  "async-trait",
  "codex-app-server-protocol",
  "codex-protocol",
- "codex-wasm-v2-app-server",
- "codex-wasm-v2-core",
+ "codex-wasm-app-server",
+ "codex-wasm-core",
  "console_error_panic_hook",
  "js-sys",
  "pretty_assertions",
@@ -2768,7 +2768,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-wasm-v2-core"
+name = "codex-wasm-core"
 version = "0.0.0"
 dependencies = [
  "anyhow",
