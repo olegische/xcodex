@@ -133,12 +133,13 @@ export class BrowserCodexRuntime<
   }
 
   async resumeThread(request: { threadId: string }): Promise<TDispatch> {
-    const stored = await this.deps.persistence.loadSession(request.threadId);
-    if (stored !== null) {
-      this.adoptThreadAliasFromSnapshot(request.threadId, stored);
-      return this.deps.buildDispatch(stored, []);
-    }
-    const actualThreadId = this.resolveThreadId(request.threadId);
+    const response = await this.request("thread/resume", {
+      threadId: this.resolveThreadId(request.threadId),
+    });
+    const thread = this.deps.normalizeThread((response as { thread?: unknown }).thread);
+    const actualThreadId =
+      typeof thread.id === "string" && thread.id.length > 0 ? thread.id : this.resolveThreadId(request.threadId);
+    this.rememberThreadAlias(request.threadId, actualThreadId);
     const snapshot = await this.readThreadSnapshot(actualThreadId);
     return this.deps.buildDispatch(this.deps.withRequestedThreadId(snapshot, request.threadId), []);
   }
