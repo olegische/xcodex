@@ -1,11 +1,11 @@
 import { get, writable } from "svelte/store";
-import { savePageRuntimeSnapshot } from "../apsix/workspace";
 import {
   initializePageTelemetry,
   subscribePageTelemetry,
   type PageRuntimeEvent,
   type PageRuntimeSnapshot,
-} from "../runtime/page-telemetry";
+} from "@browser-codex/wasm-browser-tools";
+import { savePageRuntimeSnapshot } from "../apsix/workspace";
 import type { PageEventSummary, PageRuntimeSummary } from "../types";
 
 type PageRuntimeStoreState = {

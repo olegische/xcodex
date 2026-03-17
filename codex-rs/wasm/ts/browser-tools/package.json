@@ -1,0 +1,16 @@
+{
+  "name": "@browser-codex/wasm-browser-tools",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@browser-codex/wasm-browser-codex-runtime": "file:../browser-codex-runtime",
+    "@browser-codex/wasm-runtime-core": "file:../runtime-core"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser-sandbox-tools": "./src/browser-sandbox-tools.ts",
+    "./browser-tools": "./src/browser-tools.ts",
+    "./page-telemetry": "./src/page-telemetry.ts"
+  }
+}

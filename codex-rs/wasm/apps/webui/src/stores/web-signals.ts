@@ -1,5 +1,5 @@
+import { scanCurrentAiSurface } from "@browser-codex/wasm-browser-tools";
 import { saveWebSignalSitesSnapshot } from "../apsix/workspace";
-import { scanCurrentAiSurface } from "../runtime/browser-tools";
 
 function createWebSignalsStore() {
   let poller: number | null = null;

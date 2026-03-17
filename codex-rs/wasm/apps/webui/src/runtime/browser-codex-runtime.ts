@@ -5,7 +5,11 @@ import {
   turnIdFromNotification,
 } from "@browser-codex/wasm-runtime-core";
 import { createBrowserCodexRuntime as createSharedBrowserCodexRuntime } from "../../../../ts/browser-codex-runtime/src";
-import { createBrowserAwareToolExecutor } from "./browser-tools";
+import {
+  configurePageTelemetry,
+  createBrowserAwareToolExecutor,
+} from "@browser-codex/wasm-browser-tools";
+import { emitRuntimeActivity } from "./activity";
 import { emitRuntimeEvents as emitNotificationEvents } from "./events";
 import { installRuntimeActivityBridge } from "./notifications";
 import {
@@ -35,6 +39,19 @@ export async function createBrowserCodexRuntime(
   runtimeModule: RuntimeModule,
   host: unknown,
 ): Promise<BrowserRuntime> {
+  configurePageTelemetry({
+    emitActivity(activity) {
+      emitRuntimeActivity({
+        type: "pageEvent",
+        kind: activity.kind,
+        summary: activity.summary,
+        detail: activity.detail,
+        target: activity.target,
+        timestamp: activity.timestamp,
+        data: activity.data,
+      });
+    },
+  });
   installRuntimeActivityBridge();
   return await createSharedBrowserCodexRuntime({
     runtimeModule,
