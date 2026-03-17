@@ -4,6 +4,7 @@ use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
+use codex_app_server_protocol::ThreadResumeParams;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_wasm_core::codex::Codex;
 
@@ -45,30 +46,33 @@ pub async fn start_loaded_thread_runtime(
     let response = root_processor
         .process_initialized_request(ClientRequest::ThreadStart { request_id, params })
         .await?;
-    let thread_id = response
-        .get("thread")
-        .and_then(|thread| thread.get("id"))
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| internal_error("thread/start response missing thread id"))?;
-    let record = root_processor
-        .thread_record(thread_id)
-        .ok_or_else(|| internal_error("thread/start missing thread state"))?;
-    let codex = root_processor
-        .running_thread(thread_id)
-        .ok_or_else(|| internal_error("thread/start missing loaded codex"))?;
-    let notifications = root_processor.take_notifications();
-    let processor =
-        new_loaded_thread_processor(runtime_bootstrap, record.clone(), Arc::clone(&codex));
-
-    Ok(LoadedThreadStartResult {
+    loaded_thread_result_from_response(
+        root_processor,
         response,
-        runtime: LoadedThreadRuntime {
-            processor,
-            codex,
-            record,
-            notifications,
-        },
-    })
+        runtime_bootstrap,
+        "thread/start response missing thread id",
+        "thread/start missing thread state",
+        "thread/start missing loaded codex",
+    )
+}
+
+pub async fn resume_loaded_thread_runtime(
+    root_processor: &mut MessageProcessor,
+    request_id: RequestId,
+    params: ThreadResumeParams,
+    runtime_bootstrap: RuntimeBootstrap,
+) -> Result<LoadedThreadStartResult, JSONRPCErrorError> {
+    let response = root_processor
+        .process_initialized_request(ClientRequest::ThreadResume { request_id, params })
+        .await?;
+    loaded_thread_result_from_response(
+        root_processor,
+        response,
+        runtime_bootstrap,
+        "thread/resume response missing thread id",
+        "thread/resume missing thread state",
+        "thread/resume missing loaded codex",
+    )
 }
 
 pub async fn process_loaded_thread_request(
@@ -146,4 +150,38 @@ fn internal_error(message: &str) -> JSONRPCErrorError {
         data: None,
         message: message.to_string(),
     }
+}
+
+fn loaded_thread_result_from_response(
+    root_processor: &mut MessageProcessor,
+    response: serde_json::Value,
+    runtime_bootstrap: RuntimeBootstrap,
+    missing_thread_id_message: &str,
+    missing_thread_state_message: &str,
+    missing_loaded_codex_message: &str,
+) -> Result<LoadedThreadStartResult, JSONRPCErrorError> {
+    let thread_id = response
+        .get("thread")
+        .and_then(|thread| thread.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| internal_error(missing_thread_id_message))?;
+    let record = root_processor
+        .thread_record(thread_id)
+        .ok_or_else(|| internal_error(missing_thread_state_message))?;
+    let codex = root_processor
+        .running_thread(thread_id)
+        .ok_or_else(|| internal_error(missing_loaded_codex_message))?;
+    let notifications = root_processor.take_notifications();
+    let processor =
+        new_loaded_thread_processor(runtime_bootstrap, record.clone(), Arc::clone(&codex));
+
+    Ok(LoadedThreadStartResult {
+        response,
+        runtime: LoadedThreadRuntime {
+            processor,
+            codex,
+            record,
+            notifications,
+        },
+    })
 }

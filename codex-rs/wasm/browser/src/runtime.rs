@@ -11,12 +11,14 @@ use codex_app_server_protocol::JSONRPCNotification;
 use codex_app_server_protocol::JSONRPCRequest;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
+use codex_app_server_protocol::ServerNotification;
 use tokio::sync::Mutex;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::bootstrap_bridge::ensure_bootstrap_loaded;
+use crate::event_bridge::enqueue_host_server_notification;
 use crate::event_bridge::enqueue_server_notification;
 use crate::host::BrowserRuntimeHost;
 use crate::host::JsHost;
@@ -29,7 +31,7 @@ use crate::rpc::invalid_request_error;
 use crate::rpc::method_error;
 use crate::rpc::success_response;
 use crate::state::RuntimeState;
-use crate::thread_host::install_started_thread;
+use crate::thread_host::install_loaded_thread;
 use crate::thread_host::loaded_thread_app_server;
 use crate::thread_host::pending_server_response_target;
 use crate::thread_host::sync_loaded_thread_record;
@@ -124,6 +126,14 @@ impl WasmBrowserRuntime {
             Ok(message) => encode_js_value(&message),
             Err(_) => Ok(JsValue::NULL),
         }
+    }
+
+    #[wasm_bindgen(js_name = enqueueNotification)]
+    pub async fn enqueue_notification(&self, notification: JsValue) -> Result<(), JsValue> {
+        self.ensure_bootstrap_loaded().await?;
+        let notification: ServerNotification = decode_js_value(notification)?;
+        enqueue_host_server_notification(&self.state, notification).await;
+        Ok(())
     }
 }
 
@@ -228,13 +238,13 @@ impl WasmBrowserRuntime {
 
         match result {
             RootRequestResult::Response(response) => success_response(id, &response),
-            RootRequestResult::ThreadStarted(started) => {
-                let response = started.response.clone();
-                let notifications = started.runtime.notifications.clone();
+            RootRequestResult::LoadedThreadReady(loaded) => {
+                let response = loaded.response.clone();
+                let notifications = loaded.runtime.notifications.clone();
                 for notification in notifications {
                     enqueue_server_notification(&self.state, notification).await;
                 }
-                install_started_thread(&self.state, started).await;
+                install_loaded_thread(&self.state, loaded).await;
                 success_response(id, &response)
             }
         }

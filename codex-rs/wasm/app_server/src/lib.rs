@@ -40,6 +40,7 @@ pub use loaded_thread_runtime::LoadedThreadStartResult;
 pub use loaded_thread_runtime::new_loaded_thread_processor;
 pub use loaded_thread_runtime::process_loaded_thread_request;
 pub use loaded_thread_runtime::process_loaded_thread_server_response;
+pub use loaded_thread_runtime::resume_loaded_thread_runtime;
 pub use loaded_thread_runtime::start_loaded_thread_runtime;
 pub use loaded_thread_runtime::sync_loaded_thread_record;
 pub use message_processor::ConnectionSessionState;
