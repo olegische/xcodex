@@ -5,14 +5,22 @@ on:
   pull_request:
     branches:
       - wasm
+    paths:
+      - ".github/workflows/wasm-rust-ci.yml"
+      - ".github/workflows/xcodex-wasm-release.yml"
+      - "codex-rs/wasm/**"
   push:
     branches:
       - wasm
+    paths:
+      - ".github/workflows/wasm-rust-ci.yml"
+      - ".github/workflows/xcodex-wasm-release.yml"
+      - "codex-rs/wasm/**"
   workflow_dispatch:
 
 jobs:
   rust-ci:
-    name: fmt + clippy + tests
+    name: wasm fmt + clippy + tests
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -31,11 +39,19 @@ jobs:
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
-      - name: cargo fmt
-        run: cargo fmt --check
-      - name: cargo clippy
-        run: cargo clippy --all-features --tests -- -D warnings
-      - name: cargo test
-        run: cargo test --all-features
+      - name: cargo fmt codex-wasm-core
+        run: cargo fmt --manifest-path wasm/core/Cargo.toml --all --check
+      - name: cargo fmt codex-wasm-app-server
+        run: cargo fmt --manifest-path wasm/app_server/Cargo.toml --all --check
+      - name: cargo fmt codex-wasm-browser
+        run: cargo fmt --manifest-path wasm/browser/Cargo.toml --all --check
+      - name: cargo clippy codex-wasm-core
+        run: cargo clippy -p codex-wasm-core --all-features --tests -- -D warnings
+      - name: cargo clippy codex-wasm-app-server
+        run: cargo clippy -p codex-wasm-app-server --all-features --tests -- -D warnings
+      - name: cargo test codex-wasm-core
+        run: cargo test -p codex-wasm-core --all-features
+      - name: cargo test codex-wasm-app-server
+        run: cargo test -p codex-wasm-app-server --all-features
       - name: cargo check codex-wasm-browser
         run: cargo check -p codex-wasm-browser --target wasm32-unknown-unknown

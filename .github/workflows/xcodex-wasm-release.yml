@@ -16,9 +16,14 @@ jobs:
   build-and-release:
     name: Build and publish xcodex-wasm
     runs-on: ubuntu-24.04
-    # Auto-publish only from successful runs on the dedicated wasm branch.
+    # Publish only from the dedicated wasm branch. This workflow is intentionally
+    # scoped to the fork's WASM surface and does not validate or release
+    # unrelated upstream crates.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'workflow_dispatch' &&
+        github.ref_name == 'wasm'
+      ) ||
       (
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_branch == 'wasm'
