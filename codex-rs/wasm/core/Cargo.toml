@@ -90,6 +90,7 @@ web-sys = { workspace = true, features = [
 
 [dev-dependencies]
 codex-otel = { workspace = true }
+codex-utils-cargo-bin = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = [
     "experimental_metrics_custom_reader",

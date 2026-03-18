@@ -2791,6 +2791,7 @@ dependencies = [
  "codex-rmcp-client",
  "codex-shell-command",
  "codex-utils-absolute-path",
+ "codex-utils-cargo-bin",
  "codex-utils-home-dir",
  "codex-utils-readiness",
  "codex-utils-stream-parser",
