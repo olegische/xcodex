@@ -1,12 +1,8 @@
 import { subscribeRuntimeEvent } from "./events";
 import { emitRuntimeActivity } from "./activity";
-import type { JsonValue, RuntimeDispatch, RuntimeEvent, RuntimeActivity } from "./types";
+import type { JsonValue, RuntimeEvent, RuntimeActivity } from "./types";
 
 let notificationsBridgeInstalled = false;
-
-export function emitActivitiesFromDispatch(dispatch: RuntimeDispatch) {
-  emitActivitiesFromNotifications(dispatch.events);
-}
 
 export function emitActivitiesFromNotifications(events: RuntimeEvent[]) {
   for (const event of events) {

@@ -18,7 +18,10 @@ use crate::protocol::v2::TurnError;
 use crate::protocol::v2::TurnStatus;
 use crate::protocol::v2::UserInput;
 use crate::protocol::v2::WebSearchAction;
+use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::MessagePhase;
+use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AgentReasoningEvent;
 use codex_protocol::protocol::AgentReasoningRawContentEvent;
 use codex_protocol::protocol::AgentStatus;
@@ -182,9 +185,19 @@ impl ThreadHistoryBuilder {
         match item {
             RolloutItem::EventMsg(event) => self.handle_event(event),
             RolloutItem::Compacted(payload) => self.handle_compacted(payload),
-            RolloutItem::TurnContext(_)
-            | RolloutItem::SessionMeta(_)
-            | RolloutItem::ResponseItem(_) => {}
+            RolloutItem::ResponseItem(item) => self.handle_response_item(item),
+            RolloutItem::TurnContext(_) | RolloutItem::SessionMeta(_) => {}
+        }
+    }
+
+    fn handle_response_item(&mut self, item: &ResponseItem) {
+        if let Some(item) = response_item_to_started_dynamic_tool_call(item) {
+            self.upsert_item_in_current_turn(item);
+            return;
+        }
+
+        if let Some(item) = self.response_item_to_completed_dynamic_tool_call(item) {
+            self.upsert_item_in_current_turn(item);
         }
     }
 
@@ -901,6 +914,46 @@ impl ThreadHistoryBuilder {
         self.ensure_turn().saw_compaction = true;
     }
 
+    fn response_item_to_completed_dynamic_tool_call(
+        &self,
+        item: &ResponseItem,
+    ) -> Option<ThreadItem> {
+        let (call_id, output) = match item {
+            ResponseItem::FunctionCallOutput { call_id, output }
+            | ResponseItem::CustomToolCallOutput { call_id, output } => (call_id, output),
+            _ => return None,
+        };
+
+        let existing = self
+            .current_turn
+            .as_ref()
+            .and_then(|turn| turn.items.iter().find(|item| item.id() == call_id))
+            .or_else(|| {
+                self.turns
+                    .iter()
+                    .rev()
+                    .find_map(|turn| turn.items.iter().find(|item| item.id() == call_id))
+            })?;
+
+        match existing {
+            ThreadItem::DynamicToolCall {
+                id,
+                tool,
+                arguments,
+                ..
+            } if is_browser_raw_function_tool(tool) => Some(ThreadItem::DynamicToolCall {
+                id: id.clone(),
+                tool: tool.clone(),
+                arguments: arguments.clone(),
+                status: dynamic_tool_call_status_from_output(output),
+                content_items: Some(dynamic_tool_output_content_items(output)),
+                success: output.success,
+                duration_ms: None,
+            }),
+            _ => None,
+        }
+    }
+
     fn handle_thread_rollback(&mut self, payload: &ThreadRolledBackEvent) {
         self.finish_current_turn();
 
@@ -1046,6 +1099,97 @@ fn convert_dynamic_tool_content_items(
         .collect()
 }
 
+fn response_item_to_started_dynamic_tool_call(item: &ResponseItem) -> Option<ThreadItem> {
+    match item {
+        ResponseItem::FunctionCall {
+            name,
+            namespace,
+            arguments,
+            call_id,
+            ..
+        } if is_browser_raw_function_tool_name(name, namespace.as_deref()) => {
+            Some(ThreadItem::DynamicToolCall {
+                id: call_id.clone(),
+                tool: qualified_browser_raw_function_tool_name(name, namespace.as_deref()),
+                arguments: parse_dynamic_tool_arguments(arguments),
+                status: DynamicToolCallStatus::InProgress,
+                content_items: None,
+                success: None,
+                duration_ms: None,
+            })
+        }
+        ResponseItem::CustomToolCall {
+            call_id,
+            name,
+            input,
+            ..
+        } if is_browser_raw_function_tool_name(name, None) => Some(ThreadItem::DynamicToolCall {
+            id: call_id.clone(),
+            tool: qualified_browser_raw_function_tool_name(name, None),
+            arguments: parse_dynamic_tool_arguments(input),
+            status: DynamicToolCallStatus::InProgress,
+            content_items: None,
+            success: None,
+            duration_ms: None,
+        }),
+        _ => None,
+    }
+}
+
+fn parse_dynamic_tool_arguments(arguments: &str) -> serde_json::Value {
+    serde_json::from_str(arguments)
+        .unwrap_or_else(|_| serde_json::Value::String(arguments.to_string()))
+}
+
+fn is_browser_raw_function_tool_name(name: &str, namespace: Option<&str>) -> bool {
+    namespace == Some("browser") || name.starts_with("browser__")
+}
+
+fn qualified_browser_raw_function_tool_name(name: &str, namespace: Option<&str>) -> String {
+    if namespace == Some("browser") && !name.starts_with("browser__") {
+        format!("browser__{name}")
+    } else {
+        name.to_string()
+    }
+}
+
+fn is_browser_raw_function_tool(tool: &str) -> bool {
+    tool.starts_with("browser__")
+}
+
+fn dynamic_tool_call_status_from_output(
+    output: &FunctionCallOutputPayload,
+) -> DynamicToolCallStatus {
+    match output.success {
+        Some(false) => DynamicToolCallStatus::Failed,
+        Some(true) | None => DynamicToolCallStatus::Completed,
+    }
+}
+
+fn dynamic_tool_output_content_items(
+    output: &FunctionCallOutputPayload,
+) -> Vec<DynamicToolCallOutputContentItem> {
+    match &output.body {
+        FunctionCallOutputBody::Text(text) => {
+            vec![DynamicToolCallOutputContentItem::InputText { text: text.clone() }]
+        }
+        FunctionCallOutputBody::ContentItems(items) => items
+            .iter()
+            .map(|item| match item {
+                codex_protocol::models::FunctionCallOutputContentItem::InputText { text } => {
+                    DynamicToolCallOutputContentItem::InputText { text: text.clone() }
+                }
+                codex_protocol::models::FunctionCallOutputContentItem::InputImage {
+                    image_url,
+                    ..
+                } => DynamicToolCallOutputContentItem::InputImage {
+                    image_url: image_url.clone(),
+                },
+            })
+            .collect(),
+    }
+}
+
 fn map_patch_change_kind(change: &codex_protocol::protocol::FileChange) -> PatchChangeKind {
     match change {
         codex_protocol::protocol::FileChange::Add { .. } => PatchChangeKind::Add,
@@ -1138,7 +1282,9 @@ mod tests {
     use codex_protocol::dynamic_tools::DynamicToolCallOutputContentItem as CoreDynamicToolCallOutputContentItem;
     use codex_protocol::items::TurnItem as CoreTurnItem;
     use codex_protocol::items::UserMessageItem as CoreUserMessageItem;
+    use codex_protocol::models::FunctionCallOutputPayload;
     use codex_protocol::models::MessagePhase as CoreMessagePhase;
+    use codex_protocol::models::ResponseItem;
     use codex_protocol::models::WebSearchAction as CoreWebSearchAction;
     use codex_protocol::parse_command::ParsedCommand;
     use codex_protocol::protocol::AgentMessageEvent;
@@ -1798,6 +1944,56 @@ mod tests {
                 }]),
                 success: Some(true),
                 duration_ms: Some(42),
+            }
+        );
+    }
+
+    #[test]
+    fn reconstructs_browser_dynamic_tool_items_from_persisted_response_items() {
+        let items = vec![
+            RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                turn_id: "turn-1".into(),
+                model_context_window: None,
+                collaboration_mode_kind: Default::default(),
+            })),
+            RolloutItem::EventMsg(EventMsg::UserMessage(UserMessageEvent {
+                message: "inspect page".into(),
+                images: None,
+                text_elements: Vec::new(),
+                local_images: Vec::new(),
+            })),
+            RolloutItem::ResponseItem(ResponseItem::FunctionCall {
+                id: None,
+                call_id: "browser-call-1".into(),
+                name: "page_context".into(),
+                namespace: Some("browser".into()),
+                arguments: serde_json::json!({ "includeDom": true }).to_string(),
+            }),
+            RolloutItem::ResponseItem(ResponseItem::FunctionCallOutput {
+                call_id: "browser-call-1".into(),
+                output: FunctionCallOutputPayload::from_text("{\"title\":\"Home\"}".into()),
+            }),
+            RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                turn_id: "turn-1".into(),
+                last_agent_message: None,
+            })),
+        ];
+
+        let turns = build_turns_from_rollout_items(&items);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].items.len(), 2);
+        assert_eq!(
+            turns[0].items[1],
+            ThreadItem::DynamicToolCall {
+                id: "browser-call-1".into(),
+                tool: "browser__page_context".into(),
+                arguments: serde_json::json!({ "includeDom": true }),
+                status: DynamicToolCallStatus::Completed,
+                content_items: Some(vec![DynamicToolCallOutputContentItem::InputText {
+                    text: "{\"title\":\"Home\"}".into(),
+                }]),
+                success: None,
+                duration_ms: None,
             }
         );
     }

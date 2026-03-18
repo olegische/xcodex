@@ -3,7 +3,6 @@
   import type { TranscriptEntry } from "../runtime";
 
   export let transcript: TranscriptEntry[] = [];
-  export let liveStreamText = "";
   export let status = "";
   export let running = false;
   export let onSettings: (() => void) | undefined = undefined;
@@ -72,7 +71,7 @@
 </script>
 
 <section class="transcript">
-  {#if transcript.length === 0 && liveStreamText.length === 0}
+  {#if transcript.length === 0}
     <div class="empty-state">
       <h3>{currentGreeting()}</h3>
       <p>{currentSubheading(status)}</p>
@@ -116,20 +115,6 @@
       </div>
     </article>
   {/each}
-
-  {#if liveStreamText.length > 0}
-    <article class="message-row">
-      <div class="message-body">
-        <div class="message-role">Agent</div>
-        <div class="message-text">
-          {#each paragraphs(liveStreamText) as paragraph}
-            <p>{paragraph}</p>
-          {/each}
-        </div>
-      </div>
-    </article>
-  {/if}
-
   {#if !running && transcript.some((entry) => entry.role !== "user")}
     <div class="message-actions">
       <button class="message-action-button" on:click={() => void copyMessage(copyableTranscript())}>

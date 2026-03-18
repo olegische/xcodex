@@ -4,6 +4,9 @@ import {
   DEFAULT_DEMO_INSTRUCTIONS,
   INSTRUCTIONS_STORAGE_KEY,
   PROVIDER_CONFIG_KEY,
+  THREAD_BINDING_STORAGE_KEY,
+  THREAD_RUNTIME_REVISION,
+  THREAD_RUNTIME_REVISION_STORAGE_KEY,
   USER_CONFIG_STORAGE_KEY,
   WORKSPACE_ROOT,
 } from "./constants";
@@ -149,6 +152,36 @@ export async function deleteStoredSession(threadId: string): Promise<void> {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error ?? new Error("failed to delete session"));
   });
+}
+
+export async function loadStoredThreadBinding(): Promise<string | null> {
+  const value = window.localStorage.getItem(THREAD_BINDING_STORAGE_KEY);
+  if (value === null) {
+    return null;
+  }
+  const threadId = value.trim();
+  return threadId.length === 0 ? null : threadId;
+}
+
+export async function saveStoredThreadBinding(threadId: string): Promise<void> {
+  const normalizedThreadId = threadId.trim();
+  if (normalizedThreadId.length === 0) {
+    throw new Error("cannot persist an empty thread id");
+  }
+  window.localStorage.setItem(THREAD_BINDING_STORAGE_KEY, normalizedThreadId);
+}
+
+export async function clearStoredThreadBinding(): Promise<void> {
+  window.localStorage.removeItem(THREAD_BINDING_STORAGE_KEY);
+}
+
+export async function syncStoredThreadRuntimeRevision(): Promise<boolean> {
+  const currentRevision = window.localStorage.getItem(THREAD_RUNTIME_REVISION_STORAGE_KEY);
+  if (currentRevision === THREAD_RUNTIME_REVISION) {
+    return false;
+  }
+  window.localStorage.setItem(THREAD_RUNTIME_REVISION_STORAGE_KEY, THREAD_RUNTIME_REVISION);
+  return true;
 }
 
 export async function loadStoredAuthState(): Promise<AuthState | null> {

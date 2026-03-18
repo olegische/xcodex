@@ -1,10 +1,20 @@
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+export type {
+  BrowserRuntimeHost,
+  JsonValue,
+  RuntimeModule,
+  WasmProtocolRuntime,
+} from "@browser-codex/wasm-runtime-core/types";
+import type { JsonValue } from "@browser-codex/wasm-runtime-core/types";
+import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
+import type { ThreadReadResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadReadResponse";
+import type { ThreadResumeParams } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadResumeParams";
+import type { ThreadResumeResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadResumeResponse";
+import type { ThreadStartParams } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadStartParams";
+import type { ThreadStartResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadStartResponse";
+import type { TurnInterruptParams } from "../../../../../app-server-protocol/schema/typescript/v2/TurnInterruptParams";
+import type { TurnInterruptResponse } from "../../../../../app-server-protocol/schema/typescript/v2/TurnInterruptResponse";
+import type { TurnStartParams } from "../../../../../app-server-protocol/schema/typescript/v2/TurnStartParams";
+import type { TurnStartResponse } from "../../../../../app-server-protocol/schema/typescript/v2/TurnStartResponse";
 
 export type AuthState = {
   authMode: "apiKey" | "chatgpt" | "chatgptAuthTokens";
@@ -56,11 +66,6 @@ export type ModelPreset = {
   isDefault: boolean;
   showInPicker: boolean;
   supportsApi: boolean;
-};
-
-export type RuntimeDispatch = {
-  value: SessionSnapshot;
-  events: RuntimeEvent[];
 };
 
 export type UserInstructions = {
@@ -203,18 +208,12 @@ export type BrowserRuntime = {
     chatgptAccountId: string;
     chatgptPlanType: string | null;
   }>;
-  startThread(request: {
-    threadId: string;
-    metadata: JsonValue;
-  }): Promise<RuntimeDispatch>;
-  resumeThread(request: { threadId: string }): Promise<RuntimeDispatch>;
-  runTurn(request: {
-    threadId: string;
-    turnId: string;
-    input: JsonValue;
-    modelPayload: JsonValue;
-  }): Promise<RuntimeDispatch>;
-  cancelModelTurn(requestId: string): Promise<void>;
+  threadStart(params: ThreadStartParams): Promise<ThreadStartResponse>;
+  threadResume(params: ThreadResumeParams): Promise<ThreadResumeResponse>;
+  threadRead(params: { threadId: string; includeTurns: boolean }): Promise<ThreadReadResponse>;
+  turnStart(params: TurnStartParams): Promise<TurnStartResponse>;
+  turnInterrupt(params: TurnInterruptParams): Promise<TurnInterruptResponse>;
+  subscribeToNotifications(listener: (notification: ServerNotification) => void): () => void;
 };
 
 export type ProviderDraft = {
@@ -238,11 +237,8 @@ export type SendTurnResult = {
   transcript: TranscriptEntry[];
   nextTurnCounter: number;
   output: string;
-};
-
-export type RuntimeModule = {
-  default(input?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module): Promise<void>;
-  WasmBrowserRuntime: new (host: BrowserRuntimeHost) => WasmProtocolRuntime;
+  turnId: string;
+  events: RuntimeEvent[];
 };
 
 export type XrouterRuntimeModule = {
@@ -262,40 +258,4 @@ export type XrouterBrowserClient = {
     onEvent: (event: unknown) => void,
   ): Promise<unknown>;
   cancel(requestId: string): void;
-};
-
-export type BrowserRuntimeHost = {
-  loadBootstrap(request: unknown): Promise<{
-    codexHome: string;
-    cwd?: string | null;
-    model?: string | null;
-    modelProviderId?: string | null;
-    modelProvider?: JsonValue;
-    reasoningEffort?: string | null;
-    personality?: string | null;
-    baseInstructions?: string | null;
-    developerInstructions?: string | null;
-    userInstructions?: string | null;
-    apiKey?: string | null;
-    ephemeral?: boolean;
-  }>;
-  readFile(request: JsonValue): Promise<JsonValue>;
-  listDir(request: JsonValue): Promise<JsonValue>;
-  search(request: JsonValue): Promise<JsonValue>;
-  applyPatch(request: JsonValue): Promise<JsonValue>;
-  loadUserConfig?(request: JsonValue): Promise<JsonValue>;
-  saveUserConfig?(request: JsonValue): Promise<JsonValue>;
-  listDiscoverableApps?(request: JsonValue): Promise<JsonValue>;
-  runModelTurn?(request: JsonValue, onEvent?: (event: unknown) => void): Promise<JsonValue>;
-  emitNotification?(notification: JsonValue): Promise<void>;
-  resolveMcpOauthRedirectUri?(request: JsonValue): Promise<JsonValue>;
-  waitForMcpOauthCallback?(request: JsonValue): Promise<JsonValue>;
-};
-
-export type WasmProtocolRuntime = {
-  send(message: JsonValue): Promise<JsonValue>;
-  nextMessage(): Promise<JsonValue>;
-  enqueueNotification?(notification: JsonValue): Promise<void>;
-  runtimeInfo(): JsonValue;
-  contractVersion(): string;
 };

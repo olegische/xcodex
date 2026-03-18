@@ -36,7 +36,6 @@
   export let onToggleApprovals: () => void;
   export let onSelectWorkspace: () => void;
   export let onOpenSettings: () => void;
-  export let onOpenProfiles: () => void;
   export let onComposerSend: () => void;
   export let onComposerStop: () => void;
 
@@ -71,7 +70,6 @@
   onCloseApprovals={closeApprovals}
   {onComposerSend}
   {onComposerStop}
-  {onOpenProfiles}
   {onOpenSettings}
   {onResetThread}
   {onSelectInspector}

@@ -118,36 +118,19 @@ export function summarizeClientResponse(
   };
 }
 
-type PendingTurn<TDispatch, TEvent> = {
-  threadId: string;
-  turnId: string | null;
-  resolve: (dispatch: TDispatch) => void;
-  reject: (error: unknown) => void;
-};
-
-export abstract class BrowserAppServerRuntimeCore<TDispatch, TEvent, TSnapshot> {
+export abstract class BrowserAppServerRuntimeCore {
   protected readonly client: AppServerClient;
   private nextRequestId = 1;
-  private readonly pendingTurns = new Map<string, PendingTurn<TDispatch, TEvent>>();
-  private readonly pendingThreadTurns = new Map<string, PendingTurn<TDispatch, TEvent>>();
   private readonly threadAliases = new Map<string, string>();
+  private readonly notificationListeners = new Set<(notification: ServerNotification) => void>();
 
   constructor(client: AppServerClient) {
     this.client = client;
     void this.startPump();
   }
 
-  protected abstract eventFromNotification(notification: ServerNotification): TEvent;
-  protected abstract handleRuntimeEvent(event: TEvent): void;
-  protected abstract turnIdFromRuntimeEvent(event: TEvent): string | null;
-  protected abstract isTurnCompletedEvent(event: TEvent): boolean;
   protected abstract handleServerRequest(request: ServerRequest): Promise<void>;
-  protected abstract readThreadSnapshot(threadId: string): Promise<TSnapshot>;
-  protected abstract buildResolvedDispatch(snapshot: TSnapshot, events: TEvent[]): TDispatch;
-
-  protected actualThreadIdFromSnapshot(_snapshot: TSnapshot): string | null {
-    return null;
-  }
+  protected handleServerNotification(_notification: ServerNotification): void {}
 
   protected onLagged(event: Extract<AppServerClientEvent, { type: "lagged" }>): void {
     console.warn("[browser-app-server] lagged", event);
@@ -165,48 +148,21 @@ export abstract class BrowserAppServerRuntimeCore<TDispatch, TEvent, TSnapshot> 
     return response ?? null;
   }
 
-  protected createPendingTurnDispatch(requestedThreadId: string): Promise<TDispatch> {
-    const actualThreadId = this.resolveThreadId(requestedThreadId);
-    return awaitPendingDispatch<TDispatch>((resolve, reject) => {
-      this.pendingThreadTurns.set(requestedThreadId, {
-        threadId: actualThreadId,
-        turnId: null,
-        resolve,
-        reject,
-      });
-    });
+  protected async requestTyped<T>(method: string, params: Record<string, unknown>): Promise<T> {
+    return (await this.request(method, params)) as T;
   }
 
-  protected activatePendingThreadTurn(requestedThreadId: string, turnId: string): void {
-    const pending = this.pendingThreadTurns.get(requestedThreadId);
-    if (pending === undefined) {
-      return;
-    }
-    this.pendingThreadTurns.delete(requestedThreadId);
-    pending.turnId = turnId;
-    this.pendingTurns.set(turnId, pending);
-  }
-
-  protected async interruptPendingTurn(turnId: string): Promise<void> {
-    const pending = this.pendingTurns.get(turnId);
-    if (pending === undefined) {
-      return;
-    }
-    await this.request("turn/interrupt", {
-      threadId: pending.threadId,
-      turnId,
-    });
+  public subscribeToNotifications(
+    listener: (notification: ServerNotification) => void,
+  ): () => void {
+    this.notificationListeners.add(listener);
+    return () => {
+      this.notificationListeners.delete(listener);
+    };
   }
 
   protected rememberThreadAlias(requestedThreadId: string, actualThreadId: string): void {
     this.threadAliases.set(requestedThreadId, actualThreadId);
-  }
-
-  protected adoptThreadAliasFromSnapshot(requestedThreadId: string, snapshot: TSnapshot): void {
-    const actualThreadId = this.actualThreadIdFromSnapshot(snapshot);
-    if (actualThreadId !== null) {
-      this.threadAliases.set(requestedThreadId, actualThreadId);
-    }
   }
 
   protected resolveThreadId(threadId: string): string {
@@ -234,29 +190,10 @@ export abstract class BrowserAppServerRuntimeCore<TDispatch, TEvent, TSnapshot> 
   }
 
   private handleNotification(notification: ServerNotification): void {
-    const event = this.eventFromNotification(notification);
-    this.handleRuntimeEvent(event);
-    const turnId = this.turnIdFromRuntimeEvent(event);
-    if (turnId === null) {
-      return;
+    for (const listener of this.notificationListeners) {
+      listener(notification);
     }
-    const pending = this.pendingTurns.get(turnId);
-    if (pending === undefined) {
-      return;
-    }
-    if (this.isTurnCompletedEvent(event)) {
-      void this.resolveTurn(turnId, pending);
-    }
-  }
-
-  private async resolveTurn(turnId: string, pending: PendingTurn<TDispatch, TEvent>): Promise<void> {
-    this.pendingTurns.delete(turnId);
-    try {
-      const snapshot = await this.readThreadSnapshot(pending.threadId);
-      pending.resolve(this.buildResolvedDispatch(snapshot, []));
-    } catch (error) {
-      pending.reject(error);
-    }
+    this.handleServerNotification(notification);
   }
 }
 
@@ -291,17 +228,6 @@ function summarizeClientRequest(
     hasDynamicTools: Array.isArray(params.dynamicTools),
     dynamicToolCount: Array.isArray(params.dynamicTools) ? params.dynamicTools.length : 0,
   };
-}
-
-function awaitPendingDispatch<TDispatch>(
-  register: (
-    resolve: (dispatch: TDispatch) => void,
-    reject: (error: unknown) => void,
-  ) => void,
-): Promise<TDispatch> {
-  return new Promise<TDispatch>((resolve, reject) => {
-    register(resolve, reject);
-  });
 }
 
 function attachRuntimeNotificationSink(host: unknown): BrowserRuntimeHost {

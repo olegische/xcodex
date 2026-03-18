@@ -7,11 +7,10 @@ import { uiSystemStore } from "../stores/ui-system";
 import { ensureApsixWorkspaceSeed } from "../apsix/workspace";
 import { UI_THEME_REVISION, UI_THEME_REVISION_STORAGE_KEY } from "../runtime/constants";
 import { formatError } from "../runtime";
+import { loadStoredThreadBinding } from "../runtime/storage";
 import { isCancellationError } from "./utils";
-import type { UiProfile } from "../ui/profiles";
 import type { InspectorTab, UiRenderPlan } from "../ui/types";
 import type { ProviderDraft } from "../runtime";
-import { UI_PROFILES_PATH } from "../ui/profiles";
 import { UI_TOKENS_PATH } from "../ui/tokens";
 import { deleteWorkspaceDocuments } from "../ui/workspace";
 
@@ -62,7 +61,7 @@ async function syncUiThemeRevision(): Promise<void> {
   if (currentRevision === UI_THEME_REVISION) {
     return;
   }
-  await deleteWorkspaceDocuments([UI_TOKENS_PATH, UI_PROFILES_PATH]);
+  await deleteWorkspaceDocuments([UI_TOKENS_PATH]);
   window.localStorage.setItem(UI_THEME_REVISION_STORAGE_KEY, UI_THEME_REVISION);
 }
 
@@ -156,7 +155,14 @@ export async function stopTurn(): Promise<void> {
   try {
     console.info("[webui] ui:stop", { activeRequestId: runtimeUiState.activeRequestId });
     runtimeUiStore.markStopRequested();
-    await runtime.cancelModelTurn(runtimeUiState.activeRequestId);
+    const threadId = await loadStoredThreadBinding();
+    if (threadId === null) {
+      throw new Error("No active thread binding found.");
+    }
+    await runtime.turnInterrupt({
+      threadId,
+      turnId: runtimeUiState.activeRequestId,
+    });
     runtimeUiStore.markCancelled();
     runtimeSessionStore.setCancelledStatus();
   } catch (error) {
@@ -189,20 +195,4 @@ export function toggleApprovals(renderPlan: UiRenderPlan): void {
 
 export function toggleInspectorTab(tab: InspectorTab, renderPlan: UiRenderPlan): void {
   inspectorStore.toggleInspectorTab(tab, renderPlan.inspectorMode);
-}
-
-export async function createProfile(): Promise<void> {
-  await uiSystemStore.createProfile();
-}
-
-export async function saveProfile(profile: UiProfile): Promise<void> {
-  await uiSystemStore.saveProfile(profile);
-}
-
-export async function activateProfile(profileId: string): Promise<void> {
-  await uiSystemStore.activateProfile(profileId);
-}
-
-export async function deleteActiveProfile(): Promise<void> {
-  await uiSystemStore.deleteActiveProfile();
 }

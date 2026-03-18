@@ -28,7 +28,6 @@ export type WidgetHostContext = {
   widget: RenderedWidget;
   widgetsDocument: UiWidgetsDocument;
   transcript: TranscriptEntry[];
-  liveStreamText: string;
   status: string;
   running: boolean;
   disabled: boolean;
@@ -119,7 +118,6 @@ export const WIDGET_REGISTRY: Record<UiWidgetId, WidgetRendererDefinition> = {
     component: TranscriptWidget,
     createProps: (context) => ({
       transcript: context.transcript,
-      liveStreamText: context.liveStreamText,
       status: context.status,
       running: context.running,
       runtimeActivities: context.runtimeActivities,

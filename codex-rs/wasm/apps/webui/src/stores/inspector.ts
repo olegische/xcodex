@@ -7,7 +7,6 @@ export type InspectorState = {
   showApprovals: boolean;
   sidebarOpen: boolean;
   showSettings: boolean;
-  showProfiles: boolean;
 };
 
 const initialState: InspectorState = {
@@ -16,7 +15,6 @@ const initialState: InspectorState = {
   showApprovals: false,
   sidebarOpen: true,
   showSettings: false,
-  showProfiles: false,
 };
 
 function createInspectorStore() {
@@ -84,12 +82,6 @@ function createInspectorStore() {
     },
     closeSettings() {
       update((state) => ({ ...state, showSettings: false }));
-    },
-    openProfiles() {
-      update((state) => ({ ...state, showProfiles: true }));
-    },
-    closeProfiles() {
-      update((state) => ({ ...state, showProfiles: false }));
     },
     closeEvents() {
       update((state) => ({ ...state, showEvents: false }));

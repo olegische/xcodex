@@ -23,11 +23,9 @@ export function createWorkbenchModel(input: {
     .filter((activity): activity is Extract<RuntimeActivity, { type: "planUpdate" }> => activity.type === "planUpdate")
     .at(-1);
   const metrics = buildMetrics(input.uiSystem.widgets.metrics.items, {
-    profile: renderPlan.profile.name,
     view: input.uiSystem.activeView?.name ?? "Chat",
-    dashboard: input.uiSystem.activeDashboard?.name ?? "Chat",
-    theme: renderPlan.profile.theme,
-    sidebar: renderPlan.profile.sidebarSide,
+    theme: "dark",
+    sidebar: renderPlan.sidebarSide,
     transcript: `${input.state.transcript.length}`,
     events: `${input.runtimeActivities.length}`,
     approvals: `${input.approvals.length}`,
@@ -56,7 +54,6 @@ export function createWorkbenchModel(input: {
       input.running,
       input.workspaceFiles.length,
       input.uiSystem.activeView?.name ?? "Chat",
-      input.uiSystem.activeDashboard?.name ?? "Chat",
     ),
     metrics,
     toolActivities,
@@ -146,7 +143,6 @@ function buildSessionStatus(
   running: boolean,
   workspaceFileCount: number,
   activeViewName: string,
-  activeDashboardName: string,
 ): SessionStatusItem[] {
   return [
     {
@@ -161,10 +157,6 @@ function buildSessionStatus(
     {
       label: "View",
       value: activeViewName,
-    },
-    {
-      label: "Dashboard",
-      value: activeDashboardName,
     },
     {
       label: "Model",

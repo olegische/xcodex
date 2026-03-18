@@ -5,7 +5,6 @@
 
   export let transcript: TranscriptEntry[] = [];
   export let runtimeActivities: RuntimeActivity[] = [];
-  export let liveStreamText = "";
   export let status = "";
   export let running = false;
   export let disabled = false;
@@ -17,7 +16,7 @@
 <div class="chat-foundation">
   <div class="chat-foundation-transcript-layer">
     <div class="chat-foundation-transcript-shell">
-      <TranscriptWidget {transcript} {runtimeActivities} {liveStreamText} {status} {running} />
+      <TranscriptWidget {transcript} {runtimeActivities} {status} {running} />
     </div>
   </div>
 

@@ -1,9 +1,22 @@
 import { get, writable } from "svelte/store";
 import { runtimeActivityFromEvent } from "../runtime/notifications";
 import type { RuntimeActivity, RuntimeEvent, TranscriptEntry } from "../runtime";
+import {
+  appendLiveEvent,
+  projectRuntimeLedger,
+  sealActiveTurn,
+  type ChatPhase,
+  type FinalizedTurnSnapshot,
+  type LiveTurnEvent,
+} from "../runtime/chat-ledger";
 
 export type RuntimeUiState = {
   activities: RuntimeActivity[];
+  phase: ChatPhase;
+  confirmedTranscript: TranscriptEntry[];
+  liveEventLog: LiveTurnEvent[];
+  finalizedSnapshots: FinalizedTurnSnapshot[];
+  pendingUserMessage: TranscriptEntry | null;
   transcriptEntries: TranscriptEntry[];
   liveStreamText: string;
   activeRequestId: string | null;
@@ -14,6 +27,11 @@ export type RuntimeUiState = {
 
 const initialState: RuntimeUiState = {
   activities: [],
+  phase: "idle",
+  confirmedTranscript: [],
+  liveEventLog: [],
+  finalizedSnapshots: [],
+  pendingUserMessage: null,
   transcriptEntries: [],
   liveStreamText: "",
   activeRequestId: null,
@@ -38,119 +56,130 @@ function createRuntimeUiStore() {
       if (activity === null) {
         return;
       }
-      if (activity.type === "toolCall" || activity.type === "toolOutput") {
-        console.info("[webui] runtime-ui:observe-tool-activity", activity);
-      }
       update((state) => {
         const activities = [...state.activities, activity].slice(-120);
-        if (activity.type === "turnStart") {
-          return {
-            ...state,
-            activities,
-            activeRequestId: activity.requestId.split(":")[0] ?? activity.requestId,
-            running: true,
-            liveStreamText: activity.requestId.includes(":") ? state.liveStreamText : "",
-          };
-        }
-        if (activity.type === "delta") {
-          return {
-            ...state,
-            activities,
-            liveStreamText: state.liveStreamText + activity.text,
-          };
-        }
-        if (activity.type === "assistantMessage") {
-          return {
-            ...state,
-            activities,
-            transcriptEntries: appendTranscriptEntry(state.transcriptEntries, {
-              role: "assistant",
-              text: stringifyActivityContent(activity.content),
-            }),
-            liveStreamText: "",
-          };
-        }
-        if (activity.type === "toolCall") {
-          const nextTranscriptEntries = appendTranscriptEntry(
-            state.transcriptEntries,
-            formatToolCallEntry(activity),
-          );
-          console.info("[webui] runtime-ui:tool-call-entry", {
-            beforeCount: state.transcriptEntries.length,
-            afterCount: nextTranscriptEntries.length,
-            entry: nextTranscriptEntries[nextTranscriptEntries.length - 1] ?? null,
-          });
-          return {
-            ...state,
-            activities,
-            transcriptEntries: nextTranscriptEntries,
-          };
-        }
-        if (activity.type === "toolOutput") {
-          const nextTranscriptEntries = mergeToolOutputEntry(
-            state.transcriptEntries,
-            activity,
-          );
-          console.info("[webui] runtime-ui:tool-output-entry", {
-            beforeCount: state.transcriptEntries.length,
-            afterCount: nextTranscriptEntries.length,
-            entry:
-              nextTranscriptEntries.findLast(
-                (entry) => entry.role === "tool" && entry.callId === activity.callId,
-              ) ??
-              nextTranscriptEntries[nextTranscriptEntries.length - 1] ??
-              null,
-          });
-          return {
-            ...state,
-            activities,
-            transcriptEntries: nextTranscriptEntries,
-          };
-        }
-        if (activity.type === "completed") {
-          return {
-            ...state,
-            activities,
-          };
-        }
-        return {
+        let nextState: RuntimeUiState = {
           ...state,
           activities,
         };
+
+        if (activity.type === "turnStart") {
+          nextState = {
+            ...nextState,
+            phase: "live",
+            activeRequestId: activity.requestId,
+            running: true,
+            stopRequested: false,
+            liveEventLog: [{ type: "turn_started", turnId: activity.requestId }],
+            finalizedSnapshots: nextState.finalizedSnapshots.filter(
+              (snapshot) => snapshot.turnId !== activity.requestId,
+            ),
+          };
+          return projectRuntimeUiState(nextState);
+        }
+
+        if (
+          nextState.activeRequestId === null ||
+          !("requestId" in activity) ||
+          activity.requestId !== nextState.activeRequestId
+        ) {
+          return projectRuntimeUiState(nextState);
+        }
+
+        switch (activity.type) {
+          case "delta":
+            nextState = mergeLedgerState(nextState, appendLiveEvent(nextState, {
+              type: "assistant_delta",
+              turnId: activity.requestId,
+              delta: activity.text,
+            }));
+            break;
+          case "assistantMessage":
+            nextState = mergeLedgerState(nextState, appendLiveEvent(nextState, {
+              type: "assistant_message",
+              turnId: activity.requestId,
+              text: stringifyActivityContent(activity.content),
+            }));
+            break;
+          case "toolCall":
+            nextState = mergeLedgerState(nextState, appendLiveEvent(nextState, {
+              type: "tool_call_started",
+              turnId: activity.requestId,
+              callId: activity.callId,
+              toolName: activity.toolName,
+              argumentsText: normalizeOptionalText(stringifyActivityContent(activity.arguments)),
+            }));
+            break;
+          case "toolOutput":
+            nextState = mergeLedgerState(nextState, appendLiveEvent(nextState, {
+              type: "tool_call_completed",
+              turnId: activity.requestId,
+              callId: activity.callId,
+              outputText: normalizeOptionalText(stringifyActivityContent(activity.output)),
+            }));
+            break;
+          case "completed":
+            nextState = mergeLedgerState(nextState, appendLiveEvent(nextState, {
+              type: "turn_completed",
+              turnId: activity.requestId,
+            }));
+            nextState = mergeLedgerState(nextState, sealActiveTurn(nextState));
+            break;
+          case "error":
+            nextState = mergeLedgerState(nextState, appendLiveEvent(nextState, {
+              type: "turn_failed",
+              turnId: activity.requestId,
+              message: activity.message,
+            }));
+            nextState = {
+              ...nextState,
+              phase: "failed",
+              running: false,
+              stopRequested: false,
+            };
+            break;
+          default:
+            break;
+        }
+
+        return projectRuntimeUiState(nextState);
       });
     },
     beginManualTurn(message: string) {
-      update((state) => ({
-        ...state,
-        running: true,
-        stopRequested: false,
-        transcriptEntries: appendTranscriptEntry([], {
-          role: "user",
-          text: message,
+      update((state) =>
+        projectRuntimeUiState({
+          ...state,
+          phase: state.phase === "finalizing" ? "finalizing" : "idle",
+          running: true,
+          stopRequested: false,
+          pendingUserMessage: {
+            role: "user",
+            text: message,
+          },
         }),
-        liveStreamText: "",
-      }));
-    },
-    completeTurn(nextTurnCounter: number) {
-      update((state) => ({
-        ...state,
-        running: false,
-        activeRequestId: null,
-        liveStreamText: "",
-        stopRequested: false,
-        turnCounter: nextTurnCounter,
-      }));
+      );
     },
     finalizeTranscript(finalTranscript: TranscriptEntry[], nextTurnCounter: number) {
-      update((state) => ({
-        ...state,
-        running: false,
-        activeRequestId: null,
-        transcriptEntries: mergeFinalTranscript(finalTranscript, state.transcriptEntries),
-        liveStreamText: "",
-        stopRequested: false,
-        turnCounter: nextTurnCounter,
-      }));
+      update((state) => {
+        const activeTurnId = state.activeRequestId;
+        const nextState: RuntimeUiState = {
+          ...state,
+          phase: "settled",
+          confirmedTranscript: finalTranscript,
+          liveEventLog: [],
+          finalizedSnapshots:
+            activeTurnId === null
+              ? []
+              : state.finalizedSnapshots.filter((snapshot) => snapshot.turnId !== activeTurnId),
+          pendingUserMessage: null,
+          running: false,
+          activeRequestId: null,
+          liveStreamText: "",
+          stopRequested: false,
+          turnCounter: nextTurnCounter,
+        };
+        return projectRuntimeUiState(nextState);
+      });
     },
     markStopRequested() {
       update((state) => ({
@@ -159,17 +188,27 @@ function createRuntimeUiStore() {
       }));
     },
     markCancelled() {
-      update((state) => ({
-        ...state,
-        running: false,
-        activeRequestId: null,
-        stopRequested: false,
-      }));
+      update((state) =>
+        projectRuntimeUiState({
+          ...state,
+          phase: state.phase === "finalizing" ? "finalizing" : "failed",
+          running: false,
+          activeRequestId: null,
+          stopRequested: false,
+          liveEventLog: [],
+          pendingUserMessage: null,
+        }),
+      );
     },
     resetThread() {
       update((state) => ({
         ...state,
+        phase: "idle",
         activities: [],
+        confirmedTranscript: [],
+        liveEventLog: [],
+        finalizedSnapshots: [],
+        pendingUserMessage: null,
         transcriptEntries: [],
         liveStreamText: "",
         turnCounter: 1,
@@ -181,15 +220,13 @@ function createRuntimeUiStore() {
   };
 }
 
-function appendTranscriptEntry(
-  transcript: TranscriptEntry[],
-  nextEntry: TranscriptEntry,
-): TranscriptEntry[] {
-  const text = nextEntry.text.trim();
-  if (text.length === 0) {
-    return transcript;
-  }
-  return [...transcript, { ...nextEntry, text }];
+function projectRuntimeUiState(state: RuntimeUiState): RuntimeUiState {
+  const projection = projectRuntimeLedger(state);
+  return {
+    ...state,
+    transcriptEntries: projection.transcriptEntries,
+    liveStreamText: projection.liveStreamText,
+  };
 }
 
 function stringifyActivityContent(content: unknown): string {
@@ -203,123 +240,26 @@ function stringifyActivityContent(content: unknown): string {
   }
 }
 
-function formatToolCall(activity: Extract<RuntimeActivity, { type: "toolCall" }>): string {
-  const toolName = activity.toolName ?? "tool";
-  const argumentsText = stringifyActivityContent(activity.arguments);
-  if (argumentsText.length === 0 || argumentsText === "null") {
-    return `Calling ${toolName}`;
-  }
-  return `Calling ${toolName}\n${argumentsText}`;
+function normalizeOptionalText(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length === 0 || trimmed === "null" ? null : trimmed;
 }
 
-function formatToolOutput(activity: Extract<RuntimeActivity, { type: "toolOutput" }>): string {
-  const outputText = stringifyActivityContent(activity.output);
-  if (outputText.length === 0 || outputText === "null") {
-    return "Tool result received";
-  }
-  return `Tool result\n${outputText}`;
-}
-
-function formatToolCallEntry(
-  activity: Extract<RuntimeActivity, { type: "toolCall" }>,
-): TranscriptEntry {
-  const summary = `Using ${activity.toolName ?? "tool"}`;
-  const details = stringifyActivityContent(activity.arguments);
+function mergeLedgerState(state: RuntimeUiState, ledgerState: {
+  phase: ChatPhase;
+  confirmedTranscript: TranscriptEntry[];
+  liveEventLog: LiveTurnEvent[];
+  finalizedSnapshots: FinalizedTurnSnapshot[];
+  pendingUserMessage: TranscriptEntry | null;
+  activeRequestId: string | null;
+  running: boolean;
+  stopRequested: boolean;
+  turnCounter: number;
+}): RuntimeUiState {
   return {
-    role: "tool",
-    summary,
-    details: details.length > 0 && details !== "null" ? details : null,
-    text: formatToolCall(activity),
-    callId: activity.callId,
+    ...state,
+    ...ledgerState,
   };
-}
-
-function mergeToolOutputEntry(
-  transcript: TranscriptEntry[],
-  activity: Extract<RuntimeActivity, { type: "toolOutput" }>,
-): TranscriptEntry[] {
-  const details = stringifyActivityContent(activity.output);
-  const resultText = details.length > 0 && details !== "null" ? details : null;
-  if (resultText === null) {
-    return transcript;
-  }
-
-  const nextTranscript = [...transcript];
-  const matchingIndex = nextTranscript.findLastIndex(
-    (entry) => entry.role === "tool" && entry.callId === activity.callId,
-  );
-  const fallbackIndex = nextTranscript.findLastIndex((entry) => entry.role === "tool");
-  const targetIndex = matchingIndex >= 0 ? matchingIndex : fallbackIndex;
-
-  if (targetIndex < 0) {
-    return appendTranscriptEntry(nextTranscript, {
-      role: "tool",
-      summary: "Tool result",
-      details: `Result\n${resultText}`,
-      text: formatToolOutput(activity),
-      callId: activity.callId,
-    });
-  }
-
-  const targetEntry = nextTranscript[targetIndex];
-  const nextDetails = appendToolResultDetails(targetEntry.details ?? null, resultText);
-  nextTranscript[targetIndex] = {
-    ...targetEntry,
-    details: nextDetails,
-    text: [targetEntry.summary ?? targetEntry.text, nextDetails].filter(Boolean).join("\n"),
-  };
-  return nextTranscript;
-}
-
-function appendToolResultDetails(details: string | null, resultText: string): string {
-  const resultSection = `Result\n${resultText}`;
-  if (details === null || details.trim().length === 0) {
-    return resultSection;
-  }
-  if (details.includes(resultSection)) {
-    return details;
-  }
-  return `${details}\n\n${resultSection}`;
-}
-
-function mergeFinalTranscript(
-  finalTranscript: TranscriptEntry[],
-  liveTranscript: TranscriptEntry[],
-): TranscriptEntry[] {
-  const merged = finalTranscript.map((entry) => {
-    if (entry.role !== "tool") {
-      return entry;
-    }
-    const liveEntry = liveTranscript.find(
-      (candidate) =>
-        candidate.role === "tool" &&
-        ((entry.callId !== null && entry.callId !== undefined && candidate.callId === entry.callId) ||
-          (candidate.summary ?? candidate.text) === (entry.summary ?? entry.text)),
-    );
-    if (liveEntry === undefined) {
-      return entry;
-    }
-    const entryDetailsLength = entry.details?.trim().length ?? 0;
-    const liveDetailsLength = liveEntry.details?.trim().length ?? 0;
-    return liveDetailsLength > entryDetailsLength ? { ...entry, ...liveEntry } : entry;
-  });
-
-  for (const liveEntry of liveTranscript) {
-    if (liveEntry.role !== "tool") {
-      continue;
-    }
-    const exists = merged.some(
-      (entry) =>
-        entry.role === "tool" &&
-        ((liveEntry.callId !== null && liveEntry.callId !== undefined && entry.callId === liveEntry.callId) ||
-          (entry.summary ?? entry.text) === (liveEntry.summary ?? liveEntry.text)),
-    );
-    if (!exists) {
-      merged.push(liveEntry);
-    }
-  }
-
-  return merged;
 }
 
 export const runtimeUiStore = createRuntimeUiStore();

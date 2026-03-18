@@ -1,9 +1,7 @@
 import { WIDGET_REGISTRY } from "./component-registry";
-import { resolveActiveUiProfile } from "./profiles";
 import type { MetricItem, UiRenderPlan, UiSystemDocument } from "./types";
 
 export function buildUiRenderPlan(document: UiSystemDocument): UiRenderPlan {
-  const profile = resolveActiveUiProfile(document.profiles);
   const rawAreas = {
     mainTop: document.layout.areas.mainTop ?? [],
     mainBody: document.layout.areas.mainBody ?? [],
@@ -29,8 +27,7 @@ export function buildUiRenderPlan(document: UiSystemDocument): UiRenderPlan {
   ) as UiRenderPlan["areas"];
 
   return {
-    profile,
-    sidebarSide: profile.sidebarSide,
+    sidebarSide: "left",
     headerVisible: document.layout.showHeader,
     chatPlacement: document.layout.chatPlacement,
     inspectorMode: document.layout.inspectorMode,

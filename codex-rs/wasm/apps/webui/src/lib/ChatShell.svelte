@@ -9,7 +9,6 @@
   export let bottomWidgets: RenderedWidget[] = [];
   export let widgetsDocument: UiWidgetsDocument;
   export let transcript: TranscriptEntry[] = [];
-  export let liveStreamText = "";
   export let status = "";
   export let running = false;
   export let disabled = false;
@@ -34,7 +33,6 @@
           {approvals}
           {disabled}
           {latestPlanExplanation}
-          {liveStreamText}
           {metrics}
           onSend={onSend}
           onSettings={onSettings}
@@ -60,7 +58,6 @@
         {approvals}
         {disabled}
         {latestPlanExplanation}
-        {liveStreamText}
         {metrics}
         onSend={onSend}
         onSettings={onSettings}
@@ -86,7 +83,6 @@
           {approvals}
           {disabled}
           {latestPlanExplanation}
-          {liveStreamText}
           {metrics}
           onSend={onSend}
           onSettings={onSettings}

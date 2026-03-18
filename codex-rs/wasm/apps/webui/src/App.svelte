@@ -14,13 +14,9 @@
   import { setupAppLifecycle } from "./app/lifecycle";
   import { createWorkbenchModel } from "./app/workbench-model";
   import {
-    activateProfile,
     clearAuth,
-    createProfile,
-    deleteActiveProfile,
     refreshAccountAndModels,
     resetThread,
-    saveProfile,
     saveProviderConfig,
     sendTurn,
     stopTurn,
@@ -71,7 +67,6 @@
   toolActivities={workbenchModel.toolActivities}
   onComposerSend={() => void sendTurn()}
   onComposerStop={() => void stopTurn()}
-  onOpenProfiles={() => inspectorStore.openProfiles()}
   onOpenSettings={openSettings}
   onResetThread={() => void resetThread()}
   onSelectInspector={(event) => toggleInspectorTab(event.detail.id, workbenchModel.renderPlan)}
@@ -92,12 +87,7 @@
 <RuntimeModalsContainer
   draft={providerDraft}
   disabled={runtimeUiState.running}
-  profiles={uiSystem.profiles}
   onSaveConfig={(event) => void saveProviderConfig(event.detail)}
   onRefreshAccountAndModels={(event) => void refreshAccountAndModels(event.detail)}
   onClearAuth={() => void clearAuth()}
-  onCreateProfile={() => void createProfile()}
-  onSaveProfile={(event) => void saveProfile(event.detail)}
-  onActivateProfile={(event) => void activateProfile(event.detail.id)}
-  onDeleteProfile={() => void deleteActiveProfile()}
 />

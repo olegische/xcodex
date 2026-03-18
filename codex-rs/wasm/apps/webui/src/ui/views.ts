@@ -12,7 +12,6 @@ export const DEFAULT_UI_VIEWS: UiViewsDocument = {
     {
       id: "mission",
       name: "Chat",
-      dashboardId: "mission",
     },
   ],
 };
@@ -61,11 +60,12 @@ function buildViewsGuide(): string {
   return [
     "# Runtime UI Views",
     "",
-    `Edit \`${UI_VIEWS_PATH}\` to pick the active task-mode and map views to dashboards.`,
+    `Edit \`${UI_VIEWS_PATH}\` to pick the active task-mode.`,
     "",
     "Fields:",
     "- `activeViewId`",
-    "- `views[].dashboardId`",
+    "- `views[].id`",
+    "- `views[].name`",
     "",
   ].join("\n");
 }

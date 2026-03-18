@@ -31,7 +31,7 @@ export type BootState = {
 const INITIAL_STEPS: BootStep[] = [
   { id: "mount", label: "Mount shell", status: "pending", detail: "Waiting to mount Svelte app" },
   { id: "theme", label: "Apply base theme", status: "pending", detail: "Waiting to seed visual baseline" },
-  { id: "ui", label: "Load UI system", status: "pending", detail: "Waiting to load views and dashboards" },
+  { id: "ui", label: "Load UI system", status: "pending", detail: "Waiting to load views and layout" },
   { id: "runtime", label: "Bootstrap runtime", status: "pending", detail: "Waiting to load WASM runtime" },
   { id: "subscriptions", label: "Wire subscriptions", status: "pending", detail: "Waiting to connect stores and activity feeds" },
   { id: "workspace_browser", label: "Load workspace browser", status: "pending", detail: "Waiting to read workspace files" },

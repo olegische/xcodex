@@ -348,7 +348,14 @@ export async function runProbe(input: JsonValue): Promise<JsonValue> {
     throw new Error("browser__run_probe requires a non-empty script");
   }
 
-  const helpers = {
+  type ProbeHelpers = {
+    query(selector: string): Element | null;
+    queryAll(selector: string): Element[];
+    text(selector: string): string[];
+    location(): string;
+  };
+
+  const helpers: ProbeHelpers = {
     query: (selector: string) => document.querySelector(selector),
     queryAll: (selector: string) => [...document.querySelectorAll(selector)],
     text: (selector: string) =>
@@ -360,7 +367,7 @@ export async function runProbe(input: JsonValue): Promise<JsonValue> {
     "args",
     "helpers",
     `"use strict"; return (async () => { ${script} })();`,
-  ) as (args: JsonValue, helpers: typeof helpers) => Promise<unknown>;
+  ) as (args: JsonValue, helpers: ProbeHelpers) => Promise<unknown>;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     window.setTimeout(() => reject(new Error(`browser__run_probe timed out after ${timeoutMs}ms`)), timeoutMs);
@@ -501,7 +508,7 @@ export function inspectGlobals(input: JsonValue): JsonValue {
     .filter((name) => pattern.test(name))
     .slice(0, limit)
     .map((name) => {
-      const value = (window as Window & Record<string, unknown>)[name];
+      const value = (window as unknown as Record<string, unknown>)[name];
       return {
         name,
         type: value === null ? "null" : typeof value,

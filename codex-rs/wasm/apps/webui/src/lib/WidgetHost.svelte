@@ -7,7 +7,6 @@
   export let widget: RenderedWidget;
   export let widgetsDocument: UiWidgetsDocument;
   export let transcript: TranscriptEntry[] = [];
-  export let liveStreamText = "";
   export let status = "";
   export let running = false;
   export let disabled = false;
@@ -29,7 +28,6 @@
     widget,
     widgetsDocument,
     transcript,
-    liveStreamText,
     status,
     running,
     disabled,

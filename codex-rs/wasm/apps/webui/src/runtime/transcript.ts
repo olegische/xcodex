@@ -1,10 +1,4 @@
-import type { JsonValue, RuntimeDispatch, SessionSnapshot, TranscriptEntry } from "./types";
-
-export function assertRuntimeDispatch(dispatch: RuntimeDispatch): void {
-  if (dispatch === null || typeof dispatch !== "object" || !Array.isArray(dispatch.events)) {
-    throw new Error("runtime.runTurn() returned an invalid dispatch payload");
-  }
-}
+import type { JsonValue, RuntimeEvent, SessionSnapshot, TranscriptEntry } from "./types";
 
 export function snapshotToTranscript(snapshot: SessionSnapshot): TranscriptEntry[] {
   const transcript: TranscriptEntry[] = [];
@@ -168,8 +162,8 @@ export function assistantTextFromResponseItem(item: Record<string, unknown>): st
   return text.trim().length === 0 ? null : text;
 }
 
-export function buildOutputFromDispatch(dispatch: RuntimeDispatch): string {
-  return dispatch.events
+export function buildOutputFromEvents(events: RuntimeEvent[]): string {
+  return events
     .filter((event) => event !== null && typeof event === "object" && event.method === "item/agentMessage/delta")
     .map((event) => {
       const params = event.params as { delta?: string };

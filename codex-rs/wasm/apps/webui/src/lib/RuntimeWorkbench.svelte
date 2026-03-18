@@ -49,7 +49,6 @@
   export let onToggleApprovals: () => void;
   export let onSelectWorkspace: () => void;
   export let onOpenSettings: () => void;
-  export let onOpenProfiles: () => void;
   export let onComposerSend: () => void;
   export let onComposerStop: () => void;
 
@@ -61,7 +60,6 @@
     metrics: () => onSelectMetrics(),
     approvals: () => onToggleApprovals(),
     workspace: () => onSelectWorkspace(),
-    profiles: () => onOpenProfiles(),
     settings: () => onOpenSettings(),
   } as const;
 
@@ -215,7 +213,6 @@
           <div class="chat-screen-body">
             <ChatFoundation
               disabled={composerDisabled}
-              liveStreamText={runtimeUiState.liveStreamText}
               onSend={onComposerSend}
               onSettings={onOpenSettings}
               onStop={onComposerStop}
@@ -234,7 +231,6 @@
               {approvals}
               disabled={composerDisabled}
               {latestPlanExplanation}
-              liveStreamText={runtimeUiState.liveStreamText}
               {metrics}
               onSend={onComposerSend}
               onSettings={onOpenSettings}

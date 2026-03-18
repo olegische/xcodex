@@ -1,4 +1,18 @@
 import type { DynamicToolSpec } from "../../../../app-server-protocol/schema/typescript/v2/DynamicToolSpec";
+import type { ThreadListParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadListParams";
+import type { ThreadListResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadListResponse";
+import type { ThreadReadParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadReadParams";
+import type { ThreadReadResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadReadResponse";
+import type { ThreadResumeParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadResumeParams";
+import type { ThreadResumeResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadResumeResponse";
+import type { ThreadRollbackParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadRollbackParams";
+import type { ThreadRollbackResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadRollbackResponse";
+import type { ThreadStartParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadStartParams";
+import type { ThreadStartResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadStartResponse";
+import type { TurnInterruptParams } from "../../../../app-server-protocol/schema/typescript/v2/TurnInterruptParams";
+import type { TurnInterruptResponse } from "../../../../app-server-protocol/schema/typescript/v2/TurnInterruptResponse";
+import type { TurnStartParams } from "../../../../app-server-protocol/schema/typescript/v2/TurnStartParams";
+import type { TurnStartResponse } from "../../../../app-server-protocol/schema/typescript/v2/TurnStartResponse";
 import type { JsonValue, RuntimeModule } from "@browser-codex/wasm-runtime-core/types";
 import type { ServerNotification } from "../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ServerRequest } from "../../../../app-server-protocol/schema/typescript/ServerRequest";
@@ -50,13 +64,22 @@ export type BrowserRuntimeRequestUserInputResponse = {
   }>;
 };
 
+export type BrowserCodexProtocolClient = {
+  threadStart(params: ThreadStartParams): Promise<ThreadStartResponse>;
+  threadResume(params: ThreadResumeParams): Promise<ThreadResumeResponse>;
+  threadRead(params: ThreadReadParams): Promise<ThreadReadResponse>;
+  threadList(params: ThreadListParams): Promise<ThreadListResponse>;
+  threadRollback(params: ThreadRollbackParams): Promise<ThreadRollbackResponse>;
+  turnStart(params: TurnStartParams): Promise<TurnStartResponse>;
+  turnInterrupt(params: TurnInterruptParams): Promise<TurnInterruptResponse>;
+  subscribeToNotifications(listener: (notification: ServerNotification) => void): () => void;
+};
+
 export type BrowserCodexRuntimeDeps<
   TAuthState,
   TConfig,
   TAccount,
   TModelPreset,
-  TDispatch,
-  TEvent,
   TSnapshot,
   TRefreshAuthResult,
 > = {
@@ -84,18 +107,11 @@ export type BrowserCodexRuntimeDeps<
   }): Promise<TRefreshAuthResult>;
   normalizeThread(thread: unknown): Record<string, unknown>;
   threadToSnapshot(thread: Record<string, unknown>): TSnapshot;
-  withRequestedThreadId(snapshot: TSnapshot, requestedThreadId: string): TSnapshot;
-  buildDispatch(snapshot: TSnapshot, events: TEvent[]): TDispatch;
-  mapNotificationToEvent(notification: ServerNotification): TEvent;
-  emitRuntimeEvents(events: TEvent[]): void;
-  turnIdFromRuntimeEvent(event: TEvent): string | null;
-  isTurnCompletedEvent(event: TEvent): boolean;
   formatError(error: unknown): string;
   requestUserInput?(request: {
     questions: BrowserRuntimeRequestUserInputQuestion[];
   }): Promise<BrowserRuntimeRequestUserInputResponse>;
   resolveUnhandledServerRequest?(request: ServerRequest): Promise<Record<string, unknown>>;
-  actualThreadIdFromSnapshot?(snapshot: TSnapshot): string | null;
   resolveDynamicToolTarget?(toolName: string): {
     toolNamespace: string;
     toolName: string;
@@ -109,8 +125,6 @@ export type CreateBrowserCodexRuntimeParams<
   TConfig,
   TAccount,
   TModelPreset,
-  TDispatch,
-  TEvent,
   TSnapshot,
   TRefreshAuthResult,
 > = {
@@ -121,8 +135,6 @@ export type CreateBrowserCodexRuntimeParams<
     TConfig,
     TAccount,
     TModelPreset,
-    TDispatch,
-    TEvent,
     TSnapshot,
     TRefreshAuthResult
   >;

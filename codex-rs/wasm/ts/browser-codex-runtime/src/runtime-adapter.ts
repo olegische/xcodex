@@ -1,6 +1,19 @@
 import type { DynamicToolCallParams } from "../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallParams";
 import type { DynamicToolCallResponse } from "../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallResponse";
-import type { DynamicToolSpec } from "../../../../app-server-protocol/schema/typescript/v2/DynamicToolSpec";
+import type { ThreadListParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadListParams";
+import type { ThreadListResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadListResponse";
+import type { ThreadReadParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadReadParams";
+import type { ThreadReadResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadReadResponse";
+import type { ThreadResumeParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadResumeParams";
+import type { ThreadResumeResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadResumeResponse";
+import type { ThreadRollbackParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadRollbackParams";
+import type { ThreadRollbackResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadRollbackResponse";
+import type { ThreadStartParams } from "../../../../app-server-protocol/schema/typescript/v2/ThreadStartParams";
+import type { ThreadStartResponse } from "../../../../app-server-protocol/schema/typescript/v2/ThreadStartResponse";
+import type { TurnInterruptParams } from "../../../../app-server-protocol/schema/typescript/v2/TurnInterruptParams";
+import type { TurnInterruptResponse } from "../../../../app-server-protocol/schema/typescript/v2/TurnInterruptResponse";
+import type { TurnStartParams } from "../../../../app-server-protocol/schema/typescript/v2/TurnStartParams";
+import type { TurnStartResponse } from "../../../../app-server-protocol/schema/typescript/v2/TurnStartResponse";
 import type { ServerRequest } from "../../../../app-server-protocol/schema/typescript/ServerRequest";
 import {
   AppServerClient,
@@ -10,8 +23,8 @@ import {
 } from "@browser-codex/wasm-runtime-core";
 import type { JsonValue } from "@browser-codex/wasm-runtime-core/types";
 import type {
+  BrowserCodexProtocolClient,
   BrowserCodexRuntimeDeps,
-  BrowserDynamicToolCatalogEntry,
   CreateBrowserCodexRuntimeParams,
 } from "./types";
 
@@ -20,18 +33,14 @@ export class BrowserCodexRuntime<
   TConfig,
   TAccount,
   TModelPreset,
-  TDispatch,
-  TEvent,
   TSnapshot,
   TRefreshAuthResult,
-> extends BrowserAppServerRuntimeCore<TDispatch, TEvent, TSnapshot> {
+> extends BrowserAppServerRuntimeCore implements BrowserCodexProtocolClient {
   private readonly deps: BrowserCodexRuntimeDeps<
     TAuthState,
     TConfig,
     TAccount,
     TModelPreset,
-    TDispatch,
-    TEvent,
     TSnapshot,
     TRefreshAuthResult
   >;
@@ -43,8 +52,6 @@ export class BrowserCodexRuntime<
       TConfig,
       TAccount,
       TModelPreset,
-      TDispatch,
-      TEvent,
       TSnapshot,
       TRefreshAuthResult
     >,
@@ -102,108 +109,59 @@ export class BrowserCodexRuntime<
     return await this.deps.refreshAuth(context);
   }
 
-  async startThread(request: {
-    threadId: string;
-    metadata: JsonValue;
-  }): Promise<TDispatch> {
-    const config = await this.deps.persistence.loadConfig();
-    const dynamicTools = await listDynamicToolSpecs(this.deps.dynamicTools, this.deps.normalizeDynamicToolName);
-    const response = await this.request("thread/start", {
-      threadId: request.threadId,
-      model: readThreadStartModel(config),
-      modelProvider: readThreadStartModelProvider(config),
-      cwd: "/workspace",
-      approvalPolicy: "on-request",
-      ephemeral: false,
+  async threadStart(params: ThreadStartParams): Promise<ThreadStartResponse> {
+    const dynamicTools = await this.buildDynamicToolSpecs();
+    const response = await this.requestTyped<ThreadStartResponse>("thread/start", {
+      ...params,
       dynamicTools,
+    } as Record<string, unknown>);
+    await this.persistThreadSnapshot(response.thread);
+    return response;
+  }
+
+  async threadResume(params: ThreadResumeParams): Promise<ThreadResumeResponse> {
+    const response = await this.requestTyped<ThreadResumeResponse>("thread/resume", {
+      ...params,
+      threadId: this.resolveThreadId(params.threadId),
     });
-    const thread = this.deps.normalizeThread((response as { thread?: unknown }).thread);
-    const actualThreadId =
-      typeof thread.id === "string" && thread.id.length > 0 ? thread.id : request.threadId;
-    this.rememberThreadAlias(request.threadId, actualThreadId);
-    const snapshot = this.deps.threadToSnapshot(thread);
-    await this.deps.persistence.saveSession(snapshot);
-    return this.deps.buildDispatch(this.deps.withRequestedThreadId(snapshot, request.threadId), [
-      {
-        method: "thread/started",
-        params: {
-          thread,
-        },
-      } as TEvent,
-    ]);
+    await this.persistThreadSnapshot(response.thread, params.threadId);
+    return response;
   }
 
-  async resumeThread(request: { threadId: string }): Promise<TDispatch> {
-    const response = await this.request("thread/resume", {
-      threadId: this.resolveThreadId(request.threadId),
+  async threadRead(params: ThreadReadParams): Promise<ThreadReadResponse> {
+    const response = await this.requestTyped<ThreadReadResponse>("thread/read", {
+      ...params,
+      threadId: this.resolveThreadId(params.threadId),
     });
-    const thread = this.deps.normalizeThread((response as { thread?: unknown }).thread);
-    const actualThreadId =
-      typeof thread.id === "string" && thread.id.length > 0 ? thread.id : this.resolveThreadId(request.threadId);
-    this.rememberThreadAlias(request.threadId, actualThreadId);
-    const snapshot = this.deps.threadToSnapshot(thread);
-    await this.deps.persistence.saveSession(snapshot);
-    return this.deps.buildDispatch(this.deps.withRequestedThreadId(snapshot, request.threadId), []);
+    await this.persistThreadSnapshot(response.thread, params.threadId);
+    return response;
   }
 
-  async runTurn(request: {
-    threadId: string;
-    turnId: string;
-    input: JsonValue;
-    modelPayload: JsonValue;
-  }): Promise<TDispatch> {
-    const modelPayload = asRecord(request.modelPayload);
-    const dispatchPromise = this.createPendingTurnDispatch(request.threadId);
-    const turnStartParams = {
-      threadId: this.resolveThreadId(request.threadId),
-      input: mapTurnInputTextItems(request.input),
-      model: typeof modelPayload.model === "string" ? modelPayload.model : null,
-      effort: typeof modelPayload.reasoningEffort === "string" ? modelPayload.reasoningEffort : null,
-      personality: typeof modelPayload.personality === "string" ? modelPayload.personality : null,
-      approvalPolicy: "on-request",
-    };
-    const logScope = this.deps.logScope ?? "browser-runtime";
-    console.info(`[${logScope}] turn-input`, {
-      requestedThreadId: request.threadId,
-      resolvedThreadId: turnStartParams.threadId,
-      requestedTurnId: request.turnId,
-      model: turnStartParams.model,
-      effort: turnStartParams.effort,
-      personality: turnStartParams.personality,
-      inputCount: Array.isArray(request.input) ? request.input.length : 0,
-      codexInputCount: turnStartParams.input.length,
+  async threadList(params: ThreadListParams): Promise<ThreadListResponse> {
+    return await this.requestTyped<ThreadListResponse>("thread/list", params);
+  }
+
+  async threadRollback(params: ThreadRollbackParams): Promise<ThreadRollbackResponse> {
+    const response = await this.requestTyped<ThreadRollbackResponse>("thread/rollback", {
+      ...params,
+      threadId: this.resolveThreadId(params.threadId),
     });
+    await this.persistThreadSnapshot(response.thread, params.threadId);
+    return response;
+  }
 
-    const response = (await this.request("turn/start", turnStartParams)) as { turn?: { id?: string } };
-    const turnId = typeof response.turn?.id === "string" ? response.turn.id : request.turnId;
-    console.info(`[${logScope}] turn-started`, {
-      requestedThreadId: request.threadId,
-      resolvedThreadId: turnStartParams.threadId,
-      requestedTurnId: request.turnId,
-      actualTurnId: turnId,
+  async turnStart(params: TurnStartParams): Promise<TurnStartResponse> {
+    return await this.requestTyped<TurnStartResponse>("turn/start", {
+      ...params,
+      threadId: this.resolveThreadId(params.threadId),
     });
-    this.activatePendingThreadTurn(request.threadId, turnId);
-    return dispatchPromise;
   }
 
-  async cancelModelTurn(requestId: string): Promise<void> {
-    await this.interruptPendingTurn(requestId);
-  }
-
-  protected eventFromNotification(notification: Parameters<typeof this.deps.mapNotificationToEvent>[0]): TEvent {
-    return this.deps.mapNotificationToEvent(notification);
-  }
-
-  protected handleRuntimeEvent(event: TEvent): void {
-    this.deps.emitRuntimeEvents([event]);
-  }
-
-  protected turnIdFromRuntimeEvent(event: TEvent): string | null {
-    return this.deps.turnIdFromRuntimeEvent(event);
-  }
-
-  protected isTurnCompletedEvent(event: TEvent): boolean {
-    return this.deps.isTurnCompletedEvent(event);
+  async turnInterrupt(params: TurnInterruptParams): Promise<TurnInterruptResponse> {
+    return await this.requestTyped<TurnInterruptResponse>("turn/interrupt", {
+      ...params,
+      threadId: this.resolveThreadId(params.threadId),
+    });
   }
 
   protected async handleServerRequest(request: ServerRequest): Promise<void> {
@@ -211,24 +169,34 @@ export class BrowserCodexRuntime<
     await this.client.resolveServerRequest(request.id, result as JsonValue);
   }
 
-  protected async readThreadSnapshot(threadId: string): Promise<TSnapshot> {
-    const response = (await this.request("thread/read", {
-      threadId,
-      includeTurns: true,
-    })) as { thread?: unknown };
-    const snapshot = this.deps.threadToSnapshot(
-      this.deps.normalizeThread(response.thread),
-    );
+  private async persistThreadSnapshot(
+    threadValue: unknown,
+    requestedThreadId?: string,
+  ): Promise<TSnapshot> {
+    const thread = this.deps.normalizeThread(threadValue);
+    const actualThreadId =
+      typeof thread.id === "string" && thread.id.length > 0
+        ? thread.id
+        : requestedThreadId ?? "thread";
+    if (requestedThreadId !== undefined) {
+      this.rememberThreadAlias(requestedThreadId, actualThreadId);
+    }
+    const snapshot = this.deps.threadToSnapshot(thread);
     await this.deps.persistence.saveSession(snapshot);
     return snapshot;
   }
 
-  protected buildResolvedDispatch(snapshot: TSnapshot, events: TEvent[]): TDispatch {
-    return this.deps.buildDispatch(snapshot, events);
-  }
-
-  protected actualThreadIdFromSnapshot(snapshot: TSnapshot): string | null {
-    return this.deps.actualThreadIdFromSnapshot?.(snapshot) ?? null;
+  private async buildDynamicToolSpecs(): Promise<Array<{
+    name: string;
+    description: string;
+    inputSchema: JsonValue;
+  }>> {
+    const { tools } = await this.deps.dynamicTools.list();
+    return tools.map((tool) => ({
+      name: this.deps.normalizeDynamicToolName?.(tool) ?? qualifyDynamicToolName(tool),
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    }));
   }
 
   private async resolveServerRequest(request: ServerRequest): Promise<Record<string, unknown>> {
@@ -330,8 +298,6 @@ export async function createBrowserCodexRuntime<
   TConfig,
   TAccount,
   TModelPreset,
-  TDispatch,
-  TEvent,
   TSnapshot,
   TRefreshAuthResult,
 >(
@@ -340,8 +306,6 @@ export async function createBrowserCodexRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TDispatch,
-    TEvent,
     TSnapshot,
     TRefreshAuthResult
   >,
@@ -351,8 +315,6 @@ export async function createBrowserCodexRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TDispatch,
-    TEvent,
     TSnapshot,
     TRefreshAuthResult
   >
@@ -361,29 +323,6 @@ export async function createBrowserCodexRuntime<
     experimentalApi: params.experimentalApi ?? true,
   });
   return new BrowserCodexRuntime(client, params.deps);
-}
-
-async function listDynamicToolSpecs(
-  executor: {
-    list(): Promise<{
-      tools: BrowserDynamicToolCatalogEntry[];
-    }>;
-  },
-  normalizeDynamicToolName: ((tool: BrowserDynamicToolCatalogEntry) => string) | undefined,
-): Promise<DynamicToolSpec[]> {
-  const listed = await executor.list();
-  return listed.tools.map((tool) => ({
-    name: normalizeDynamicToolName?.(tool) ?? defaultNormalizeDynamicToolName(tool),
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-  }));
-}
-
-function defaultNormalizeDynamicToolName(tool: BrowserDynamicToolCatalogEntry): string {
-  if (tool.toolNamespace === "browser" && !tool.toolName.startsWith("browser__")) {
-    return `browser__${tool.toolName}`;
-  }
-  return tool.toolName;
 }
 
 function defaultResolveDynamicToolTarget(toolName: string): {
@@ -406,49 +345,19 @@ function defaultResolveDynamicToolTarget(toolName: string): {
   };
 }
 
+function qualifyDynamicToolName(tool: {
+  toolNamespace: string;
+  toolName: string;
+}): string {
+  if (tool.toolNamespace === "browser") {
+    return tool.toolName.startsWith("browser__") ? tool.toolName : `browser__${tool.toolName}`;
+  }
+  const prefix = `${tool.toolNamespace}__`;
+  return tool.toolName.startsWith(prefix) ? tool.toolName : `${prefix}${tool.toolName}`;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function mapTurnInputTextItems(input: JsonValue): Array<{
-  type: "text";
-  text: string;
-  textElements: [];
-}> {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-  return input.flatMap((item) => {
-    const record = asRecord(item);
-    if (record.type !== "message" || record.role !== "user" || !Array.isArray(record.content)) {
-      return [];
-    }
-    return record.content.flatMap((part) => {
-      const content = asRecord(part);
-      if (content.type !== "input_text" || typeof content.text !== "string") {
-        return [];
-      }
-      return [
-        {
-          type: "text" as const,
-          text: content.text,
-          textElements: [],
-        },
-      ];
-    });
-  });
-}
-
-function readThreadStartModel(config: unknown): string | null {
-  const record = asRecord(config);
-  return typeof record.model === "string" && record.model.trim().length > 0 ? record.model.trim() : null;
-}
-
-function readThreadStartModelProvider(config: unknown): string | null {
-  const record = asRecord(config);
-  return typeof record.modelProvider === "string" && record.modelProvider.length > 0
-    ? record.modelProvider
-    : null;
 }

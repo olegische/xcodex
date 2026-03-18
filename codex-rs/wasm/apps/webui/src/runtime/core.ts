@@ -1,29 +1,38 @@
-import { DEFAULT_CODEX_CONFIG, DEFAULT_DEMO_INSTRUCTIONS, THREAD_ID, TURN_PREFIX, XROUTER_PROVIDER_OPTIONS } from "./constants";
+import { DEFAULT_CODEX_CONFIG, DEFAULT_DEMO_INSTRUCTIONS, XROUTER_PROVIDER_OPTIONS } from "./constants";
+import { threadToSessionSnapshot } from "@browser-codex/wasm-runtime-core";
 import { createBrowserCodexRuntime } from "./browser-codex-runtime";
 import { loadRuntimeModule } from "./assets";
 import { createBrowserRuntimeHost } from "./host";
 import { webUiModelTransportAdapter } from "./transport-adapter";
-import { buildOutputFromDispatch, assertRuntimeDispatch, snapshotToTranscript } from "./transcript";
+import { buildOutputFromEvents, snapshotToTranscript } from "./transcript";
 import {
   clearStoredAuthState,
   clearStoredCodexConfig,
+  clearStoredThreadBinding,
   deleteStoredSession,
   loadStoredAuthState,
   loadStoredCodexConfig,
   loadStoredDemoInstructions,
+  loadStoredSession,
+  loadStoredThreadBinding,
   saveStoredAuthState,
   saveStoredCodexConfig,
+  saveStoredThreadBinding,
+  syncStoredThreadRuntimeRevision,
 } from "./storage";
 import { activeProviderApiKey, formatError, getActiveProvider, materializeCodexConfig, normalizeCodexConfig, normalizeDemoInstructions } from "./utils";
 import type {
+  Account,
   AuthState,
   BrowserRuntime,
   CodexCompatibleConfig,
   DemoState,
+  JsonValue,
   ModelPreset,
   ProviderDraft,
-  RuntimeDispatch,
+  RuntimeEvent,
   SendTurnResult,
+  SessionSnapshot,
   WebUiBootstrap,
   XrouterProvider,
 } from "./types";
@@ -98,48 +107,54 @@ export async function runChatTurn(
   message: string,
   turnCounter: number,
 ): Promise<{
-  dispatch: RuntimeDispatch;
   transcript: DemoState["transcript"];
   output: string;
   nextTurnCounter: number;
+  turnId: string;
+  events: RuntimeEvent[];
 }> {
   if (codexConfig.model.trim().length === 0) {
     throw new Error("Select a model before sending a message.");
   }
-  await ensureThread(runtime);
-  const turnId = `${TURN_PREFIX}-${turnCounter}`;
-  const dispatch = await runtime.runTurn({
-    threadId: THREAD_ID,
-    turnId,
-    input: [
-      {
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text: message }],
-      },
-    ],
-    modelPayload: {
-      mode: "chat",
+  const threadId = await ensureThread(runtime);
+  const turnEvents = await collectTurnNotifications(runtime, async () => {
+    const response = await runtime.turnStart({
+      threadId,
+      input: [
+        {
+          type: "text",
+          text: message,
+          text_elements: [],
+        },
+      ],
       model: codexConfig.model.trim(),
-      authState,
-      account,
-      baseInstructions: demoInstructions.baseInstructions,
-      reasoningEffort: codexConfig.modelReasoningEffort,
-      personality: codexConfig.personality,
-    },
+      approvalPolicy: "on-request",
+      effort: normalizeReasoningEffort(codexConfig.modelReasoningEffort),
+      personality: normalizePersonality(codexConfig.personality),
+    });
+    return response.turn.id;
   });
-
-  assertRuntimeDispatch(dispatch);
+  const thread = await runtime.threadRead({
+    threadId,
+    includeTurns: true,
+  });
+  await saveStoredThreadBinding(thread.thread.id);
+  const snapshot = threadToSessionSnapshotCompatible(thread.thread);
   return {
-    dispatch,
-    transcript: snapshotToTranscript(dispatch.value),
-    output: buildOutputFromDispatch(dispatch),
+    transcript: snapshotToTranscript(snapshot),
+    output: buildOutputFromEvents(turnEvents.events),
     nextTurnCounter: turnCounter + 1,
+    turnId: turnEvents.turnId,
+    events: turnEvents.events,
   };
 }
 
 export async function resetThread(): Promise<void> {
-  await deleteStoredSession(THREAD_ID);
+  const threadId = await loadStoredThreadBinding();
+  if (threadId !== null) {
+    await deleteStoredSession(threadId);
+  }
+  await clearStoredThreadBinding();
 }
 
 export async function bootstrapWebUi(): Promise<WebUiBootstrap> {
@@ -343,32 +358,57 @@ function selectModelId(models: ModelPreset[], currentModel: string): string {
   return models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? "";
 }
 
-async function ensureThread(runtime: BrowserRuntime): Promise<void> {
-  const existing = await runtime.resumeThread({ threadId: THREAD_ID }).catch(() => null);
-  if (existing !== null) {
-    return;
+async function ensureThread(runtime: BrowserRuntime): Promise<string> {
+  const existingThreadId = await loadStoredThreadBinding();
+  if (existingThreadId !== null) {
+    const existing = await runtime.threadResume({
+      threadId: existingThreadId,
+      persistExtendedHistory: true,
+    }).catch(() => null);
+    if (existing !== null) {
+      await saveStoredThreadBinding(existing.thread.id);
+      return existing.thread.id;
+    }
+    await Promise.all([
+      deleteStoredSession(existingThreadId).catch(() => undefined),
+      clearStoredThreadBinding(),
+    ]);
   }
-  await runtime.startThread({
-    threadId: THREAD_ID,
-    metadata: {
-      workspaceRoot: "/browser-terminal",
-      terminal: true,
-    },
+  const response = await runtime.threadStart({
+    cwd: "/workspace",
+    approvalPolicy: "on-request",
+    ephemeral: false,
+    experimentalRawEvents: false,
+    persistExtendedHistory: true,
   });
+  await saveStoredThreadBinding(response.thread.id);
+  return response.thread.id;
 }
 
 async function hydrateState(): Promise<Partial<DemoState>> {
-  const [authState, codexConfig, demoInstructions] = await Promise.all([
+  const [authState, codexConfig, demoInstructions, revisionChanged, threadId] = await Promise.all([
     loadStoredAuthState(),
     loadStoredCodexConfig(),
     loadStoredDemoInstructions(),
-    deleteStoredSession(THREAD_ID),
+    syncStoredThreadRuntimeRevision(),
+    loadStoredThreadBinding(),
   ]);
+  if (revisionChanged && threadId !== null) {
+    await Promise.all([
+      deleteStoredSession(threadId).catch(() => undefined),
+      clearStoredThreadBinding(),
+    ]);
+  }
+  const activeThreadId = revisionChanged ? null : threadId;
+  const transcript =
+    activeThreadId === null
+      ? []
+      : snapshotToTranscript((await loadStoredSession(activeThreadId)) ?? emptySessionSnapshot(activeThreadId));
   return {
     authState,
     codexConfig,
     demoInstructions,
-    transcript: [],
+    transcript,
     runtime: null,
   };
 }
@@ -413,3 +453,101 @@ async function syncBootstrapState(state: DemoState): Promise<DemoState> {
 }
 
 export { formatError };
+
+async function collectTurnNotifications(
+  runtime: BrowserRuntime,
+  start: () => Promise<string>,
+): Promise<{ turnId: string; events: RuntimeEvent[] }> {
+  return await new Promise(async (resolve, reject) => {
+    let activeTurnId: string | null = null;
+    const events: RuntimeEvent[] = [];
+    const bufferedEvents: RuntimeEvent[] = [];
+    const unsubscribe = runtime.subscribeToNotifications((notification) => {
+      const event = {
+        method: notification.method,
+        params: ("params" in notification ? notification.params : null) as JsonValue,
+      } satisfies RuntimeEvent;
+      const turnId = readTurnId(event);
+      if (turnId !== null) {
+        bufferedEvents.push(event);
+      }
+      if (activeTurnId !== null && turnId === activeTurnId) {
+        events.push(event);
+      }
+      if (activeTurnId !== null && event.method === "turn/completed" && turnId === activeTurnId) {
+        unsubscribe();
+        resolve({ turnId: activeTurnId, events });
+      }
+    });
+
+    try {
+      activeTurnId = await start();
+      events.length = 0;
+      events.push(...bufferedEvents.filter((event) => readTurnId(event) === activeTurnId));
+    } catch (error) {
+      unsubscribe();
+      reject(error);
+    }
+  });
+}
+
+function readTurnId(event: RuntimeEvent): string | null {
+  const params =
+    event.params !== null && typeof event.params === "object" && !Array.isArray(event.params)
+      ? (event.params as Record<string, unknown>)
+      : null;
+  if (params === null) {
+    return null;
+  }
+  if (typeof params.turnId === "string") {
+    return params.turnId;
+  }
+  const turn =
+    params.turn !== null && typeof params.turn === "object" && !Array.isArray(params.turn)
+      ? (params.turn as Record<string, unknown>)
+      : null;
+  return typeof turn?.id === "string" ? turn.id : null;
+}
+
+function threadToSessionSnapshotCompatible(thread: unknown): SessionSnapshot {
+  return {
+    ...(threadToSessionSnapshot(thread as Record<string, unknown>) as {
+      threadId: string;
+      metadata: JsonValue;
+      items: JsonValue[];
+    }),
+  };
+}
+
+function emptySessionSnapshot(threadId: string): SessionSnapshot {
+  return {
+    threadId,
+    metadata: {},
+    items: [],
+  };
+}
+
+function normalizeReasoningEffort(value: string | null): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | null {
+  switch (value) {
+    case "none":
+    case "minimal":
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+      return value;
+    default:
+      return null;
+  }
+}
+
+function normalizePersonality(value: string | null): "none" | "friendly" | "pragmatic" | null {
+  switch (value) {
+    case "none":
+    case "friendly":
+    case "pragmatic":
+      return value;
+    default:
+      return null;
+  }
+}

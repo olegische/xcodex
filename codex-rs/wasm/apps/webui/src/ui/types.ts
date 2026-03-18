@@ -41,7 +41,6 @@ export type ShellActionId =
   | "events"
   | "approvals"
   | "workspace"
-  | "profiles"
   | "settings";
 
 export const UI_TOKEN_KEYS = [
@@ -83,19 +82,6 @@ export type UiTokensDocument = {
   themes: Record<string, UiTokenMap>;
 };
 
-export type UiProfile = {
-  id: string;
-  name: string;
-  theme: UiTheme;
-  sidebarSide: SidebarSide;
-  tokens?: UiTokenMap;
-};
-
-export type UiProfilesDocument = {
-  activeProfileId: string;
-  profiles: UiProfile[];
-};
-
 export type UiWidgetSpec = {
   id: UiWidgetId;
   title?: string;
@@ -112,7 +98,6 @@ export type UiLayoutDocument = {
 export type UiViewDefinition = {
   id: string;
   name: string;
-  dashboardId: string;
 };
 
 export type UiViewsDocument = {
@@ -164,27 +149,12 @@ export type UiWidgetsDocument = {
   };
 };
 
-export type UiDashboardDefinition = {
-  id: string;
-  name: string;
-  description?: string;
-  layout?: UiLayoutDocument;
-  widgets?: UiWidgetsDocument;
-};
-
-export type UiDashboardsDocument = {
-  dashboards: UiDashboardDefinition[];
-};
-
 export type UiSystemDocument = {
   tokens: UiTokensDocument;
-  profiles: UiProfilesDocument;
   views: UiViewsDocument;
-  dashboards: UiDashboardsDocument;
   layout: UiLayoutDocument;
   widgets: UiWidgetsDocument;
   activeView: UiViewDefinition | null;
-  activeDashboard: UiDashboardDefinition | null;
 };
 
 export type MetricItem = {
@@ -206,7 +176,6 @@ export type ShellActionSpec = {
 };
 
 export type UiRenderPlan = {
-  profile: UiProfile;
   sidebarSide: SidebarSide;
   headerVisible: boolean;
   chatPlacement: ChatFoundationPlacement;

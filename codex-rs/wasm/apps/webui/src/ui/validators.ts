@@ -1,15 +1,11 @@
 import type {
   ChatFoundationPlacement,
   ComposerPosition,
-  UiDashboardDefinition,
-  UiDashboardsDocument,
   InspectorMode,
   InspectorTab,
   SidebarSide,
   UiAreaName,
   UiLayoutDocument,
-  UiProfile,
-  UiProfilesDocument,
   ShellActionId,
   UiTheme,
   UiTokenMap,
@@ -49,7 +45,6 @@ const SHELL_ACTION_IDS: ShellActionId[] = [
   "events",
   "approvals",
   "workspace",
-  "profiles",
   "settings",
 ];
 
@@ -70,21 +65,6 @@ export function normalizeTokensDocument(value: unknown, fallback: UiTokensDocume
   };
 }
 
-export function normalizeProfilesDocument(value: unknown, fallback: UiProfilesDocument): UiProfilesDocument {
-  const payload = value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const rawProfiles = Array.isArray(payload.profiles) ? payload.profiles : [];
-  const profiles = rawProfiles.map(normalizeProfile).filter((profile): profile is UiProfile => profile !== null);
-  const nextProfiles = profiles.length > 0 ? profiles : fallback.profiles;
-  const activeProfileId =
-    typeof payload.activeProfileId === "string" && nextProfiles.some((profile) => profile.id === payload.activeProfileId)
-      ? payload.activeProfileId
-      : nextProfiles[0]?.id ?? fallback.activeProfileId;
-  return {
-    activeProfileId,
-    profiles: nextProfiles,
-  };
-}
-
 export function normalizeViewsDocument(value: unknown, fallback: UiViewsDocument): UiViewsDocument {
   const payload = value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const rawViews = Array.isArray(payload.views) ? payload.views : [];
@@ -97,17 +77,6 @@ export function normalizeViewsDocument(value: unknown, fallback: UiViewsDocument
   return {
     activeViewId,
     views: nextViews,
-  };
-}
-
-export function normalizeDashboardsDocument(value: unknown, fallback: UiDashboardsDocument): UiDashboardsDocument {
-  const payload = value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  const rawDashboards = Array.isArray(payload.dashboards) ? payload.dashboards : [];
-  const dashboards = rawDashboards
-    .map((dashboard) => normalizeDashboard(dashboard, fallback))
-    .filter((dashboard): dashboard is UiDashboardDefinition => dashboard !== null);
-  return {
-    dashboards: dashboards.length > 0 ? dashboards : fallback.dashboards,
   };
 }
 
@@ -200,62 +169,17 @@ export function normalizeWidgetsDocument(value: unknown, fallback: UiWidgetsDocu
   };
 }
 
-function normalizeProfile(value: unknown): UiProfile | null {
-  if (value === null || typeof value !== "object") {
-    return null;
-  }
-  const payload = value as Record<string, unknown>;
-  if (typeof payload.id !== "string" || typeof payload.name !== "string") {
-    return null;
-  }
-  return {
-    id: payload.id,
-    name: payload.name,
-    theme: normalizeTheme(payload.theme),
-    sidebarSide: normalizeSidebarSide(payload.sidebarSide),
-    tokens: normalizeTokenMap(payload.tokens, {}),
-  };
-}
-
 function normalizeView(value: unknown): UiViewDefinition | null {
   if (value === null || typeof value !== "object") {
     return null;
   }
   const payload = value as Record<string, unknown>;
-  if (typeof payload.id !== "string" || typeof payload.name !== "string" || typeof payload.dashboardId !== "string") {
-    return null;
-  }
-  return {
-    id: payload.id,
-    name: payload.name,
-    dashboardId: payload.dashboardId,
-  };
-}
-
-function normalizeDashboard(value: unknown, fallback: UiDashboardsDocument): UiDashboardDefinition | null {
-  if (value === null || typeof value !== "object") {
-    return null;
-  }
-  const payload = value as Record<string, unknown>;
   if (typeof payload.id !== "string" || typeof payload.name !== "string") {
     return null;
   }
-  const fallbackDashboard = fallback.dashboards.find((dashboard) => dashboard.id === payload.id) ?? fallback.dashboards[0];
-  const fallbackLayout = fallbackDashboard?.layout ?? fallback.dashboards.find((dashboard) => dashboard.layout !== undefined)?.layout;
-  const fallbackWidgets =
-    fallbackDashboard?.widgets ?? fallback.dashboards.find((dashboard) => dashboard.widgets !== undefined)?.widgets;
   return {
     id: payload.id,
     name: payload.name,
-    description: typeof payload.description === "string" ? payload.description : undefined,
-    layout:
-      payload.layout !== null && typeof payload.layout === "object" && fallbackLayout !== undefined
-        ? normalizeLayoutDocument(payload.layout, fallbackLayout)
-        : fallbackLayout,
-    widgets:
-      payload.widgets !== null && typeof payload.widgets === "object" && fallbackWidgets !== undefined
-        ? normalizeWidgetsDocument(payload.widgets, fallbackWidgets)
-        : fallbackWidgets,
   };
 }
 

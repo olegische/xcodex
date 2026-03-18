@@ -4,7 +4,6 @@
   import type { TranscriptEntry } from "../../runtime";
 
   export let transcript: TranscriptEntry[] = [];
-  export let liveStreamText = "";
   export let status = "";
   export let running = false;
   export let flat = false;
@@ -22,9 +21,7 @@
       return;
     }
 
-    const hasTranscriptContent =
-      transcript.length > 0 || liveStreamText.trim().length > 0;
-    if (!hasTranscriptContent) {
+    if (transcript.length === 0) {
       showScrollToBottom = false;
       return;
     }
@@ -92,7 +89,7 @@
 
 <section class:transcript-flat={flat} class="transcript-widget-shell widget-surface">
   <div bind:this={scrollContainer} class="transcript-scroll" on:scroll={updateScrollState}>
-    <Transcript {transcript} {liveStreamText} {status} {running} {onSettings} />
+    <Transcript {transcript} {status} {running} {onSettings} />
   </div>
 
   {#if showScrollToBottom}

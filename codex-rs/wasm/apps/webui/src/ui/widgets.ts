@@ -13,7 +13,7 @@ export const DEFAULT_UI_WIDGETS: UiWidgetsDocument = {
     showExplanation: true,
   },
   metrics: {
-    items: ["view", "dashboard", "profile", "theme", "model", "events", "approvals", "workspace"],
+    items: ["view", "theme", "model", "events", "approvals", "workspace"],
   },
   transcript: {
     variant: "bubble",

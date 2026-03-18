@@ -49,12 +49,6 @@ const SHELL_ACTION_REGISTRY: Record<ShellActionId, ShellActionSpec> = {
     shortLabel: "FS",
     ariaLabel: "Open workspace files",
   },
-  profiles: {
-    id: "profiles",
-    label: "Skins",
-    shortLabel: "UI",
-    ariaLabel: "Open profiles",
-  },
   settings: {
     id: "settings",
     label: "Settings",

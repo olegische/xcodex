@@ -6,8 +6,6 @@ export async function createCodexUiBrowserRuntime<
   TConfig,
   TAccount,
   TModelPreset,
-  TDispatch,
-  TEvent,
   TSnapshot,
   TRefreshAuthResult,
 >(
@@ -16,8 +14,6 @@ export async function createCodexUiBrowserRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TDispatch,
-    TEvent,
     TSnapshot,
     TRefreshAuthResult
   >,
@@ -27,8 +23,6 @@ export async function createCodexUiBrowserRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TDispatch,
-    TEvent,
     TSnapshot,
     TRefreshAuthResult
   >

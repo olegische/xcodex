@@ -32,6 +32,7 @@ export type BrowserRuntimeHost = {
   emitNotification?(notification: JsonValue): Promise<void>;
   resolveMcpOauthRedirectUri?(request: JsonValue): Promise<JsonValue>;
   waitForMcpOauthCallback?(request: JsonValue): Promise<JsonValue>;
+  loadMcpOauthSession?(request: JsonValue): Promise<JsonValue>;
 };
 
 export type WasmProtocolRuntime = {

@@ -72,7 +72,7 @@ export function createRemoteMcpOauthHostHandlers(): Pick<
   "resolveMcpOauthRedirectUri" | "waitForMcpOauthCallback" | "loadMcpOauthSession"
 > {
   return {
-    async resolveMcpOauthRedirectUri(request) {
+    async resolveMcpOauthRedirectUri(request: unknown) {
       const serverName =
         request !== null &&
         typeof request === "object" &&
@@ -82,7 +82,7 @@ export function createRemoteMcpOauthHostHandlers(): Pick<
           : "";
       return await resolveRemoteMcpOauthRedirectUri({ serverName });
     },
-    async waitForMcpOauthCallback(request) {
+    async waitForMcpOauthCallback(request: unknown) {
       const payload =
         request !== null && typeof request === "object" && !Array.isArray(request)
           ? (request as {
@@ -98,7 +98,7 @@ export function createRemoteMcpOauthHostHandlers(): Pick<
         timeoutSecs: typeof payload.timeoutSecs === "number" ? payload.timeoutSecs : null,
       });
     },
-    async loadMcpOauthSession(request) {
+    async loadMcpOauthSession(request: unknown) {
       const serverName =
         request !== null &&
         typeof request === "object" &&

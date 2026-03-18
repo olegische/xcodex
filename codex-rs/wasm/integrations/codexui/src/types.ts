@@ -55,8 +55,6 @@ export type CreateCodexUiBrowserRuntimeParams<
   TConfig,
   TAccount,
   TModelPreset,
-  TDispatch,
-  TEvent,
   TSnapshot,
   TRefreshAuthResult,
 > = {
@@ -67,8 +65,6 @@ export type CreateCodexUiBrowserRuntimeParams<
     TConfig,
     TAccount,
     TModelPreset,
-    TDispatch,
-    TEvent,
     TSnapshot,
     TRefreshAuthResult
   >;

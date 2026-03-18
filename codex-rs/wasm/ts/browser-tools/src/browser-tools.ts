@@ -668,6 +668,9 @@ function listInteractives(input: Record<string, JsonValue>): JsonValue {
 function clickElement(input: Record<string, JsonValue>): JsonValue {
   const element = requireElement(input, "browser__click");
   const selector = typeof input.selector === "string" ? input.selector.trim() : "";
+  if (!(element instanceof HTMLElement)) {
+    throw new Error("browser__click requires an HTMLElement target");
+  }
   element.click();
   refreshPageRuntimeSnapshot();
   recordPageEvent(

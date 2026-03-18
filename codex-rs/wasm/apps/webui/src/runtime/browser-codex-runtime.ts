@@ -2,7 +2,6 @@ import { collaborationStore } from "../stores/collaboration";
 import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
 import {
   threadToSessionSnapshot,
-  turnIdFromNotification,
 } from "@browser-codex/wasm-runtime-core";
 import { createBrowserCodexRuntime as createSharedBrowserCodexRuntime } from "../../../../ts/browser-codex-runtime/src";
 import {
@@ -10,7 +9,7 @@ import {
   createBrowserAwareToolExecutor,
 } from "@browser-codex/wasm-browser-tools";
 import { emitRuntimeActivity } from "./activity";
-import { emitRuntimeEvents as emitNotificationEvents } from "./events";
+import { emitRuntimeEvent } from "./events";
 import { installRuntimeActivityBridge } from "./notifications";
 import {
   loadStoredAuthState,
@@ -27,7 +26,6 @@ import type {
   BrowserRuntime,
   JsonValue,
   ModelPreset,
-  RuntimeDispatch,
   RuntimeEvent,
   RuntimeModule,
   SessionSnapshot,
@@ -53,7 +51,7 @@ export async function createBrowserCodexRuntime(
     },
   });
   installRuntimeActivityBridge();
-  return await createSharedBrowserCodexRuntime({
+  const runtime = await createSharedBrowserCodexRuntime({
     runtimeModule,
     host,
     deps: {
@@ -104,56 +102,21 @@ export async function createBrowserCodexRuntime(
         return normalizeHostValue(thread) as Record<string, unknown>;
       },
       threadToSnapshot(thread) {
-        return threadToSessionSnapshot(thread);
-      },
-      withRequestedThreadId(snapshot, requestedThreadId) {
-        return {
-          ...snapshot,
-          threadId: requestedThreadId,
-        };
-      },
-      buildDispatch(snapshot, events) {
-        console.info("[webui] app-server:turn-resolved", {
-          threadId: snapshot.threadId,
-          eventCount: events.length,
-          eventMethods: events.map((event) => event.method),
-        });
-        return {
-          value: snapshot,
-          events,
-        };
-      },
-      mapNotificationToEvent(notification: ServerNotification) {
-        return {
-          method: notification.method,
-          params: ("params" in notification ? notification.params : null) as JsonValue,
-        } satisfies RuntimeEvent;
-      },
-      emitRuntimeEvents(events) {
-        emitNotificationEvents(events);
-      },
-      turnIdFromRuntimeEvent(event) {
-        return turnIdFromNotification(event);
-      },
-      isTurnCompletedEvent(event) {
-        return event.method === "turn/completed";
+        return threadToSessionSnapshot(thread) as unknown as SessionSnapshot;
       },
       formatError,
       async requestUserInput(request) {
         return await collaborationStore.requestUserInput(request);
       },
-      actualThreadIdFromSnapshot(snapshot) {
-        if (
-          snapshot.metadata !== null &&
-          typeof snapshot.metadata === "object" &&
-          !Array.isArray(snapshot.metadata) &&
-          typeof (snapshot.metadata as Record<string, unknown>).id === "string"
-        ) {
-          return (snapshot.metadata as Record<string, unknown>).id as string;
-        }
-        return null;
-      },
-      logScope: "webui",
     },
   });
+
+  runtime.subscribeToNotifications((notification: ServerNotification) => {
+    emitRuntimeEvent({
+      method: notification.method,
+      params: ("params" in notification ? notification.params : null) as JsonValue,
+    } satisfies RuntimeEvent);
+  });
+
+  return runtime as unknown as BrowserRuntime;
 }

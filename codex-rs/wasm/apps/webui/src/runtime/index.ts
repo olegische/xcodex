@@ -24,6 +24,8 @@ export type {
   ModelPreset,
   ProviderDraft,
   RuntimeActivity,
+  RuntimeEvent,
+  SendTurnResult,
   TranscriptEntry,
   XrouterProvider,
 } from "./types";
