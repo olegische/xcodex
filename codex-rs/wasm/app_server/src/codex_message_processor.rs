@@ -1015,7 +1015,7 @@ fn stored_session_to_thread_record(
 ) -> ThreadRecord {
     let turns: BTreeMap<String, crate::TurnRecord> = if include_turns {
         {
-            codex_app_server_protocol::build_turns_from_rollout_items(&stored.items)
+            crate::thread_history::build_turns_from_wasm_rollout_items(&stored.items)
                 .into_iter()
                 .map(|turn| {
                     (

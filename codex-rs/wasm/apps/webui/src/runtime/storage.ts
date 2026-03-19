@@ -25,7 +25,6 @@ import type {
   CodexCompatibleConfig,
   DemoInstructions,
   InstructionSnapshot,
-  SessionSnapshot,
 } from "./types";
 import { normalizeCodexConfig, normalizeDemoInstructions } from "./utils";
 import { DEFAULT_CODEX_CONFIG } from "./constants";
@@ -35,8 +34,11 @@ export async function openWebUiDb(): Promise<IDBDatabase> {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains("sessions")) {
-        db.createObjectStore("sessions");
+      if (db.objectStoreNames.contains("sessions")) {
+        db.deleteObjectStore("sessions");
+      }
+      if (!db.objectStoreNames.contains("threadSessions")) {
+        db.createObjectStore("threadSessions");
       }
       if (!db.objectStoreNames.contains("authState")) {
         db.createObjectStore("authState");
@@ -124,33 +126,13 @@ export async function saveStoredUserConfig(input: {
   });
 }
 
-export async function loadStoredSession(threadId: string): Promise<SessionSnapshot | null> {
+export async function deleteStoredThreadSession(threadId: string): Promise<void> {
   const db = await openWebUiDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction("sessions", "readonly");
-    const request = tx.objectStore("sessions").get(threadId);
-    request.onsuccess = () => resolve((request.result as SessionSnapshot | undefined) ?? null);
-    request.onerror = () => reject(request.error ?? new Error("failed to load session"));
-  });
-}
-
-export async function saveStoredSession(snapshot: SessionSnapshot): Promise<void> {
-  const db = await openWebUiDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("sessions", "readwrite");
-    const request = tx.objectStore("sessions").put(snapshot, snapshot.threadId);
+    const tx = db.transaction("threadSessions", "readwrite");
+    const request = tx.objectStore("threadSessions").delete(threadId);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error("failed to save session"));
-  });
-}
-
-export async function deleteStoredSession(threadId: string): Promise<void> {
-  const db = await openWebUiDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("sessions", "readwrite");
-    const request = tx.objectStore("sessions").delete(threadId);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error("failed to delete session"));
+    request.onerror = () => reject(request.error ?? new Error("failed to delete thread session"));
   });
 }
 

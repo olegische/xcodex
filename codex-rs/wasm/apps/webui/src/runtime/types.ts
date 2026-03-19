@@ -93,12 +93,6 @@ export type DemoInstructions = {
   skillContents: string;
 };
 
-export type SessionSnapshot = {
-  threadId: string;
-  metadata: JsonValue;
-  items: JsonValue[];
-};
-
 export type RuntimeEvent = {
   method: string;
   params: JsonValue;

@@ -10,7 +10,6 @@ export {
   summarizeClientResponse,
   summarizeServerNotification,
   summarizeServerRequest,
-  threadToSessionSnapshot,
   turnIdFromNotification,
 } from "./browser-runtime-core";
 export type {
@@ -24,7 +23,19 @@ export {
 } from "./host-values";
 export type {
   BrowserRuntimeHost,
+  DeleteThreadSessionRequest,
   JsonValue,
+  ListThreadSessionsRequest,
+  ListThreadSessionsResponse,
+  LoadThreadSessionRequest,
+  LoadThreadSessionResponse,
+  RolloutItem,
   RuntimeModule,
+  SaveThreadSessionRequest,
+  SessionMetaLine,
+  StoredThreadSession,
+  StoredThreadSessionMetadata,
+  TurnContextItem,
+  TurnContextNetworkItem,
   WasmProtocolRuntime,
 } from "./types";

@@ -28,6 +28,7 @@ use codex_protocol::protocol::TurnAbortReason;
 use crate::MessageProcessor;
 use crate::ThreadRecord;
 use crate::ThreadState;
+use crate::thread_history::canonical_browser_tool_name;
 
 #[derive(Debug, Clone)]
 enum PendingToolCall {
@@ -124,6 +125,9 @@ pub fn apply_bespoke_event_handling(
             apply_raw_response_item(thread_id, &turn_id, thread_state, &raw_item.item)
         }
         EventMsg::DynamicToolCallRequest(event) => {
+            if canonical_browser_tool_name(&event.tool, None).is_some() {
+                return Vec::new();
+            }
             let item = dynamic_tool_call_started_item(event);
             apply_item_started(thread_state, item.clone());
             vec![ServerNotification::ItemStarted(ItemStartedNotification {
@@ -133,6 +137,9 @@ pub fn apply_bespoke_event_handling(
             })]
         }
         EventMsg::DynamicToolCallResponse(event) => {
+            if canonical_browser_tool_name(&event.tool, None).is_some() {
+                return Vec::new();
+            }
             let item = dynamic_tool_call_completed_item(event);
             apply_item_completed(thread_state, item.clone());
             vec![ServerNotification::ItemCompleted(
@@ -300,25 +307,25 @@ fn response_item_to_started_thread_item(item: &ResponseItem) -> Option<ThreadIte
             arguments,
             call_id,
             ..
-        } if is_browser_builtin_tool(name, namespace.as_deref()) => {
-            Some(ThreadItem::DynamicToolCall {
+        } => canonical_browser_tool_name(name, namespace.as_deref()).map(|tool| {
+            ThreadItem::DynamicToolCall {
                 id: call_id.clone(),
-                tool: name.clone(),
+                tool,
                 arguments: parse_arguments(arguments),
                 status: DynamicToolCallStatus::InProgress,
                 content_items: None,
                 success: None,
                 duration_ms: None,
-            })
-        }
+            }
+        }),
         ResponseItem::CustomToolCall {
             call_id,
             name,
             input,
             ..
-        } if is_browser_builtin_tool(name, None) => Some(ThreadItem::DynamicToolCall {
+        } => canonical_browser_tool_name(name, None).map(|tool| ThreadItem::DynamicToolCall {
             id: call_id.clone(),
-            tool: name.clone(),
+            tool,
             arguments: parse_arguments(input),
             status: DynamicToolCallStatus::InProgress,
             content_items: None,
@@ -395,19 +402,6 @@ fn parse_arguments(arguments: &str) -> serde_json::Value {
         .unwrap_or_else(|_| serde_json::Value::String(arguments.to_string()))
 }
 
-fn is_browser_builtin_tool(name: &str, namespace: Option<&str>) -> bool {
-    matches!(namespace, None | Some("browser"))
-        && matches!(
-            name,
-            "read_file"
-                | "list_dir"
-                | "grep_files"
-                | "apply_patch"
-                | "update_plan"
-                | "request_user_input"
-        )
-}
-
 fn abort_reason_to_turn_status(reason: &TurnAbortReason) -> TurnStatus {
     match reason {
         TurnAbortReason::Interrupted | TurnAbortReason::Replaced | TurnAbortReason::ReviewEnded => {
@@ -421,7 +415,7 @@ fn dynamic_tool_call_started_item(
 ) -> ThreadItem {
     ThreadItem::DynamicToolCall {
         id: event.call_id.clone(),
-        tool: event.tool.clone(),
+        tool: canonical_browser_tool_name(&event.tool, None).unwrap_or_else(|| event.tool.clone()),
         arguments: event.arguments.clone(),
         status: DynamicToolCallStatus::InProgress,
         content_items: None,
@@ -435,7 +429,7 @@ fn dynamic_tool_call_completed_item(
 ) -> ThreadItem {
     ThreadItem::DynamicToolCall {
         id: event.call_id.clone(),
-        tool: event.tool.clone(),
+        tool: canonical_browser_tool_name(&event.tool, None).unwrap_or_else(|| event.tool.clone()),
         arguments: event.arguments.clone(),
         status: if event.success {
             DynamicToolCallStatus::Completed
@@ -845,7 +839,7 @@ mod tests {
                     item,
                     &ThreadItem::DynamicToolCall {
                         id: "call-1".to_string(),
-                        tool: "list_dir".to_string(),
+                        tool: "browser__list_dir".to_string(),
                         arguments: serde_json::json!({ "dir_path": "/workspace" }),
                         status: DynamicToolCallStatus::InProgress,
                         content_items: None,
@@ -866,7 +860,7 @@ mod tests {
             .current_turn_items
             .push(ThreadItem::DynamicToolCall {
                 id: "call-1".to_string(),
-                tool: "list_dir".to_string(),
+                tool: "browser__list_dir".to_string(),
                 arguments: serde_json::json!({ "dir_path": "/workspace" }),
                 status: DynamicToolCallStatus::InProgress,
                 content_items: None,
@@ -903,7 +897,7 @@ mod tests {
                     item,
                     &ThreadItem::DynamicToolCall {
                         id: "call-1".to_string(),
-                        tool: "list_dir".to_string(),
+                        tool: "browser__list_dir".to_string(),
                         arguments: serde_json::json!({ "dir_path": "/workspace" }),
                         status: DynamicToolCallStatus::Completed,
                         content_items: Some(vec![DynamicToolCallOutputContentItem::InputText {
@@ -945,6 +939,60 @@ mod tests {
             }
             other => panic!("unexpected notifications: {other:?}"),
         }
+    }
+
+    #[test]
+    fn suppresses_duplicate_browser_dynamic_tool_request_notifications() {
+        let mut thread_state = ThreadState::default();
+        thread_state.start_turn("turn-1".to_string());
+
+        let notifications = apply_bespoke_event_handling(
+            "thread-1",
+            &mut thread_state,
+            &Event {
+                id: "turn-1".to_string(),
+                msg: EventMsg::DynamicToolCallRequest(
+                    codex_protocol::dynamic_tools::DynamicToolCallRequest {
+                        call_id: "call-1".to_string(),
+                        turn_id: "turn-1".to_string(),
+                        tool: "browser__list_dir".to_string(),
+                        arguments: serde_json::json!({ "dir_path": "/workspace" }),
+                    },
+                ),
+            },
+        );
+
+        assert!(notifications.is_empty());
+        assert_eq!(thread_state.current_turn_items, Vec::new());
+    }
+
+    #[test]
+    fn suppresses_duplicate_browser_dynamic_tool_response_notifications() {
+        let mut thread_state = ThreadState::default();
+        thread_state.start_turn("turn-1".to_string());
+
+        let notifications = apply_bespoke_event_handling(
+            "thread-1",
+            &mut thread_state,
+            &Event {
+                id: "turn-1".to_string(),
+                msg: EventMsg::DynamicToolCallResponse(
+                    codex_protocol::protocol::DynamicToolCallResponseEvent {
+                        call_id: "call-1".to_string(),
+                        turn_id: "turn-1".to_string(),
+                        tool: "browser__list_dir".to_string(),
+                        arguments: serde_json::json!({ "dir_path": "/workspace" }),
+                        content_items: Vec::new(),
+                        success: true,
+                        error: None,
+                        duration: std::time::Duration::from_secs(1),
+                    },
+                ),
+            },
+        );
+
+        assert!(notifications.is_empty());
+        assert_eq!(thread_state.current_turn_items, Vec::new());
     }
 
     #[test]

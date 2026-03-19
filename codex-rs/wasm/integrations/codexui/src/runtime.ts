@@ -6,7 +6,6 @@ export async function createCodexUiBrowserRuntime<
   TConfig,
   TAccount,
   TModelPreset,
-  TSnapshot,
   TRefreshAuthResult,
 >(
   params: CreateCodexUiBrowserRuntimeParams<
@@ -14,7 +13,6 @@ export async function createCodexUiBrowserRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TSnapshot,
     TRefreshAuthResult
   >,
 ): Promise<
@@ -23,7 +21,6 @@ export async function createCodexUiBrowserRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TSnapshot,
     TRefreshAuthResult
   >
 > {

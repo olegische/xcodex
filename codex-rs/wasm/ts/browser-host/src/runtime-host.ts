@@ -18,6 +18,10 @@ export type BrowserRuntimeHostDeps = BrowserHostFileSystem & {
   loadBootstrap(): Promise<Awaited<ReturnType<BrowserRuntimeHost["loadBootstrap"]>>>;
   loadUserConfig?: BrowserRuntimeHost["loadUserConfig"];
   saveUserConfig?: BrowserRuntimeHost["saveUserConfig"];
+  loadThreadSession?: BrowserRuntimeHost["loadThreadSession"];
+  saveThreadSession?: BrowserRuntimeHost["saveThreadSession"];
+  deleteThreadSession?: BrowserRuntimeHost["deleteThreadSession"];
+  listThreadSessions?: BrowserRuntimeHost["listThreadSessions"];
   listDiscoverableApps?: BrowserRuntimeHost["listDiscoverableApps"];
   runNormalizedModelTurn?: (request: NormalizedModelTurnRequest) => Promise<JsonValue>;
   resolveMcpOauthRedirectUri?: BrowserRuntimeHost["resolveMcpOauthRedirectUri"];
@@ -62,6 +66,30 @@ export function createBrowserRuntimeHostFromDeps(
         throw new Error("Browser runtime host does not provide user config persistence");
       }
       return await deps.saveUserConfig(request);
+    },
+    async loadThreadSession(request: JsonValue) {
+      if (deps.loadThreadSession === undefined) {
+        throw new Error("Browser runtime host does not provide thread session loading");
+      }
+      return await deps.loadThreadSession(request);
+    },
+    async saveThreadSession(request: JsonValue) {
+      if (deps.saveThreadSession === undefined) {
+        throw new Error("Browser runtime host does not provide thread session persistence");
+      }
+      return await deps.saveThreadSession(request);
+    },
+    async deleteThreadSession(request: JsonValue) {
+      if (deps.deleteThreadSession === undefined) {
+        throw new Error("Browser runtime host does not provide thread session deletion");
+      }
+      return await deps.deleteThreadSession(request);
+    },
+    async listThreadSessions(request: JsonValue) {
+      if (deps.listThreadSessions === undefined) {
+        return { sessions: [] };
+      }
+      return await deps.listThreadSessions(request);
     },
     async listDiscoverableApps(request: JsonValue) {
       if (deps.listDiscoverableApps === undefined) {

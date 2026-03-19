@@ -1,34 +1,45 @@
-import type { JsonValue, RuntimeEvent, SessionSnapshot, TranscriptEntry } from "./types";
+import type { JsonValue, RuntimeEvent, TranscriptEntry } from "./types";
 
-export function snapshotToTranscript(snapshot: SessionSnapshot): TranscriptEntry[] {
+export function threadToTranscript(thread: unknown): TranscriptEntry[] {
   const transcript: TranscriptEntry[] = [];
+  const record =
+    thread !== null && typeof thread === "object" && !Array.isArray(thread)
+      ? (thread as Record<string, unknown>)
+      : {};
+  const turns = Array.isArray(record.turns) ? record.turns : [];
 
-  for (const item of snapshot.items) {
-    if (item === null || typeof item !== "object" || !("type" in item)) {
+  for (const turn of turns) {
+    if (turn === null || typeof turn !== "object" || Array.isArray(turn)) {
       continue;
     }
-    if (item.type === "userMessage" && Array.isArray(item.content)) {
-      const text = item.content
-        .flatMap((entry: unknown) =>
-          entry !== null &&
-          typeof entry === "object" &&
-          !Array.isArray(entry) &&
-          (entry as { type?: unknown }).type === "text" &&
-          typeof (entry as { text?: unknown }).text === "string"
-            ? [(entry as { text: string }).text]
-            : [],
-        )
-        .join("\n");
-      appendTranscriptEntry(transcript, { role: "user", text });
-      continue;
-    }
-    if (item.type === "agentMessage" && typeof item.text === "string") {
-      appendTranscriptEntry(transcript, { role: "assistant", text: item.text });
-      continue;
-    }
-    const toolEntry = toolEntryFromThreadItem(item as Record<string, unknown>);
-    if (toolEntry !== null) {
-      appendTranscriptEntry(transcript, toolEntry);
+    const items = Array.isArray((turn as { items?: unknown[] }).items) ? (turn as { items: unknown[] }).items : [];
+    for (const item of items) {
+      if (item === null || typeof item !== "object" || !("type" in item)) {
+        continue;
+      }
+      if (item.type === "userMessage" && Array.isArray(item.content)) {
+        const text = item.content
+          .flatMap((entry: unknown) =>
+            entry !== null &&
+            typeof entry === "object" &&
+            !Array.isArray(entry) &&
+            (entry as { type?: unknown }).type === "text" &&
+            typeof (entry as { text?: unknown }).text === "string"
+              ? [(entry as { text: string }).text]
+              : [],
+          )
+          .join("\n");
+        appendTranscriptEntry(transcript, { role: "user", text });
+        continue;
+      }
+      if (item.type === "agentMessage" && typeof item.text === "string") {
+        appendTranscriptEntry(transcript, { role: "assistant", text: item.text });
+        continue;
+      }
+      const toolEntry = toolEntryFromThreadItem(item as Record<string, unknown>);
+      if (toolEntry !== null) {
+        appendTranscriptEntry(transcript, toolEntry);
+      }
     }
   }
 

@@ -184,7 +184,7 @@ fn build_thread_record(
     codex: Arc<Codex>,
     fallback_model_provider: String,
 ) -> LoadedThread {
-    let turns = codex_app_server_protocol::build_turns_from_rollout_items(&stored.items)
+    let turns = crate::thread_history::build_turns_from_wasm_rollout_items(&stored.items)
         .into_iter()
         .map(|turn| {
             (

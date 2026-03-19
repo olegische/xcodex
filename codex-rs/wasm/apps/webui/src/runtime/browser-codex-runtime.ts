@@ -1,8 +1,5 @@
 import { collaborationStore } from "../stores/collaboration";
 import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
-import {
-  threadToSessionSnapshot,
-} from "@browser-codex/wasm-runtime-core";
 import { createBrowserCodexRuntime as createSharedBrowserCodexRuntime } from "../../../../ts/browser-codex-runtime/src";
 import {
   configurePageTelemetry,
@@ -14,9 +11,7 @@ import { installRuntimeActivityBridge } from "./notifications";
 import {
   loadStoredAuthState,
   loadStoredCodexConfig,
-  loadStoredSession,
   saveStoredAuthState,
-  saveStoredSession,
 } from "./storage";
 import { webUiModelTransportAdapter } from "./transport-adapter";
 import { formatError, getActiveProvider, normalizeHostValue } from "./utils";
@@ -28,7 +23,6 @@ import type {
   ModelPreset,
   RuntimeEvent,
   RuntimeModule,
-  SessionSnapshot,
 } from "./types";
 
 const browserToolExecutor = createBrowserAwareToolExecutor();
@@ -70,8 +64,6 @@ export async function createBrowserCodexRuntime(
           });
         },
         loadConfig: loadStoredCodexConfig,
-        loadSession: loadStoredSession,
-        saveSession: saveStoredSession,
       },
       dynamicTools: browserToolExecutor,
       async readAccount({ authState, config }) {
@@ -100,9 +92,6 @@ export async function createBrowserCodexRuntime(
       },
       normalizeThread(thread) {
         return normalizeHostValue(thread) as Record<string, unknown>;
-      },
-      threadToSnapshot(thread) {
-        return threadToSessionSnapshot(thread) as unknown as SessionSnapshot;
       },
       formatError,
       async requestUserInput(request) {

@@ -10,6 +10,7 @@ mod request_target;
 mod root_request_runtime;
 mod runtime_bootstrap;
 mod skills_runtime;
+mod thread_history;
 mod thread_mutation_runtime;
 mod thread_resume_runtime;
 mod thread_rollback_runtime;

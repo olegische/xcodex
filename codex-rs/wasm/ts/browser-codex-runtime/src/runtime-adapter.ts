@@ -33,7 +33,6 @@ export class BrowserCodexRuntime<
   TConfig,
   TAccount,
   TModelPreset,
-  TSnapshot,
   TRefreshAuthResult,
 > extends BrowserAppServerRuntimeCore implements BrowserCodexProtocolClient {
   private readonly deps: BrowserCodexRuntimeDeps<
@@ -41,7 +40,6 @@ export class BrowserCodexRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TSnapshot,
     TRefreshAuthResult
   >;
 
@@ -52,7 +50,6 @@ export class BrowserCodexRuntime<
       TConfig,
       TAccount,
       TModelPreset,
-      TSnapshot,
       TRefreshAuthResult
     >,
   ) {
@@ -111,30 +108,24 @@ export class BrowserCodexRuntime<
 
   async threadStart(params: ThreadStartParams): Promise<ThreadStartResponse> {
     const dynamicTools = await this.buildDynamicToolSpecs();
-    const response = await this.requestTyped<ThreadStartResponse>("thread/start", {
+    return await this.requestTyped<ThreadStartResponse>("thread/start", {
       ...params,
       dynamicTools,
     } as Record<string, unknown>);
-    await this.persistThreadSnapshot(response.thread);
-    return response;
   }
 
   async threadResume(params: ThreadResumeParams): Promise<ThreadResumeResponse> {
-    const response = await this.requestTyped<ThreadResumeResponse>("thread/resume", {
+    return await this.requestTyped<ThreadResumeResponse>("thread/resume", {
       ...params,
       threadId: this.resolveThreadId(params.threadId),
     });
-    await this.persistThreadSnapshot(response.thread, params.threadId);
-    return response;
   }
 
   async threadRead(params: ThreadReadParams): Promise<ThreadReadResponse> {
-    const response = await this.requestTyped<ThreadReadResponse>("thread/read", {
+    return await this.requestTyped<ThreadReadResponse>("thread/read", {
       ...params,
       threadId: this.resolveThreadId(params.threadId),
     });
-    await this.persistThreadSnapshot(response.thread, params.threadId);
-    return response;
   }
 
   async threadList(params: ThreadListParams): Promise<ThreadListResponse> {
@@ -142,12 +133,10 @@ export class BrowserCodexRuntime<
   }
 
   async threadRollback(params: ThreadRollbackParams): Promise<ThreadRollbackResponse> {
-    const response = await this.requestTyped<ThreadRollbackResponse>("thread/rollback", {
+    return await this.requestTyped<ThreadRollbackResponse>("thread/rollback", {
       ...params,
       threadId: this.resolveThreadId(params.threadId),
     });
-    await this.persistThreadSnapshot(response.thread, params.threadId);
-    return response;
   }
 
   async turnStart(params: TurnStartParams): Promise<TurnStartResponse> {
@@ -167,23 +156,6 @@ export class BrowserCodexRuntime<
   protected async handleServerRequest(request: ServerRequest): Promise<void> {
     const result = await this.resolveServerRequest(request);
     await this.client.resolveServerRequest(request.id, result as JsonValue);
-  }
-
-  private async persistThreadSnapshot(
-    threadValue: unknown,
-    requestedThreadId?: string,
-  ): Promise<TSnapshot> {
-    const thread = this.deps.normalizeThread(threadValue);
-    const actualThreadId =
-      typeof thread.id === "string" && thread.id.length > 0
-        ? thread.id
-        : requestedThreadId ?? "thread";
-    if (requestedThreadId !== undefined) {
-      this.rememberThreadAlias(requestedThreadId, actualThreadId);
-    }
-    const snapshot = this.deps.threadToSnapshot(thread);
-    await this.deps.persistence.saveSession(snapshot);
-    return snapshot;
   }
 
   private async buildDynamicToolSpecs(): Promise<Array<{
@@ -298,7 +270,6 @@ export async function createBrowserCodexRuntime<
   TConfig,
   TAccount,
   TModelPreset,
-  TSnapshot,
   TRefreshAuthResult,
 >(
   params: CreateBrowserCodexRuntimeParams<
@@ -306,7 +277,6 @@ export async function createBrowserCodexRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TSnapshot,
     TRefreshAuthResult
   >,
 ): Promise<
@@ -315,7 +285,6 @@ export async function createBrowserCodexRuntime<
     TConfig,
     TAccount,
     TModelPreset,
-    TSnapshot,
     TRefreshAuthResult
   >
 > {

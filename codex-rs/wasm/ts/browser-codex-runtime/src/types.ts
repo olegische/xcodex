@@ -38,13 +38,11 @@ export type BrowserDynamicToolExecutor = {
   }>;
 };
 
-export type BrowserRuntimePersistence<TAuthState, TConfig, TSnapshot> = {
+export type BrowserRuntimePersistence<TAuthState, TConfig> = {
   loadAuthState(): Promise<TAuthState | null>;
   saveAuthState(authState: TAuthState): Promise<void>;
   clearAuthState(): Promise<void>;
   loadConfig(): Promise<TConfig>;
-  loadSession(threadId: string): Promise<TSnapshot | null>;
-  saveSession(snapshot: TSnapshot): Promise<void>;
 };
 
 export type BrowserRuntimeRequestUserInputQuestion = {
@@ -80,10 +78,9 @@ export type BrowserCodexRuntimeDeps<
   TConfig,
   TAccount,
   TModelPreset,
-  TSnapshot,
   TRefreshAuthResult,
 > = {
-  persistence: BrowserRuntimePersistence<TAuthState, TConfig, TSnapshot>;
+  persistence: BrowserRuntimePersistence<TAuthState, TConfig>;
   dynamicTools: BrowserDynamicToolExecutor;
   readAccount(args: {
     authState: TAuthState | null;
@@ -105,8 +102,6 @@ export type BrowserCodexRuntimeDeps<
     reason: "unauthorized";
     previousAccountId: string | null;
   }): Promise<TRefreshAuthResult>;
-  normalizeThread(thread: unknown): Record<string, unknown>;
-  threadToSnapshot(thread: Record<string, unknown>): TSnapshot;
   formatError(error: unknown): string;
   requestUserInput?(request: {
     questions: BrowserRuntimeRequestUserInputQuestion[];
@@ -125,7 +120,6 @@ export type CreateBrowserCodexRuntimeParams<
   TConfig,
   TAccount,
   TModelPreset,
-  TSnapshot,
   TRefreshAuthResult,
 > = {
   runtimeModule: RuntimeModule;
@@ -135,7 +129,6 @@ export type CreateBrowserCodexRuntimeParams<
     TConfig,
     TAccount,
     TModelPreset,
-    TSnapshot,
     TRefreshAuthResult
   >;
   experimentalApi?: boolean;

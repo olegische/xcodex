@@ -32,27 +32,6 @@ export function asDynamicToolContentItems(output: JsonValue): DynamicToolCallOut
   ];
 }
 
-export function threadToSessionSnapshot(thread: Record<string, unknown>): {
-  threadId: string;
-  metadata: JsonValue;
-  items: JsonValue[];
-} {
-  const turns = Array.isArray(thread.turns) ? thread.turns : [];
-  const items = turns.flatMap((turn) => {
-    if (turn === null || typeof turn !== "object" || Array.isArray(turn)) {
-      return [];
-    }
-    const record = turn as Record<string, unknown>;
-    return Array.isArray(record.items) ? record.items : [];
-  });
-
-  return {
-    threadId: typeof thread.id === "string" ? thread.id : "thread",
-    metadata: thread as JsonValue,
-    items: items as JsonValue[],
-  };
-}
-
 export function turnIdFromNotification(event: {
   params: JsonValue;
 }): string | null {

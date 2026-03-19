@@ -5,14 +5,14 @@ const DEFAULT_DB_VERSION = 1;
 const DEFAULT_STORE_NAMES: IndexedDbStoreNames = {
   authState: "authState",
   config: "config",
-  sessions: "sessions",
+  threadSessions: "threadSessions",
   userConfig: "userConfig",
 };
 
-export function createIndexedDbCodexUiPersistence<TAuthState, TConfig, TSnapshot>(
+export function createIndexedDbCodexUiPersistence<TAuthState, TConfig>(
   defaultConfig: TConfig,
   options: IndexedDbPersistenceOptions = {},
-): CodexUiPersistence<TAuthState, TConfig, TSnapshot> {
+): CodexUiPersistence<TAuthState, TConfig> {
   const dbName = options.dbName ?? DEFAULT_DB_NAME;
   const dbVersion = options.dbVersion ?? DEFAULT_DB_VERSION;
   const storeNames = {
@@ -41,15 +41,6 @@ export function createIndexedDbCodexUiPersistence<TAuthState, TConfig, TSnapshot
     },
     async clearConfig() {
       await deleteRecord(dbName, dbVersion, storeNames.config, configKey, storeNames);
-    },
-    async loadSession(threadId) {
-      return await readRecord<TSnapshot | null>(dbName, dbVersion, storeNames.sessions, threadId, null, storeNames);
-    },
-    async saveSession(snapshot, threadId) {
-      await writeRecord(dbName, dbVersion, storeNames.sessions, threadId ?? inferThreadId(snapshot), snapshot, storeNames);
-    },
-    async deleteSession(threadId) {
-      await deleteRecord(dbName, dbVersion, storeNames.sessions, threadId, storeNames);
     },
     async loadUserConfig() {
       return await readRecord<StoredUserConfig | null>(dbName, dbVersion, storeNames.userConfig, userConfigKey, null, storeNames);
@@ -152,14 +143,4 @@ async function deleteRecord(
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error ?? new Error(`failed to delete ${storeName}/${key}`));
   });
-}
-
-function inferThreadId(snapshot: unknown): string {
-  if (snapshot !== null && typeof snapshot === "object" && !Array.isArray(snapshot)) {
-    const threadId = (snapshot as Record<string, unknown>).threadId;
-    if (typeof threadId === "string" && threadId.length > 0) {
-      return threadId;
-    }
-  }
-  throw new Error("saveSession requires threadId or snapshot.threadId");
 }

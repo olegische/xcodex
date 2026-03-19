@@ -1,19 +1,17 @@
 import { DEFAULT_CODEX_CONFIG, DEFAULT_DEMO_INSTRUCTIONS, XROUTER_PROVIDER_OPTIONS } from "./constants";
-import { threadToSessionSnapshot } from "@browser-codex/wasm-runtime-core";
 import { createBrowserCodexRuntime } from "./browser-codex-runtime";
 import { loadRuntimeModule } from "./assets";
 import { createBrowserRuntimeHost } from "./host";
 import { webUiModelTransportAdapter } from "./transport-adapter";
-import { buildOutputFromEvents, snapshotToTranscript } from "./transcript";
+import { buildOutputFromEvents, threadToTranscript } from "./transcript";
 import {
   clearStoredAuthState,
   clearStoredCodexConfig,
   clearStoredThreadBinding,
-  deleteStoredSession,
+  deleteStoredThreadSession,
   loadStoredAuthState,
   loadStoredCodexConfig,
   loadStoredDemoInstructions,
-  loadStoredSession,
   loadStoredThreadBinding,
   saveStoredAuthState,
   saveStoredCodexConfig,
@@ -32,7 +30,6 @@ import type {
   ProviderDraft,
   RuntimeEvent,
   SendTurnResult,
-  SessionSnapshot,
   WebUiBootstrap,
   XrouterProvider,
 } from "./types";
@@ -139,9 +136,8 @@ export async function runChatTurn(
     includeTurns: true,
   });
   await saveStoredThreadBinding(thread.thread.id);
-  const snapshot = threadToSessionSnapshotCompatible(thread.thread);
   return {
-    transcript: snapshotToTranscript(snapshot),
+    transcript: threadToTranscript(thread.thread),
     output: buildOutputFromEvents(turnEvents.events),
     nextTurnCounter: turnCounter + 1,
     turnId: turnEvents.turnId,
@@ -152,7 +148,7 @@ export async function runChatTurn(
 export async function resetThread(): Promise<void> {
   const threadId = await loadStoredThreadBinding();
   if (threadId !== null) {
-    await deleteStoredSession(threadId);
+    await deleteStoredThreadSession(threadId);
   }
   await clearStoredThreadBinding();
 }
@@ -370,7 +366,7 @@ async function ensureThread(runtime: BrowserRuntime): Promise<string> {
       return existing.thread.id;
     }
     await Promise.all([
-      deleteStoredSession(existingThreadId).catch(() => undefined),
+      deleteStoredThreadSession(existingThreadId).catch(() => undefined),
       clearStoredThreadBinding(),
     ]);
   }
@@ -395,20 +391,15 @@ async function hydrateState(): Promise<Partial<DemoState>> {
   ]);
   if (revisionChanged && threadId !== null) {
     await Promise.all([
-      deleteStoredSession(threadId).catch(() => undefined),
+      deleteStoredThreadSession(threadId).catch(() => undefined),
       clearStoredThreadBinding(),
     ]);
   }
-  const activeThreadId = revisionChanged ? null : threadId;
-  const transcript =
-    activeThreadId === null
-      ? []
-      : snapshotToTranscript((await loadStoredSession(activeThreadId)) ?? emptySessionSnapshot(activeThreadId));
   return {
     authState,
     codexConfig,
     demoInstructions,
-    transcript,
+    transcript: [],
     runtime: null,
   };
 }
@@ -435,6 +426,28 @@ async function syncBootstrapState(state: DemoState): Promise<DemoState> {
     model: selectModelId(modelResult.data, state.codexConfig.model),
   };
   const runtime = codexConfig.model.length > 0 ? await loadRuntime() : null;
+  let transcript = state.transcript;
+  const activeThreadId = await loadStoredThreadBinding();
+  if (runtime !== null && activeThreadId !== null) {
+    const resumed = await runtime.threadResume({
+      threadId: activeThreadId,
+      persistExtendedHistory: true,
+    }).catch(() => null);
+    if (resumed === null) {
+      await Promise.all([
+        deleteStoredThreadSession(activeThreadId).catch(() => undefined),
+        clearStoredThreadBinding(),
+      ]);
+      transcript = [];
+    } else {
+      const thread = await runtime.threadRead({
+        threadId: resumed.thread.id,
+        includeTurns: true,
+      });
+      await saveStoredThreadBinding(thread.thread.id);
+      transcript = threadToTranscript(thread.thread);
+    }
+  }
 
   return {
     ...state,
@@ -443,6 +456,7 @@ async function syncBootstrapState(state: DemoState): Promise<DemoState> {
     requiresOpenaiAuth,
     models: modelResult.data,
     codexConfig,
+    transcript,
     status:
       apiKey.length === 0
         ? "Waiting for router API key."
@@ -507,24 +521,6 @@ function readTurnId(event: RuntimeEvent): string | null {
       ? (params.turn as Record<string, unknown>)
       : null;
   return typeof turn?.id === "string" ? turn.id : null;
-}
-
-function threadToSessionSnapshotCompatible(thread: unknown): SessionSnapshot {
-  return {
-    ...(threadToSessionSnapshot(thread as Record<string, unknown>) as {
-      threadId: string;
-      metadata: JsonValue;
-      items: JsonValue[];
-    }),
-  };
-}
-
-function emptySessionSnapshot(threadId: string): SessionSnapshot {
-  return {
-    threadId,
-    metadata: {},
-    items: [],
-  };
 }
 
 function normalizeReasoningEffort(value: string | null): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | null {

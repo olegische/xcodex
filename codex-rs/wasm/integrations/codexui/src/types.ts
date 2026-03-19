@@ -6,7 +6,7 @@ import type { JsonValue, RuntimeModule } from "@browser-codex/wasm-runtime-core/
 export type IndexedDbStoreNames = {
   authState: string;
   config: string;
-  sessions: string;
+  threadSessions: string;
   userConfig: string;
 };
 
@@ -25,16 +25,13 @@ export type StoredUserConfig = {
   content: string;
 };
 
-export type CodexUiPersistence<TAuthState, TConfig, TSnapshot> = {
+export type CodexUiPersistence<TAuthState, TConfig> = {
   loadAuthState(): Promise<TAuthState | null>;
   saveAuthState(authState: TAuthState): Promise<void>;
   clearAuthState(): Promise<void>;
   loadConfig(): Promise<TConfig>;
   saveConfig(config: TConfig): Promise<void>;
   clearConfig(): Promise<void>;
-  loadSession(threadId: string): Promise<TSnapshot | null>;
-  saveSession(snapshot: TSnapshot, threadId?: string): Promise<void>;
-  deleteSession(threadId: string): Promise<void>;
   loadUserConfig(): Promise<StoredUserConfig | null>;
   saveUserConfig(input: {
     filePath?: string | null;
@@ -45,7 +42,7 @@ export type CodexUiPersistence<TAuthState, TConfig, TSnapshot> = {
 
 export type CodexUiRuntimeHostOptions<TConfig> = BrowserHostFileSystem & {
   bootstrap: BrowserRuntimeBootstrapPayload;
-  persistence: Pick<CodexUiPersistence<unknown, TConfig, unknown>, "loadUserConfig" | "saveUserConfig">;
+  persistence: Pick<CodexUiPersistence<unknown, TConfig>, "loadUserConfig" | "saveUserConfig">;
   runNormalizedModelTurn(request: NormalizedModelTurnRequest): Promise<JsonValue>;
   listDiscoverableApps?: BrowserRuntimeHostDeps["listDiscoverableApps"];
 };
@@ -55,7 +52,6 @@ export type CreateCodexUiBrowserRuntimeParams<
   TConfig,
   TAccount,
   TModelPreset,
-  TSnapshot,
   TRefreshAuthResult,
 > = {
   runtimeModule: RuntimeModule;
@@ -65,7 +61,6 @@ export type CreateCodexUiBrowserRuntimeParams<
     TConfig,
     TAccount,
     TModelPreset,
-    TSnapshot,
     TRefreshAuthResult
   >;
   experimentalApi?: boolean;
