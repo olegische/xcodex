@@ -1,4 +1,8 @@
-import { DEFAULT_CODEX_CONFIG, DEFAULT_DEMO_INSTRUCTIONS, XROUTER_PROVIDER_OPTIONS } from "./constants";
+import {
+  DEFAULT_CODEX_CONFIG,
+  XROUTER_PROVIDER_OPTIONS,
+} from "@browser-codex/wasm-runtime-client";
+import { DEFAULT_DEMO_INSTRUCTIONS } from "./constants";
 import { createBrowserCodexRuntime } from "./browser-codex-runtime";
 import { loadRuntimeModule } from "./assets";
 import { createBrowserRuntimeHost } from "./host";

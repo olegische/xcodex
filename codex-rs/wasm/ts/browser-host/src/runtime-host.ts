@@ -1,5 +1,12 @@
 import { normalizeHostValuePreservingStrings } from "@browser-codex/wasm-runtime-core/host-values";
-import type { BrowserRuntimeHost, JsonValue } from "@browser-codex/wasm-runtime-core/types";
+import type {
+  BrowserRuntimeHost,
+  DeleteThreadSessionRequest,
+  JsonValue,
+  ListThreadSessionsRequest,
+  LoadThreadSessionRequest,
+  SaveThreadSessionRequest,
+} from "@browser-codex/wasm-runtime-core/types";
 
 export type BrowserHostFileSystem = Pick<
   BrowserRuntimeHost,
@@ -67,25 +74,25 @@ export function createBrowserRuntimeHostFromDeps(
       }
       return await deps.saveUserConfig(request);
     },
-    async loadThreadSession(request: JsonValue) {
+    async loadThreadSession(request: LoadThreadSessionRequest) {
       if (deps.loadThreadSession === undefined) {
         throw new Error("Browser runtime host does not provide thread session loading");
       }
       return await deps.loadThreadSession(request);
     },
-    async saveThreadSession(request: JsonValue) {
+    async saveThreadSession(request: SaveThreadSessionRequest) {
       if (deps.saveThreadSession === undefined) {
         throw new Error("Browser runtime host does not provide thread session persistence");
       }
       return await deps.saveThreadSession(request);
     },
-    async deleteThreadSession(request: JsonValue) {
+    async deleteThreadSession(request: DeleteThreadSessionRequest) {
       if (deps.deleteThreadSession === undefined) {
         throw new Error("Browser runtime host does not provide thread session deletion");
       }
       return await deps.deleteThreadSession(request);
     },
-    async listThreadSessions(request: JsonValue) {
+    async listThreadSessions(request: ListThreadSessionsRequest) {
       if (deps.listThreadSessions === undefined) {
         return { sessions: [] };
       }

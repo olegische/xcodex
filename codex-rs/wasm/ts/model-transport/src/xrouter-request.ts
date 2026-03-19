@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import type { JsonValue } from "../../../../app-server-protocol/schema/typescript/serde_json/JsonValue";
+import { qualifyDynamicToolName } from "@browser-codex/wasm-runtime-core";
 
 export function prepareXrouterResponsesRequest(
   requestBody: OpenAI.Responses.ResponseCreateParams,
@@ -27,6 +28,9 @@ function normalizeResponsesInputItemForXrouter(item: JsonValue): JsonValue {
   }
 
   const record = item as Record<string, unknown>;
+  if (record.type === "function_call" && typeof record.name === "string") {
+    return normalizeFunctionCallItemForXrouter(record);
+  }
   if (record.type !== "function_call_output" && record.type !== "custom_tool_call_output") {
     return item;
   }
@@ -35,6 +39,23 @@ function normalizeResponsesInputItemForXrouter(item: JsonValue): JsonValue {
     ...record,
     output: normalizeFunctionCallOutputForXrouter(record.output as JsonValue),
   };
+}
+
+function normalizeFunctionCallItemForXrouter(record: Record<string, unknown>): JsonValue {
+  const toolName = typeof record.name === "string" ? record.name : null;
+  const namespace = typeof record.namespace === "string" ? record.namespace : null;
+  if (toolName === null || namespace === null || toolName.startsWith(`${namespace}__`)) {
+    return record as JsonValue;
+  }
+  const { namespace: _namespace, ...rest } = record;
+
+  return {
+    ...(rest as Record<string, JsonValue>),
+    name: qualifyDynamicToolName({
+      toolNamespace: namespace,
+      toolName,
+    }),
+  } as JsonValue;
 }
 
 function normalizeFunctionCallOutputForXrouter(output: JsonValue): JsonValue {
@@ -80,8 +101,8 @@ function normalizeTransportToolForXrouter(tool: JsonValue): JsonValue | null {
         ? record.parameters
         : {
             type: "object",
-            properties: {},
-            additionalProperties: false,
-          },
-  };
+          properties: {},
+          additionalProperties: false,
+        },
+  } as JsonValue;
 }

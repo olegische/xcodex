@@ -572,8 +572,30 @@ impl CodexMessageProcessor {
                 params,
             } => {
                 if let Some(thread) = self.app_server_state.thread(&params.thread_id) {
+                    let thread = if params.include_turns {
+                        if let Some(bootstrap) = self.runtime_bootstrap.as_ref() {
+                            match bootstrap
+                                .thread_storage_host
+                                .load_thread_session(LoadThreadSessionRequest {
+                                    thread_id: params.thread_id.clone(),
+                                })
+                                .await
+                            {
+                                Ok(response) => merge_loaded_thread_with_stored_session(
+                                    thread,
+                                    &response.session,
+                                    true,
+                                ),
+                                Err(_) => thread.clone(),
+                            }
+                        } else {
+                            thread.clone()
+                        }
+                    } else {
+                        thread.clone()
+                    };
                     serde_json::to_value(thread_read_response(
-                        thread,
+                        &thread,
                         thread.protocol_status(),
                         params.include_turns,
                     ))
@@ -1007,6 +1029,21 @@ fn stored_metadata_to_thread_record(metadata: StoredThreadSessionMetadata) -> Th
         waiting_on_approval: false,
         waiting_on_user_input: false,
     }
+}
+
+fn merge_loaded_thread_with_stored_session(
+    loaded: &ThreadRecord,
+    stored: &StoredThreadSession,
+    include_turns: bool,
+) -> ThreadRecord {
+    let mut merged = stored_session_to_thread_record(stored, include_turns);
+    merged.preview = loaded.preview.clone();
+    merged.name = loaded.name.clone();
+    merged.updated_at = loaded.updated_at;
+    merged.waiting_on_approval = loaded.waiting_on_approval;
+    merged.waiting_on_user_input = loaded.waiting_on_user_input;
+
+    merged
 }
 
 fn stored_session_to_thread_record(

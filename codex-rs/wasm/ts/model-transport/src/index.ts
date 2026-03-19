@@ -16,10 +16,8 @@ export type {
   XrouterStreamEventPayload,
   XrouterStreamingExecutorParams,
 } from "./xrouter-executor";
-export {
-  mapXrouterOutputItemToCodexResponseItem,
-  splitQualifiedToolNameForCodex,
-} from "./xrouter-codex";
+export { mapXrouterOutputItemToCodexResponseItem } from "./xrouter-codex";
+export { splitQualifiedToolNameForCodex } from "@browser-codex/wasm-runtime-core";
 export { createBrowserModelTransportAdapter } from "./browser-adapter";
 export type {
   BrowserModelTransportAdapterDeps,

@@ -19,6 +19,8 @@ import {
   AppServerClient,
   asDynamicToolContentItems,
   BrowserAppServerRuntimeCore,
+  qualifyDynamicToolName,
+  resolveDynamicToolTarget,
   startBrowserAppServerClient,
 } from "@browser-codex/wasm-runtime-core";
 import type { JsonValue } from "@browser-codex/wasm-runtime-core/types";
@@ -163,7 +165,7 @@ export class BrowserCodexRuntime<
     description: string;
     inputSchema: JsonValue;
   }>> {
-    const { tools } = await this.deps.dynamicTools.list();
+      const { tools } = await this.deps.dynamicTools.list();
     return tools.map((tool) => ({
       name: this.deps.normalizeDynamicToolName?.(tool) ?? qualifyDynamicToolName(tool),
       description: tool.description,
@@ -226,7 +228,7 @@ export class BrowserCodexRuntime<
     const callId = typeof params.callId === "string" ? params.callId : String(request.id);
     const target =
       this.deps.resolveDynamicToolTarget?.(toolName) ??
-      defaultResolveDynamicToolTarget(toolName);
+      resolveDynamicToolTarget(toolName);
 
     if (target === null) {
       return {
@@ -292,37 +294,6 @@ export async function createBrowserCodexRuntime<
     experimentalApi: params.experimentalApi ?? true,
   });
   return new BrowserCodexRuntime(client, params.deps);
-}
-
-function defaultResolveDynamicToolTarget(toolName: string): {
-  toolNamespace: string;
-  toolName: string;
-} | null {
-  if (toolName.startsWith("browser__")) {
-    return {
-      toolNamespace: "browser",
-      toolName,
-    };
-  }
-  const match = /^([a-z0-9_]+)__(.+)$/i.exec(toolName);
-  if (match === null) {
-    return null;
-  }
-  return {
-    toolNamespace: match[1] ?? "browser",
-    toolName,
-  };
-}
-
-function qualifyDynamicToolName(tool: {
-  toolNamespace: string;
-  toolName: string;
-}): string {
-  if (tool.toolNamespace === "browser") {
-    return tool.toolName.startsWith("browser__") ? tool.toolName : `browser__${tool.toolName}`;
-  }
-  const prefix = `${tool.toolNamespace}__`;
-  return tool.toolName.startsWith(prefix) ? tool.toolName : `${prefix}${tool.toolName}`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

@@ -15,6 +15,7 @@ mod thread_mutation_runtime;
 mod thread_resume_runtime;
 mod thread_rollback_runtime;
 mod thread_state;
+mod wasm_rollout_adapter;
 
 pub use bespoke_event_handling::LoadedThreadEventEffect;
 pub use bespoke_event_handling::apply_bespoke_event_handling;

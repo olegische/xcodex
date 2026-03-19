@@ -17,8 +17,9 @@ export function threadToTranscript(thread: unknown): TranscriptEntry[] {
       if (item === null || typeof item !== "object" || !("type" in item)) {
         continue;
       }
-      if (item.type === "userMessage" && Array.isArray(item.content)) {
-        const text = item.content
+      const itemRecord = item as Record<string, unknown>;
+      if (itemRecord.type === "userMessage" && Array.isArray(itemRecord.content)) {
+        const text = itemRecord.content
           .flatMap((entry: unknown) =>
             entry !== null &&
             typeof entry === "object" &&
@@ -32,11 +33,11 @@ export function threadToTranscript(thread: unknown): TranscriptEntry[] {
         appendTranscriptEntry(transcript, { role: "user", text });
         continue;
       }
-      if (item.type === "agentMessage" && typeof item.text === "string") {
-        appendTranscriptEntry(transcript, { role: "assistant", text: item.text });
+      if (itemRecord.type === "agentMessage" && typeof itemRecord.text === "string") {
+        appendTranscriptEntry(transcript, { role: "assistant", text: itemRecord.text });
         continue;
       }
-      const toolEntry = toolEntryFromThreadItem(item as Record<string, unknown>);
+      const toolEntry = toolEntryFromThreadItem(itemRecord);
       if (toolEntry !== null) {
         appendTranscriptEntry(transcript, toolEntry);
       }

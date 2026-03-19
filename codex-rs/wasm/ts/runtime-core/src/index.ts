@@ -12,6 +12,12 @@ export {
   summarizeServerRequest,
   turnIdFromNotification,
 } from "./browser-runtime-core";
+export {
+  qualifyDynamicToolName,
+  resolveDynamicToolTarget,
+  splitQualifiedToolNameForCodex,
+  unqualifyBrowserToolName,
+} from "./dynamic-tool-names";
 export type {
   AppServerClientEvent,
   AppServerClientStartArgs,

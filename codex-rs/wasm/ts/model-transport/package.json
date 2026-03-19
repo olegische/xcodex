@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
+    "@browser-codex/wasm-runtime-core": "file:../runtime-core",
     "openai": "latest"
   },
   "exports": {

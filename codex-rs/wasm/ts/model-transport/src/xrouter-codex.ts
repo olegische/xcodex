@@ -1,4 +1,5 @@
 import type { JsonValue } from "../../../../app-server-protocol/schema/typescript/serde_json/JsonValue";
+import { splitQualifiedToolNameForCodex } from "@browser-codex/wasm-runtime-core";
 
 export function mapXrouterOutputItemToCodexResponseItem(
   item: JsonValue,
@@ -59,28 +60,4 @@ export function mapXrouterOutputItemToCodexResponseItem(
     } as JsonValue;
   }
   return null;
-}
-
-export function splitQualifiedToolNameForCodex(name: string): {
-  name: string;
-  namespace?: string;
-} {
-  if (name.startsWith("browser__")) {
-    return {
-      name: name.slice("browser__".length),
-      namespace: "browser",
-    };
-  }
-  if (name.startsWith("mcp__")) {
-    const stripped = name.slice("mcp__".length);
-    const separatorIndex = stripped.indexOf("__");
-    if (separatorIndex !== -1) {
-      const serverName = stripped.slice(0, separatorIndex);
-      return {
-        name: stripped.slice(separatorIndex + "__".length),
-        namespace: `mcp__${serverName}__`,
-      };
-    }
-  }
-  return { name };
 }

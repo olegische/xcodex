@@ -28,7 +28,7 @@ use codex_protocol::protocol::TurnAbortReason;
 use crate::MessageProcessor;
 use crate::ThreadRecord;
 use crate::ThreadState;
-use crate::thread_history::canonical_browser_tool_name;
+use crate::wasm_rollout_adapter::canonical_browser_tool_name;
 
 #[derive(Debug, Clone)]
 enum PendingToolCall {

@@ -1,22 +1,20 @@
 import type { BrowserDynamicToolExecutor } from "@browser-codex/wasm-browser-codex-runtime/types";
 import type { JsonValue } from "@browser-codex/wasm-runtime-core/types";
 import {
-  getPageRuntimeSnapshot,
-  getRecentPageEvents,
+  qualifyDynamicToolName,
+  unqualifyBrowserToolName,
+} from "@browser-codex/wasm-runtime-core";
+import {
   recordPageEvent,
   refreshPageRuntimeSnapshot,
 } from "./page-telemetry";
 import {
   inspectBrowserStorage,
   inspectCookies,
-  inspectGlobals,
   inspectPageResources,
   performanceSnapshot,
   probeHttpSurface,
-  probeInputReflection,
   runProbe,
-  scanDangerousSinks,
-  scanDomXssSurface,
 } from "./browser-sandbox-tools";
 
 type BrowserAiSurfaceSnapshot = {
@@ -74,8 +72,8 @@ const BROWSER_TOOLS = [
     },
   },
   {
-    name: "browser__page_context",
-    description: "Inspect the current browser page context, including title, URL, selection, headings, links, and capability posture.",
+    name: "browser__inspect_page",
+    description: "Inspect the current page, including title, URL, selection, headings, links, viewport, and interactive elements.",
     inputSchema: {
       type: "object",
       properties: {
@@ -86,17 +84,8 @@ const BROWSER_TOOLS = [
     },
   },
   {
-    name: "browser__ai_surface_scan",
-    description: "Scan the current page for AI-readable web signals such as llms.txt, schema.org, canonical tags, feeds, and freshness clues.",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "browser__extract_dom",
-    description: "Extract text, attributes, and brief HTML previews from DOM elements matched by a CSS selector on the current page.",
+    name: "browser__inspect_dom",
+    description: "Inspect DOM elements matched by a CSS selector and return text, attributes, and optional HTML previews.",
     inputSchema: {
       type: "object",
       properties: {
@@ -110,7 +99,7 @@ const BROWSER_TOOLS = [
   },
   {
     name: "browser__list_interactives",
-    description: "List likely clickable or fillable page surfaces with stable selectors for follow-up actions.",
+    description: "List likely clickable or fillable page elements with stable selectors for follow-up actions.",
     inputSchema: {
       type: "object",
       properties: {
@@ -172,17 +161,6 @@ const BROWSER_TOOLS = [
     },
   },
   {
-    name: "browser__event_stream",
-    description: "Read the most recent browser runtime events such as navigation, mutations, clicks, and tool actions.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: { type: "number" },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
     name: "browser__inspect_storage",
     description: "Inspect browser storage available to page JavaScript, including localStorage, sessionStorage, indexedDB, and non-HttpOnly cookies.",
     inputSchema: {
@@ -207,8 +185,8 @@ const BROWSER_TOOLS = [
     },
   },
   {
-    name: "browser__probe_http",
-    description: "Probe a same-origin HTTP URL with GET or HEAD and return readable response headers and status.",
+    name: "browser__inspect_http",
+    description: "Inspect a same-origin HTTP URL with GET or HEAD and return readable response headers and status.",
     inputSchema: {
       type: "object",
       properties: {
@@ -220,8 +198,8 @@ const BROWSER_TOOLS = [
     },
   },
   {
-    name: "browser__page_resources",
-    description: "Inventory scripts, styles, links, forms, iframes, meta tags, and resource timing entries on the current page.",
+    name: "browser__inspect_resources",
+    description: "Inspect scripts, styles, links, forms, iframes, meta tags, and resource timing entries on the current page.",
     inputSchema: {
       type: "object",
       properties: {
@@ -231,8 +209,8 @@ const BROWSER_TOOLS = [
     },
   },
   {
-    name: "browser__performance_snapshot",
-    description: "Read navigation and resource timing data exposed by the Performance API for the current page.",
+    name: "browser__inspect_performance",
+    description: "Inspect navigation and resource timing data exposed by the Performance API for the current page.",
     inputSchema: {
       type: "object",
       properties: {
@@ -242,8 +220,8 @@ const BROWSER_TOOLS = [
     },
   },
   {
-    name: "browser__run_probe",
-    description: "Run a bounded JavaScript probe in the current page context and return JSON-serializable output.",
+    name: "browser__evaluate",
+    description: "Run a bounded JavaScript evaluation in the current page context and return JSON-serializable output.",
     inputSchema: {
       type: "object",
       properties: {
@@ -252,54 +230,6 @@ const BROWSER_TOOLS = [
         timeoutMs: { type: "number" },
       },
       required: ["script"],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "browser__scan_dom_xss_surface",
-    description: "Scan the current DOM for XSS-relevant client-side surfaces such as inline handlers, javascript: URLs, srcdoc iframes, contenteditable nodes, and unsafe target=_blank links.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: { type: "number" },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "browser__scan_dangerous_sinks",
-    description: "Scan inline and same-origin script sources for dangerous DOM sinks such as innerHTML, outerHTML, insertAdjacentHTML, and document.write.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: { type: "number" },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "browser__inspect_globals",
-    description: "Inspect interesting window globals that may expose auth, config, tokens, or other sensitive client-side state.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        limit: { type: "number" },
-      },
-      additionalProperties: false,
-    },
-  },
-  {
-    name: "browser__probe_input_reflection",
-    description: "Inject a payload into a form control, optionally trigger a submit click, and test whether the payload is reflected back into the page DOM as text or HTML.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        selector: { type: "string" },
-        payload: { type: "string" },
-        submitSelector: { type: "string" },
-        waitMs: { type: "number" },
-      },
-      required: ["selector"],
       additionalProperties: false,
     },
   },
@@ -318,10 +248,7 @@ export function createBrowserAwareToolExecutor(): BrowserDynamicToolExecutor {
       const tools = await listBrowserToolCatalog();
       return {
         tools: tools.map((tool) => ({
-          toolName:
-            tool.toolNamespace === "browser"
-              ? tool.toolName.replace(/^browser__/, "")
-              : tool.toolName,
+          toolName: unqualifyBrowserToolName(tool),
           toolNamespace: tool.toolNamespace,
           description: tool.description,
           inputSchema: tool.inputSchema,
@@ -330,17 +257,12 @@ export function createBrowserAwareToolExecutor(): BrowserDynamicToolExecutor {
     },
     async invoke(params) {
       let output: JsonValue;
-      const toolName =
-        params.toolNamespace === "browser" && !params.toolName.startsWith("browser__")
-          ? `browser__${params.toolName}`
-          : params.toolName;
+      const toolName = qualifyDynamicToolName(params);
       if (toolName === "browser__tool_search") {
         output = await searchBrowserToolCatalog(asRecord(params.input));
-      } else if (toolName === "browser__page_context") {
+      } else if (toolName === "browser__inspect_page" || toolName === "browser__page_context") {
         output = inspectPageContext(asRecord(params.input));
-      } else if (toolName === "browser__ai_surface_scan") {
-        output = await scanCurrentAiSurface();
-      } else if (toolName === "browser__extract_dom") {
+      } else if (toolName === "browser__inspect_dom" || toolName === "browser__extract_dom") {
         output = extractDom(asRecord(params.input));
       } else if (toolName === "browser__list_interactives") {
         output = listInteractives(asRecord(params.input));
@@ -352,28 +274,18 @@ export function createBrowserAwareToolExecutor(): BrowserDynamicToolExecutor {
         output = navigatePage(asRecord(params.input));
       } else if (toolName === "browser__wait_for") {
         output = await waitForElement(asRecord(params.input));
-      } else if (toolName === "browser__event_stream") {
-        output = readEventStream(asRecord(params.input));
       } else if (toolName === "browser__inspect_storage") {
         output = await inspectBrowserStorage(params.input);
       } else if (toolName === "browser__inspect_cookies") {
         output = inspectCookies(params.input);
-      } else if (toolName === "browser__probe_http") {
+      } else if (toolName === "browser__inspect_http" || toolName === "browser__probe_http") {
         output = await probeHttpSurface(params.input);
-      } else if (toolName === "browser__page_resources") {
+      } else if (toolName === "browser__inspect_resources" || toolName === "browser__page_resources") {
         output = inspectPageResources(params.input);
-      } else if (toolName === "browser__performance_snapshot") {
+      } else if (toolName === "browser__inspect_performance" || toolName === "browser__performance_snapshot") {
         output = performanceSnapshot(params.input);
-      } else if (toolName === "browser__run_probe") {
+      } else if (toolName === "browser__evaluate" || toolName === "browser__run_probe") {
         output = await runProbe(params.input);
-      } else if (toolName === "browser__scan_dom_xss_surface") {
-        output = scanDomXssSurface(params.input);
-      } else if (toolName === "browser__scan_dangerous_sinks") {
-        output = await scanDangerousSinks(params.input);
-      } else if (toolName === "browser__inspect_globals") {
-        output = inspectGlobals(params.input);
-      } else if (toolName === "browser__probe_input_reflection") {
-        output = await probeInputReflection(params.input);
       } else {
         throw new Error(`Unsupported browser-aware tool: ${toolName}`);
       }
@@ -444,9 +356,7 @@ async function searchBrowserToolCatalog(input: Record<string, JsonValue>): Promi
       toolName: entry.toolName,
       toolNamespace: entry.toolNamespace,
       qualifiedName:
-        entry.toolNamespace === "browser" && entry.toolName.startsWith("browser__")
-          ? entry.toolName
-          : `${entry.toolNamespace}__${entry.toolName}`,
+        qualifyDynamicToolName(entry),
       description: entry.description,
       source: entry.source ?? null,
       keywords: entry.keywords ?? [],
@@ -466,9 +376,7 @@ function dedupeBrowserToolCatalog(tools: BrowserToolCatalogEntry[]): BrowserTool
 
 function scoreBrowserToolCatalogEntry(entry: BrowserToolCatalogEntry, queryTerms: string[]): number {
   const qualifiedName =
-    entry.toolNamespace === "browser" && entry.toolName.startsWith("browser__")
-      ? entry.toolName
-      : `${entry.toolNamespace}__${entry.toolName}`;
+    qualifyDynamicToolName(entry);
   const haystack = tokenizeSearchText(
     [
       entry.toolName,
@@ -620,7 +528,7 @@ function inspectPageContext(input: Record<string, JsonValue>): JsonValue {
 function extractDom(input: Record<string, JsonValue>): JsonValue {
   const selector = typeof input.selector === "string" ? input.selector.trim() : "";
   if (selector.length === 0) {
-    throw new Error("browser__extract_dom requires a non-empty selector");
+    throw new Error("browser__inspect_dom requires a non-empty selector");
   }
   const maxItems = clampNumber(input.maxItems, 8, 1, 24);
   const includeHtml = input.includeHtml === true;
@@ -812,14 +720,6 @@ async function waitForElement(input: Record<string, JsonValue>): Promise<JsonVal
     },
   );
   throw new Error(`browser__wait_for timed out after ${timeoutMs}ms for selector ${selector}`);
-}
-
-function readEventStream(input: Record<string, JsonValue>): JsonValue {
-  const limit = clampNumber(input.limit, 20, 1, 60);
-  return {
-    snapshot: getPageRuntimeSnapshot(),
-    events: getRecentPageEvents(limit),
-  } satisfies JsonValue;
 }
 
 function asRecord(value: JsonValue): Record<string, JsonValue> {

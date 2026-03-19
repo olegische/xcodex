@@ -1,19 +1,15 @@
 import { WORKSPACE_ROOT } from "@browser-codex/wasm-browser-host/constants";
 import {
   loadStoredWorkspaceSnapshot,
+  normalizeWorkspaceDirectoryPath,
   normalizeWorkspaceFilePath,
-  previewWorkspaceContent,
+  parentDirectory,
   saveStoredWorkspaceSnapshot,
-  type WorkspaceSnapshot,
   upsertWorkspaceFile,
 } from "@browser-codex/wasm-browser-host/workspace-storage";
-import {
-  listWorkspaceDir as listSharedWorkspaceDir,
-  readWorkspaceFile as readSharedWorkspaceFile,
-  searchWorkspace as searchSharedWorkspace,
-} from "@browser-codex/wasm-runtime-client";
-import type { JsonValue, WorkspaceDebugFile } from "./types";
-import { createHostError, normalizeHostValue } from "./utils";
+import { normalizeHostValue } from "@browser-codex/wasm-runtime-core/host-values";
+import type { JsonValue } from "./types";
+import { createHostError } from "./utils";
 
 type WorkspacePatchHunk = {
   oldText: string;
@@ -25,37 +21,72 @@ type WorkspacePatchOperation =
   | { type: "update"; path: string; hunks: WorkspacePatchHunk[] }
   | { type: "delete"; path: string };
 
-export const readWorkspaceFile = readSharedWorkspaceFile;
-export const listWorkspaceDir = listSharedWorkspaceDir;
-export const searchWorkspace = searchSharedWorkspace;
-
-export async function loadWorkspaceDebugSnapshot(): Promise<WorkspaceDebugFile[]> {
+export async function readWorkspaceFile(request: JsonValue): Promise<JsonValue> {
+  const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;
+  if (typeof normalizedRequest.path !== "string") {
+    throw createHostError("invalidInput", "readFile expected path");
+  }
   const workspace = await loadStoredWorkspaceSnapshot();
-  return workspace.files.map((file) => ({
-    path: file.path,
+  const path = normalizeWorkspaceFilePath(normalizedRequest.path);
+  const file = workspace.files.find((entry) => entry.path === path);
+  if (file === undefined) {
+    throw createHostError("notFound", `workspace file was not found: ${path}`);
+  }
+  return {
+    path,
     content: file.content,
-    bytes: new TextEncoder().encode(file.content).length,
-    preview: previewWorkspaceContent(file.content),
-  }));
+  };
 }
 
-export async function resetWorkspace(): Promise<void> {
-  await saveStoredWorkspaceSnapshot({
-    rootPath: WORKSPACE_ROOT,
-    files: [],
-  });
+export async function listWorkspaceDir(request: JsonValue): Promise<JsonValue> {
+  const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;
+  if (typeof normalizedRequest.path !== "string") {
+    throw createHostError("invalidInput", "listDir expected path");
+  }
+  const recursive = normalizedRequest.recursive === true;
+  const workspace = await loadStoredWorkspaceSnapshot();
+  const path = normalizeWorkspaceDirectoryPath(normalizedRequest.path);
+  return {
+    entries: workspace.files
+      .filter((file) =>
+        recursive ? file.path === path || file.path.startsWith(`${path}/`) : parentDirectory(file.path) === path,
+      )
+      .sort((left, right) => left.path.localeCompare(right.path))
+      .map((file) => ({
+        path: file.path,
+        isDir: false,
+        sizeBytes: new TextEncoder().encode(file.content).length,
+      })),
+  };
 }
 
-export function debugWorkspaceSnapshot(label: string, workspace: WorkspaceSnapshot, path?: string): void {
-  console.info(`[webui] ${label}`, {
-    path: path ?? null,
-    fileCount: workspace.files.length,
-    files: workspace.files.map((file) => ({
-      path: file.path,
-      bytes: new TextEncoder().encode(file.content).length,
-      preview: previewWorkspaceContent(file.content),
-    })),
-  });
+export async function searchWorkspace(request: JsonValue): Promise<JsonValue> {
+  const normalizedRequest = normalizeHostValue(request) as Record<string, unknown>;
+  if (
+    typeof normalizedRequest.path !== "string" ||
+    typeof normalizedRequest.query !== "string" ||
+    typeof normalizedRequest.caseSensitive !== "boolean"
+  ) {
+    throw createHostError("invalidInput", "search expected path, query and caseSensitive");
+  }
+  const workspace = await loadStoredWorkspaceSnapshot();
+  const path = normalizeWorkspaceDirectoryPath(normalizedRequest.path);
+  const query = normalizedRequest.caseSensitive
+    ? normalizedRequest.query
+    : normalizedRequest.query.toLocaleLowerCase();
+  return {
+    matches: workspace.files
+      .filter((file) => file.path === path || file.path.startsWith(`${path}/`))
+      .flatMap((file) =>
+        file.content.split("\n").flatMap((line, index) => {
+          const candidate = normalizedRequest.caseSensitive ? line : line.toLocaleLowerCase();
+          if (!candidate.includes(query)) {
+            return [];
+          }
+          return [{ path: file.path, lineNumber: index + 1, line }];
+        }),
+      ),
+  };
 }
 
 export async function writeWorkspaceFile(request: JsonValue): Promise<JsonValue> {
@@ -66,7 +97,6 @@ export async function writeWorkspaceFile(request: JsonValue): Promise<JsonValue>
   const workspace = await loadStoredWorkspaceSnapshot();
   const path = normalizeWorkspaceFilePath(normalizedRequest.path);
   const content = normalizedRequest.content;
-  validateWorkspaceFileContent(path, content);
   workspace.files = upsertWorkspaceFile(workspace.files, { path, content });
   await saveStoredWorkspaceSnapshot(workspace);
   return {
@@ -80,7 +110,6 @@ export async function applyWorkspacePatch(request: JsonValue): Promise<JsonValue
   if (typeof normalizedRequest.patch !== "string") {
     throw createHostError("invalidInput", "applyPatch expected patch");
   }
-
   const workspace = await loadStoredWorkspaceSnapshot();
   const operations = parseWorkspacePatch(normalizedRequest.patch);
   const filesChanged: string[] = [];
@@ -91,7 +120,6 @@ export async function applyWorkspacePatch(request: JsonValue): Promise<JsonValue
       if (existingFile !== undefined) {
         throw createHostError("conflict", `workspace file already exists: ${operation.path}`);
       }
-      validateWorkspaceFileContent(operation.path, operation.content);
       workspace.files = upsertWorkspaceFile(workspace.files, {
         path: operation.path,
         content: operation.content,
@@ -113,7 +141,6 @@ export async function applyWorkspacePatch(request: JsonValue): Promise<JsonValue
     const originalFile = workspace.files.find((file) => file.path === operation.path);
     const currentContent = originalFile?.content ?? "";
     const nextContent = applyUpdateHunksToContent(currentContent, operation.hunks);
-    validateWorkspaceFileContent(operation.path, nextContent);
     workspace.files = upsertWorkspaceFile(workspace.files, {
       path: operation.path,
       content: nextContent,
@@ -122,26 +149,7 @@ export async function applyWorkspacePatch(request: JsonValue): Promise<JsonValue
   }
 
   await saveStoredWorkspaceSnapshot(workspace);
-  debugWorkspaceSnapshot("workspace.after-apply-patch", workspace);
   return { filesChanged };
-}
-
-function validateWorkspaceFileContent(path: string, content: string): void {
-  if (!path.startsWith("/workspace/ui/") || !path.endsWith(".json")) {
-    return;
-  }
-  try {
-    JSON.parse(content);
-  } catch (error) {
-    throw createHostError("invalidInput", `workspace JSON is invalid for ${path}: ${formatWorkspaceValidationError(error)}`);
-  }
-}
-
-function formatWorkspaceValidationError(error: unknown): string {
-  if (error instanceof Error && error.message.length > 0) {
-    return error.message;
-  }
-  return "invalid JSON";
 }
 
 function applyUpdateHunksToContent(content: string, hunks: WorkspacePatchHunk[]): string {

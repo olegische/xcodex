@@ -524,6 +524,7 @@ mod tests {
     use codex_app_server_protocol::SkillsListExtraRootsForCwd;
     use codex_app_server_protocol::SkillsListParams;
     use codex_app_server_protocol::ThreadArchiveParams;
+    use codex_app_server_protocol::ThreadItem;
     use codex_app_server_protocol::ThreadListParams;
     use codex_app_server_protocol::ThreadReadParams;
     use codex_app_server_protocol::ThreadResumeParams;
@@ -532,6 +533,7 @@ mod tests {
     use codex_app_server_protocol::ThreadUnarchiveParams;
     use codex_app_server_protocol::TurnInterruptParams;
     use codex_app_server_protocol::TurnStartParams;
+    use codex_app_server_protocol::TurnStatus;
     use codex_app_server_protocol::UserInput;
     use codex_protocol::config_types::ReasoningSummary;
     use codex_protocol::openai_models::ConfigShellToolType;
@@ -540,9 +542,14 @@ mod tests {
     use codex_protocol::openai_models::ModelVisibility;
     use codex_protocol::openai_models::TruncationPolicyConfig;
     use codex_protocol::openai_models::WebSearchToolType;
+    use codex_protocol::protocol::AgentMessageEvent;
     use codex_protocol::protocol::Event;
     use codex_protocol::protocol::EventMsg;
+    use codex_protocol::protocol::RolloutItem;
     use codex_protocol::protocol::SessionSource;
+    use codex_protocol::protocol::TurnCompleteEvent;
+    use codex_protocol::protocol::TurnStartedEvent;
+    use codex_protocol::protocol::UserMessageEvent;
     use codex_protocol::request_user_input::RequestUserInputEvent;
     use codex_protocol::request_user_input::RequestUserInputQuestion;
     use codex_wasm_core::ConfigStorageHost;
@@ -576,6 +583,9 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Arc;
+
+    use crate::ThreadRecord;
+    use crate::TurnRecord;
 
     #[derive(Default)]
     struct InMemoryThreadStorageHost {
@@ -2239,6 +2249,248 @@ mod tests {
             Some("0194c6f0-4d4c-7eb2-a1d2-137d8d7c0abe")
         );
         assert_eq!(read["thread"]["name"].as_str(), Some("Stored Thread"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn thread_read_prefers_stored_settled_turns_for_loaded_threads() {
+        let mut processor = MessageProcessor::new(MessageProcessorArgs {
+            api_version: ApiVersion::V2,
+            config_warnings: Vec::new(),
+        });
+        let mut session = ConnectionSessionState::default();
+        let root = std::env::temp_dir().join(format!(
+            "codex-wasm-app-server-loaded-thread-read-test-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let thread_storage_host = Arc::new(InMemoryThreadStorageHost::default());
+        thread_storage_host
+            .save_thread_session(SaveThreadSessionRequest {
+                session: StoredThreadSession {
+                    metadata: StoredThreadSessionMetadata {
+                        thread_id: "thread-1".to_string(),
+                        rollout_id: "rollout-thread-1.jsonl".to_string(),
+                        created_at: 1,
+                        updated_at: 2,
+                        archived: false,
+                        name: Some("Stored Thread".to_string()),
+                        preview: "Stored prompt".to_string(),
+                        cwd: root.display().to_string(),
+                        model_provider: "openai".to_string(),
+                    },
+                    items: vec![
+                        RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
+                            turn_id: "turn-1".to_string(),
+                            model_context_window: None,
+                            collaboration_mode_kind: Default::default(),
+                        })),
+                        RolloutItem::EventMsg(EventMsg::UserMessage(UserMessageEvent {
+                            message: "inspect page".to_string(),
+                            images: None,
+                            text_elements: Vec::new(),
+                            local_images: Vec::new(),
+                        })),
+                        RolloutItem::ResponseItem(
+                            codex_protocol::models::ResponseItem::FunctionCall {
+                                id: None,
+                                call_id: "call-1".to_string(),
+                                name: "page_context".to_string(),
+                                namespace: Some("browser".to_string()),
+                                arguments: serde_json::json!({ "includeDom": true }).to_string(),
+                            },
+                        ),
+                        RolloutItem::ResponseItem(
+                            codex_protocol::models::ResponseItem::FunctionCallOutput {
+                                call_id: "call-1".to_string(),
+                                output:
+                                    codex_protocol::models::FunctionCallOutputPayload::from_text(
+                                        "{\"title\":\"Home\"}".to_string(),
+                                    ),
+                            },
+                        ),
+                        RolloutItem::EventMsg(EventMsg::AgentMessage(AgentMessageEvent {
+                            message: "Now I'll inspect storage".to_string(),
+                            phase: None,
+                        })),
+                        RolloutItem::ResponseItem(
+                            codex_protocol::models::ResponseItem::FunctionCall {
+                                id: None,
+                                call_id: "call-2".to_string(),
+                                name: "inspect_storage".to_string(),
+                                namespace: Some("browser".to_string()),
+                                arguments: serde_json::json!({ "scope": "indexedDb" }).to_string(),
+                            },
+                        ),
+                        RolloutItem::ResponseItem(
+                            codex_protocol::models::ResponseItem::FunctionCallOutput {
+                                call_id: "call-2".to_string(),
+                                output:
+                                    codex_protocol::models::FunctionCallOutputPayload::from_text(
+                                        "{\"stores\":[\"threadSessions\"]}".to_string(),
+                                    ),
+                            },
+                        ),
+                        RolloutItem::EventMsg(EventMsg::AgentMessage(AgentMessageEvent {
+                            message: "done".to_string(),
+                            phase: None,
+                        })),
+                        RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
+                            turn_id: "turn-1".to_string(),
+                            last_agent_message: None,
+                        })),
+                    ],
+                },
+            })
+            .await
+            .expect("seed stored session");
+        processor.set_runtime_bootstrap(crate::RuntimeBootstrap {
+            config: Config {
+                codex_home: root.clone(),
+                cwd: root.clone(),
+                ..Config::default()
+            },
+            auth: None,
+            model_catalog: None,
+            browser_fs: Arc::new(UnavailableHostFs),
+            discoverable_apps_provider: Arc::new(UnavailableDiscoverableAppsProvider),
+            model_transport_host: Arc::new(UnavailableModelTransportHost),
+            config_storage_host: Arc::new(UnavailableConfigStorageHost),
+            thread_storage_host,
+            mcp_oauth_host: Arc::new(UnavailableMcpOauthHost),
+        });
+
+        processor
+            .process_client_request(
+                ClientRequest::Initialize {
+                    request_id: RequestId::Integer(1),
+                    params: InitializeParams {
+                        client_info: ClientInfo {
+                            name: "web".to_string(),
+                            title: None,
+                            version: "1.0.0".to_string(),
+                        },
+                        capabilities: Some(InitializeCapabilities {
+                            experimental_api: true,
+                            opt_out_notification_methods: None,
+                        }),
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("initialize succeeds");
+
+        processor.register_thread(ThreadRecord {
+            id: "thread-1".to_string(),
+            preview: "Loaded prompt".to_string(),
+            ephemeral: false,
+            model_provider: "openai".to_string(),
+            cwd: PathBuf::from(&root),
+            source: SessionSource::Unknown,
+            name: Some("Loaded Thread".to_string()),
+            created_at: 1,
+            updated_at: 99,
+            archived: false,
+            turns: BTreeMap::from([(
+                "turn-1".to_string(),
+                TurnRecord {
+                    id: "turn-1".to_string(),
+                    items: vec![
+                        ThreadItem::UserMessage {
+                            id: "item-1".to_string(),
+                            content: vec![UserInput::Text {
+                                text: "inspect page".to_string(),
+                                text_elements: Vec::new(),
+                            }],
+                        },
+                        ThreadItem::AgentMessage {
+                            id: "item-2".to_string(),
+                            text: "done".to_string(),
+                            phase: None,
+                        },
+                        ThreadItem::DynamicToolCall {
+                            id: "call-1".to_string(),
+                            tool: "browser__page_context".to_string(),
+                            arguments: serde_json::json!({ "includeDom": true }),
+                            status: codex_app_server_protocol::DynamicToolCallStatus::Completed,
+                            content_items: Some(vec![
+                                codex_app_server_protocol::DynamicToolCallOutputContentItem::InputText {
+                                    text: "{\"title\":\"Home\"}".to_string(),
+                                },
+                            ]),
+                            success: None,
+                            duration_ms: None,
+                        },
+                        ThreadItem::DynamicToolCall {
+                            id: "call-2".to_string(),
+                            tool: "browser__inspect_storage".to_string(),
+                            arguments: serde_json::json!({ "scope": "indexedDb" }),
+                            status: codex_app_server_protocol::DynamicToolCallStatus::Completed,
+                            content_items: Some(vec![
+                                codex_app_server_protocol::DynamicToolCallOutputContentItem::InputText {
+                                    text: "{\"stores\":[\"threadSessions\"]}".to_string(),
+                                },
+                            ]),
+                            success: None,
+                            duration_ms: None,
+                        },
+                    ],
+                    status: TurnStatus::Completed,
+                    error: None,
+                },
+            )]),
+            active_turn_id: None,
+            waiting_on_approval: false,
+            waiting_on_user_input: false,
+        });
+
+        let read = processor
+            .process_client_request(
+                ClientRequest::ThreadRead {
+                    request_id: RequestId::Integer(2),
+                    params: ThreadReadParams {
+                        thread_id: "thread-1".to_string(),
+                        include_turns: true,
+                    },
+                },
+                &mut session,
+            )
+            .await
+            .expect("thread/read succeeds");
+
+        assert_eq!(read["thread"]["name"].as_str(), Some("Loaded Thread"));
+        assert_eq!(read["thread"]["preview"].as_str(), Some("Loaded prompt"));
+        assert_eq!(
+            read["thread"]["turns"][0]["items"]
+                .as_array()
+                .expect("turn items")
+                .iter()
+                .map(|item| item["type"].as_str().expect("item type"))
+                .collect::<Vec<_>>(),
+            vec![
+                "userMessage",
+                "dynamicToolCall",
+                "agentMessage",
+                "dynamicToolCall",
+                "agentMessage",
+            ]
+        );
+        assert_eq!(
+            read["thread"]["turns"][0]["items"][1]["tool"].as_str(),
+            Some("browser__page_context")
+        );
+        assert_eq!(
+            read["thread"]["turns"][0]["items"][2]["text"].as_str(),
+            Some("Now I'll inspect storage")
+        );
+        assert_eq!(
+            read["thread"]["turns"][0]["items"][3]["tool"].as_str(),
+            Some("browser__inspect_storage")
+        );
+        assert_eq!(
+            read["thread"]["turns"][0]["items"][4]["text"].as_str(),
+            Some("done")
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]

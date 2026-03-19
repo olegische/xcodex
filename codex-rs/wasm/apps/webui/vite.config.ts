@@ -21,6 +21,9 @@ export default defineConfig({
       "@browser-codex/wasm-model-transport": fileURLToPath(
         new URL("../../ts/model-transport/src", import.meta.url),
       ),
+      "@browser-codex/wasm-runtime-client": fileURLToPath(
+        new URL("../../ts/runtime-client/src", import.meta.url),
+      ),
     },
   },
   server: {

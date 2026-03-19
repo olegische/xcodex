@@ -22,6 +22,8 @@
       "@browser-codex/wasm-browser-tools/*": ["../../ts/browser-tools/src/*"],
       "@browser-codex/wasm-model-transport": ["../../ts/model-transport/src/index.ts"],
       "@browser-codex/wasm-model-transport/*": ["../../ts/model-transport/src/*"],
+      "@browser-codex/wasm-runtime-client": ["../../ts/runtime-client/src/index.ts"],
+      "@browser-codex/wasm-runtime-client/*": ["../../ts/runtime-client/src/*"],
       "@browser-codex/wasm-runtime-core": ["../../ts/runtime-core/src/index.ts"],
       "@browser-codex/wasm-runtime-core/*": ["../../ts/runtime-core/src/*"],
       "openai": ["./node_modules/openai/index.d.ts"]
