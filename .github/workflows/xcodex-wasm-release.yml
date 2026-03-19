@@ -100,14 +100,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tar -C dist -czf dist/xcodex-wasm-wasm.tar.gz xcodex-wasm
-          sha256sum dist/xcodex-wasm-wasm.tar.gz > dist/xcodex-wasm-wasm.tar.gz.sha256
+          tar -C dist -czf dist/xcodex-wasm.tar.gz xcodex-wasm
+          sha256sum dist/xcodex-wasm.tar.gz > dist/xcodex-wasm.tar.gz.sha256
           cat > dist/xcodex-wasm-release.txt <<EOF
           xcodex-wasm rolling wasm build
           commit=${{ github.event.workflow_run.head_sha || github.sha }}
           ref=${{ github.event.workflow_run.head_branch || github.ref_name }}
           run_id=${GITHUB_RUN_ID}
-          artifact=xcodex-wasm-wasm.tar.gz
+          artifact=xcodex-wasm.tar.gz
           entry=/xcodex-wasm/current/xcodex.js
           wasm=/xcodex-wasm/current/xcodex_bg.wasm
           manifest=/xcodex-wasm/manifest.json
@@ -119,8 +119,8 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f xcodex-wasm-wasm "${{ github.event.workflow_run.head_sha || github.sha }}"
-          git push origin refs/tags/xcodex-wasm-wasm --force
+          git tag -f xcodex-wasm "${{ github.event.workflow_run.head_sha || github.sha }}"
+          git push origin refs/tags/xcodex-wasm --force
 
       - name: Write release notes
         shell: bash
@@ -131,7 +131,7 @@ jobs:
 
           - branch: \`${{ github.event.workflow_run.head_branch || github.ref_name }}\`
           - commit: \`${{ github.event.workflow_run.head_sha || github.sha }}\`
-          - artifact: \`xcodex-wasm-wasm.tar.gz\`
+          - artifact: \`xcodex-wasm.tar.gz\`
           - entrypoint: \`xcodex.js\`
           - wasm binary: \`xcodex_bg.wasm\`
           - manifest: \`manifest.json\`
@@ -142,12 +142,12 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: xcodex-wasm-wasm
-          name: xcodex-wasm wasm
+          tag_name: xcodex-wasm
+          name: xcodex-wasm
           prerelease: true
           body_path: release-notes.md
           overwrite_files: true
           files: |
-            dist/xcodex-wasm-wasm.tar.gz
-            dist/xcodex-wasm-wasm.tar.gz.sha256
+            dist/xcodex-wasm.tar.gz
+            dist/xcodex-wasm.tar.gz.sha256
             dist/xcodex-wasm-release.txt
