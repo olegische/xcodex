@@ -37,6 +37,10 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - uses: dtolnay/rust-toolchain@1.93.0
         with:
           targets: wasm32-unknown-unknown
@@ -67,6 +71,25 @@ jobs:
             --out-dir dist/xcodex-wasm/current \
             --out-name xcodex
 
+      - name: Install browser runtime bundler dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix codex-rs/wasm/apps/webui
+
+      - name: Build xcodex browser runtime bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec --prefix codex-rs/wasm/apps/webui esbuild -- \
+            codex-rs/wasm/ts/browser-runtime/src/index.ts \
+            --bundle \
+            --format=esm \
+            --platform=browser \
+            --target=es2022 \
+            --sourcemap \
+            --outfile=dist/xcodex-wasm/current/xcodex-runtime.js
+
       - name: Write build manifest
         shell: bash
         run: |
@@ -76,7 +99,8 @@ jobs:
           {
             "buildId": "${build_id}",
             "entry": "/xcodex-wasm/current/xcodex.js",
-            "wasm": "/xcodex-wasm/current/xcodex_bg.wasm"
+            "wasm": "/xcodex-wasm/current/xcodex_bg.wasm",
+            "runtime": "/xcodex-wasm/current/xcodex-runtime.js"
           }
           EOF
 
@@ -93,6 +117,8 @@ jobs:
           - current/xcodex.js
           - current/xcodex_bg.wasm
           - current/xcodex.d.ts
+          - current/xcodex-runtime.js
+          - current/xcodex-runtime.js.map
           - manifest.json
           EOF
 
@@ -110,6 +136,7 @@ jobs:
           artifact=xcodex-wasm.tar.gz
           entry=/xcodex-wasm/current/xcodex.js
           wasm=/xcodex-wasm/current/xcodex_bg.wasm
+          runtime=/xcodex-wasm/current/xcodex-runtime.js
           manifest=/xcodex-wasm/manifest.json
           EOF
 
@@ -134,6 +161,7 @@ jobs:
           - artifact: \`xcodex-wasm.tar.gz\`
           - entrypoint: \`xcodex.js\`
           - wasm binary: \`xcodex_bg.wasm\`
+          - runtime bundle: \`xcodex-runtime.js\`
           - manifest: \`manifest.json\`
 
           This release is updated after successful \`wasm-rust-ci\` runs on \`wasm\`.

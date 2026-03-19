@@ -1,6 +1,6 @@
 packages:
   - codex-cli
-  - codex-rs/wasm/ts/host-runtime
+  - codex-rs/wasm/ts/browser-runtime
   - codex-rs/responses-api-proxy/npm
   - sdk/typescript
   - shell-tool-mcp

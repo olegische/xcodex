@@ -6,7 +6,7 @@ import {
   OPENROUTER_API_BASE_URL,
   PREFERRED_API_MODELS,
   ZAI_API_BASE_URL,
-} from "./constants";
+} from "./constants.ts";
 import type {
   CodexCompatibleConfig,
   CodexModelProviderConfig,
@@ -15,7 +15,7 @@ import type {
   JsonValue,
   ModelPreset,
   XrouterProvider,
-} from "./types";
+} from "./types.ts";
 
 export function formatError(error: unknown): string {
   if (error instanceof Error) {

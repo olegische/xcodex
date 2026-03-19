@@ -1,0 +1,73 @@
+{
+  "name": "xcodex-runtime",
+  "version": "0.1.0",
+  "description": "XCodex WASM Runtime SDK for integrating the browser-hosted WASM app-server runtime into web applications.",
+  "license": "Apache-2.0",
+  "author": "Oleg Romanchuk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olegische/xcodex.git",
+    "directory": "codex-rs/wasm/ts/browser-runtime"
+  },
+  "homepage": "https://github.com/olegische/xcodex/tree/wasm/codex-rs/wasm/ts/browser-runtime",
+  "bugs": {
+    "url": "https://github.com/olegische/xcodex/issues"
+  },
+  "keywords": [
+    "xcodex",
+    "codex",
+    "browser",
+    "wasm",
+    "runtime",
+    "typescript",
+    "sdk",
+    "web"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10.29.3"
+  },
+  "module": "./dist/index.js",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@browser-codex/wasm-browser-codex-runtime": "file:../browser-codex-runtime",
+    "@browser-codex/wasm-browser-host": "file:../browser-host",
+    "@browser-codex/wasm-browser-tools": "file:../browser-tools",
+    "@browser-codex/wasm-runtime-client": "file:../runtime-client",
+    "@browser-codex/wasm-runtime-core": "file:../runtime-core"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./src/config.ts",
+      "import": "./dist/config.js"
+    },
+    "./storage": {
+      "types": "./src/storage.ts",
+      "import": "./dist/storage.js"
+    },
+    "./types": {
+      "types": "./src/types.ts",
+      "import": "./dist/types.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "rm -rf dist && ../../apps/webui/node_modules/.bin/esbuild src/index.ts src/config.ts src/storage.ts src/types.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outdir=dist",
+    "build:watch": "../../apps/webui/node_modules/.bin/esbuild src/index.ts src/config.ts src/storage.ts src/types.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outdir=dist --watch",
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts"
+  },
+  "packageManager": "pnpm@10.29.3+sha512.498e1fb4cca5aa06c1dcf2611e6fafc50972ffe7189998c409e90de74566444298ffe43e6cd2acdc775ba1aa7cc5e092a8b7054c811ba8c5770f84693d33d2dc"
+}

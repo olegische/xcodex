@@ -1,4 +1,4 @@
-import type { StoredUserConfig } from "./types";
+import type { StoredUserConfig } from "./types.ts";
 
 export type IndexedDbRuntimeStoreNames = {
   threadSessions: string;

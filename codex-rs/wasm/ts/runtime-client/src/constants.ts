@@ -1,7 +1,7 @@
-import { WORKSPACE_ROOT } from "@browser-codex/wasm-browser-host/constants";
-import type { CodexCompatibleConfig, DemoInstructions, XrouterProvider } from "./types";
+import { WORKSPACE_ROOT } from "../../browser-host/src/constants.ts";
+import type { CodexCompatibleConfig, DemoInstructions, XrouterProvider } from "./types.ts";
 
-export { WORKSPACE_ROOT } from "@browser-codex/wasm-browser-host/constants";
+export { WORKSPACE_ROOT } from "../../browser-host/src/constants.ts";
 
 export const OPENAI_API_BASE_URL = "https://api.openai.com/v1";
 export const OPENROUTER_API_BASE_URL = "https://openrouter.ai/api/v1";

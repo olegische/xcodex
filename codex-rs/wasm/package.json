@@ -4,8 +4,12 @@
   "workspaces": [
     "apps/webui",
     "integrations/codexui",
+    "ts/browser-codex-runtime",
+    "ts/browser-runtime",
     "ts/browser-host",
+    "ts/browser-tools",
     "ts/model-transport",
+    "ts/runtime-client",
     "ts/runtime-core"
   ]
 }
