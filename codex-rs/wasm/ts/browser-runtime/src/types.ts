@@ -29,3 +29,11 @@ export type {
   StoredThreadSession,
   StoredThreadSessionMetadata,
 } from "./types/core";
+
+export type {
+  LocalStorageWorkspaceAdapterOptions,
+  WorkspaceEventTargetLike,
+  WorkspaceFileRecord,
+  WorkspaceSnapshot,
+  WorkspaceStorageLike,
+} from "./workspace";

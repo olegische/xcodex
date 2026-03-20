@@ -6,6 +6,7 @@ node_modules
 
 # Keep pnpm-lock.yaml
 !pnpm-lock.yaml
+package-lock.json
 
 # build
 dist/
@@ -90,4 +91,3 @@ CHANGELOG.ignore.md
 # Python bytecode files
 __pycache__/
 *.pyc
-

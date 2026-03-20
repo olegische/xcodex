@@ -18,6 +18,7 @@ This package is an early `v0.1.0` SDK surface for the XCodex WASM Runtime.
 The intended public API is:
 
 - `xcodex-runtime`
+- `xcodex-runtime/workspace`
 - `xcodex-runtime/config`
 - `xcodex-runtime/storage`
 - `xcodex-runtime/types`
@@ -35,6 +36,12 @@ pnpm add xcodex-runtime
 ### `xcodex-runtime`
 
 - `createBrowserCodexRuntimeContext`
+- `createLocalStorageWorkspaceAdapter`
+- `createBrowserWorkspaceAdapter`
+- `readWorkspaceFile`
+- `listWorkspaceDir`
+- `searchWorkspace`
+- `applyWorkspacePatch`
 - `DEFAULT_CODEX_CONFIG`
 - `DEFAULT_DEMO_INSTRUCTIONS`
 - `XROUTER_PROVIDER_OPTIONS`
@@ -44,6 +51,19 @@ pnpm add xcodex-runtime
 - `getActiveProvider`
 - `activeProviderApiKey`
 - `formatError`
+
+### `xcodex-runtime/workspace`
+
+- `createLocalStorageWorkspaceAdapter`
+- `createBrowserWorkspaceAdapter`
+- `readWorkspaceFile`
+- `listWorkspaceDir`
+- `searchWorkspace`
+- `applyWorkspacePatch`
+- `loadStoredWorkspaceSnapshot`
+- `saveStoredWorkspaceSnapshot`
+- `normalizeWorkspaceFilePath`
+- `normalizeWorkspaceDirectoryPath`
 
 ### `xcodex-runtime/storage`
 
@@ -66,6 +86,7 @@ import {
   DEFAULT_CODEX_CONFIG,
 } from "xcodex-runtime";
 import { createIndexedDbCodexStorage } from "xcodex-runtime/storage";
+import { createLocalStorageWorkspaceAdapter } from "xcodex-runtime/workspace";
 import type {
   AuthState,
   CodexCompatibleConfig,
@@ -96,20 +117,7 @@ const storage = createIndexedDbCodexStorage<
 const context = await createBrowserCodexRuntimeContext({
   cwd: "/workspace",
   storage,
-  workspace: {
-    async readFile(request) {
-      return request;
-    },
-    async listDir(request) {
-      return request;
-    },
-    async search(request) {
-      return request;
-    },
-    async applyPatch(request) {
-      return request;
-    },
-  },
+  workspace: createLocalStorageWorkspaceAdapter(),
 });
 ```
 
@@ -122,7 +130,23 @@ const context = await createBrowserCodexRuntimeContext({
 - `search`
 - `applyPatch`
 
-Each method currently accepts and returns `JsonValue`, so the runtime can pass browser-host protocol payloads through the adapter boundary without exposing internal host implementation modules as public API.
+`xcodex-runtime/workspace` now provides the default browser/localStorage implementation used by browser consumers, plus direct helper exports if you want to keep assembling the adapter manually:
+
+```ts
+import {
+  applyWorkspacePatch,
+  listWorkspaceDir,
+  readWorkspaceFile,
+  searchWorkspace,
+} from "xcodex-runtime/workspace";
+
+const workspace = {
+  readFile: readWorkspaceFile,
+  listDir: listWorkspaceDir,
+  search: searchWorkspace,
+  applyPatch: applyWorkspacePatch,
+};
+```
 
 ## Storage
 

@@ -1,4 +1,16 @@
 export { createBrowserCodexRuntimeContext } from "./runtime-context";
+export {
+  applyWorkspacePatch,
+  createBrowserWorkspaceAdapter,
+  createLocalStorageWorkspaceAdapter,
+  listWorkspaceDir,
+  loadStoredWorkspaceSnapshot,
+  normalizeWorkspaceDirectoryPath,
+  normalizeWorkspaceFilePath,
+  readWorkspaceFile,
+  saveStoredWorkspaceSnapshot,
+  searchWorkspace,
+} from "./workspace";
 
 export {
   DEFAULT_CODEX_CONFIG,
