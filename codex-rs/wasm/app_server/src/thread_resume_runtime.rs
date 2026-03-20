@@ -20,6 +20,7 @@ use crate::LoadedThread;
 use crate::RuntimeBootstrap;
 use crate::ThreadRecord;
 use crate::TurnRecord;
+use crate::layout::normalize_browser_user_cwd;
 use crate::models::build_thread;
 use crate::runtime_bootstrap::resolve_model;
 
@@ -124,7 +125,7 @@ async fn spawn_resumed_thread(
         config.service_tier = service_tier;
     }
     if let Some(cwd) = params.cwd.clone() {
-        config.cwd = PathBuf::from(cwd);
+        config.cwd = normalize_browser_user_cwd(PathBuf::from(cwd).as_path());
     }
     if let Some(base_instructions) = params.base_instructions.clone() {
         config.base_instructions = Some(base_instructions);
@@ -212,7 +213,7 @@ fn build_thread_record(
             } else {
                 stored.metadata.model_provider.clone()
             },
-            cwd: PathBuf::from(stored.metadata.cwd.clone()),
+            cwd: normalize_browser_user_cwd(std::path::Path::new(&stored.metadata.cwd)),
             source: session_source_from_items(&stored.items),
             name: stored.metadata.name.clone(),
             created_at: stored.metadata.created_at,

@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -8,6 +9,7 @@ use wasm_bindgen::JsValue;
 
 use crate::host::BrowserBootstrap;
 use crate::host::JsHost;
+use crate::layout::normalize_browser_user_cwd;
 use crate::state::RuntimeBootstrap;
 use crate::state::RuntimeState;
 
@@ -66,11 +68,10 @@ async fn build_bootstrap_config(
 ) -> Config {
     let mut config = Config {
         codex_home: PathBuf::from(bootstrap.codex_home.clone()),
-        cwd: bootstrap
-            .cwd
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(bootstrap.codex_home.clone())),
+        cwd: bootstrap.cwd.as_ref().map_or_else(
+            || normalize_browser_user_cwd(PathBuf::from(&bootstrap.codex_home).as_path()),
+            |cwd| normalize_browser_user_cwd(Path::new(cwd)),
+        ),
         model: bootstrap.model.clone(),
         model_provider_id: bootstrap
             .model_provider_id

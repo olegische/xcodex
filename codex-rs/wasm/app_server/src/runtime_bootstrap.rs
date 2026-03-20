@@ -14,6 +14,8 @@ use codex_wasm_core::ModelTransportHost;
 use codex_wasm_core::ThreadStorageHost;
 use codex_wasm_core::config::Config;
 
+use crate::layout::normalize_browser_user_cwd;
+
 #[derive(Clone)]
 pub struct RuntimeBootstrap {
     pub config: Config,
@@ -38,7 +40,7 @@ pub fn apply_thread_start_overrides(config: &mut Config, params: &ThreadStartPar
         config.service_tier = service_tier;
     }
     if let Some(cwd) = params.cwd.clone() {
-        config.cwd = PathBuf::from(cwd);
+        config.cwd = normalize_browser_user_cwd(PathBuf::from(cwd).as_path());
     }
     if let Some(approval_policy) = params.approval_policy {
         let _ = config

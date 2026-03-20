@@ -1902,6 +1902,7 @@ mod tests {
                 .and_then(serde_json::Value::as_str),
             Some("openai")
         );
+        assert_eq!(resumed["thread"]["cwd"].as_str(), Some("/workspace"));
         assert_eq!(
             resumed["thread"]["id"].as_str(),
             thread_start["thread"]["id"].as_str()
@@ -1934,7 +1935,7 @@ mod tests {
                         archived: false,
                         name: Some("Stored Thread".to_string()),
                         preview: "Stored prompt".to_string(),
-                        cwd: root.display().to_string(),
+                        cwd: "/codex-home".to_string(),
                         model_provider: "openai".to_string(),
                     },
                     items: vec![codex_protocol::protocol::RolloutItem::SessionMeta(
@@ -1946,7 +1947,7 @@ mod tests {
                                 .expect("thread id"),
                                 forked_from_id: None,
                                 timestamp: codex_wasm_core::time::now_rfc3339(),
-                                cwd: root.clone(),
+                                cwd: PathBuf::from("/codex-home"),
                                 originator: "wasm".to_string(),
                                 cli_version: env!("CARGO_PKG_VERSION").to_string(),
                                 source: SessionSource::Unknown,
@@ -2037,6 +2038,7 @@ mod tests {
             Some("0194c6f0-4d4c-7eb2-a1d2-137d8d7c0abc")
         );
         assert_eq!(resumed["thread"]["name"].as_str(), Some("Stored Thread"));
+        assert_eq!(resumed["thread"]["cwd"].as_str(), Some("/workspace"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -2065,7 +2067,7 @@ mod tests {
                         archived: false,
                         name: Some("Stored Thread".to_string()),
                         preview: "Stored prompt".to_string(),
-                        cwd: root.display().to_string(),
+                        cwd: "/codex-home".to_string(),
                         model_provider: "openai".to_string(),
                     },
                     items: Vec::new(),
@@ -2119,7 +2121,7 @@ mod tests {
                         limit: None,
                         search_term: None,
                         archived: Some(false),
-                        cwd: Some(root.display().to_string()),
+                        cwd: Some("/workspace".to_string()),
                         model_providers: None,
                         source_kinds: None,
                         sort_key: None,
@@ -2135,6 +2137,7 @@ mod tests {
             Some("0194c6f0-4d4c-7eb2-a1d2-137d8d7c0abd")
         );
         assert_eq!(listed["data"][0]["name"].as_str(), Some("Stored Thread"));
+        assert_eq!(listed["data"][0]["cwd"].as_str(), Some("/workspace"));
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -2163,7 +2166,7 @@ mod tests {
                         archived: false,
                         name: Some("Stored Thread".to_string()),
                         preview: "Stored prompt".to_string(),
-                        cwd: root.display().to_string(),
+                        cwd: "/codex-home".to_string(),
                         model_provider: "openai".to_string(),
                     },
                     items: vec![codex_protocol::protocol::RolloutItem::SessionMeta(
@@ -2175,7 +2178,7 @@ mod tests {
                                 .expect("thread id"),
                                 forked_from_id: None,
                                 timestamp: codex_wasm_core::time::now_rfc3339(),
-                                cwd: root.clone(),
+                                cwd: PathBuf::from("/codex-home"),
                                 originator: "wasm".to_string(),
                                 cli_version: env!("CARGO_PKG_VERSION").to_string(),
                                 source: SessionSource::Unknown,
@@ -2249,6 +2252,7 @@ mod tests {
             Some("0194c6f0-4d4c-7eb2-a1d2-137d8d7c0abe")
         );
         assert_eq!(read["thread"]["name"].as_str(), Some("Stored Thread"));
+        assert_eq!(read["thread"]["cwd"].as_str(), Some("/workspace"));
     }
 
     #[tokio::test(flavor = "current_thread")]

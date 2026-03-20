@@ -4,6 +4,7 @@ mod bootstrap_bridge;
 mod event_bridge;
 mod host;
 mod jsonrpc_bridge;
+mod layout;
 mod mapping;
 mod rpc;
 mod runtime;

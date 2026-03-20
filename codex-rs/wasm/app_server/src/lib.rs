@@ -2,6 +2,7 @@ mod bespoke_event_handling;
 mod codex_message_processor;
 mod config_api;
 mod in_process;
+mod layout;
 mod loaded_thread_runtime;
 mod message_processor;
 mod models;

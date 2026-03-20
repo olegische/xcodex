@@ -23,7 +23,6 @@ use codex_protocol::protocol::Op;
 use codex_protocol::protocol::RolloutItem;
 use codex_protocol::protocol::SessionSource;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::AppServerState;
@@ -57,6 +56,8 @@ use codex_wasm_core::codex::SteerInputError;
 use codex_wasm_core::mcp::collect_mcp_snapshot;
 use codex_wasm_core::mcp::group_tools_by_server;
 use codex_wasm_core::spawn_browser_codex;
+
+use crate::layout::normalize_browser_user_cwd;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum ApiVersion {
@@ -666,10 +667,10 @@ impl CodexMessageProcessor {
                             .into_iter()
                             .map(codex_app_server_protocol::UserInput::into_core)
                             .collect(),
-                        cwd: params
-                            .cwd
-                            .clone()
-                            .unwrap_or_else(|| bootstrap.config.cwd.clone()),
+                        cwd: params.cwd.clone().map_or_else(
+                            || bootstrap.config.cwd.clone(),
+                            |cwd| normalize_browser_user_cwd(std::path::Path::new(&cwd)),
+                        ),
                         approval_policy: params
                             .approval_policy
                             .map(codex_app_server_protocol::AskForApproval::to_core)
@@ -1002,6 +1003,9 @@ where
     };
     let mut session = session;
     update(&mut session.metadata);
+    session.metadata.cwd = normalize_browser_user_cwd(std::path::Path::new(&session.metadata.cwd))
+        .display()
+        .to_string();
     runtime_bootstrap
         .thread_storage_host
         .save_thread_session(SaveThreadSessionRequest {
@@ -1018,7 +1022,7 @@ fn stored_metadata_to_thread_record(metadata: StoredThreadSessionMetadata) -> Th
         preview: metadata.preview,
         ephemeral: false,
         model_provider: metadata.model_provider,
-        cwd: PathBuf::from(metadata.cwd),
+        cwd: normalize_browser_user_cwd(std::path::Path::new(&metadata.cwd)),
         source: SessionSource::Unknown,
         name: metadata.name,
         created_at: metadata.created_at,
@@ -1078,7 +1082,7 @@ fn stored_session_to_thread_record(
         preview: stored.metadata.preview.clone(),
         ephemeral: false,
         model_provider: stored.metadata.model_provider.clone(),
-        cwd: PathBuf::from(stored.metadata.cwd.as_str()),
+        cwd: normalize_browser_user_cwd(std::path::Path::new(&stored.metadata.cwd)),
         source: session_source_from_items(&stored.items),
         name: stored.metadata.name.clone(),
         created_at: stored.metadata.created_at,

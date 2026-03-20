@@ -1,4 +1,10 @@
 import type { JsonValue, StoredThreadSession } from "./types/core.ts";
+import {
+  DEFAULT_BROWSER_CODEX_HOME,
+  DEFAULT_BROWSER_WORKSPACE_ROOT,
+  sanitizeStoredThreadSession,
+  sanitizeStoredThreadSessionMetadata,
+} from "./layout.ts";
 import type {
   Account,
   AuthState,
@@ -43,8 +49,8 @@ export async function createBrowserCodexRuntimeContextWithDeps(
       const provider = deps.getActiveProvider(config);
       const apiKey = fallbackApiKey(authState) || deps.activeProviderApiKey(config);
       return deps.buildBrowserRuntimeBootstrap({
-        codexHome: options.codexHome ?? "/codex-home",
-        cwd: options.cwd,
+        codexHome: options.codexHome ?? DEFAULT_BROWSER_CODEX_HOME,
+        cwd: DEFAULT_BROWSER_WORKSPACE_ROOT,
         model: config.model.trim() || null,
         modelProviderId: config.modelProvider,
         modelProvider: {
@@ -68,9 +74,9 @@ export async function createBrowserCodexRuntimeContextWithDeps(
     search: options.workspace.search,
     applyPatch: options.workspace.applyPatch,
     async loadUserConfig() {
-      return (
+          return (
         (await storage.loadUserConfig()) ?? {
-          filePath: `${options.codexHome ?? "/codex-home"}/config.toml`,
+          filePath: `${options.codexHome ?? DEFAULT_BROWSER_CODEX_HOME}/config.toml`,
           version: "0",
           content: "",
         }
@@ -93,10 +99,10 @@ export async function createBrowserCodexRuntimeContextWithDeps(
       if (session === null) {
         throw new Error(`thread session not found: ${request.threadId}`);
       }
-      return { session };
+      return { session: sanitizeStoredThreadSession(session) };
     },
     async saveThreadSession(request: { session: StoredThreadSession }) {
-      await storage.saveSession(request.session);
+      await storage.saveSession(sanitizeStoredThreadSession(request.session));
       return null;
     },
     async deleteThreadSession(request: { threadId: string }) {
@@ -104,7 +110,9 @@ export async function createBrowserCodexRuntimeContextWithDeps(
       return null;
     },
     async listThreadSessions() {
-      return { sessions: await storage.listSessions() };
+      return {
+        sessions: (await storage.listSessions()).map(sanitizeStoredThreadSessionMetadata),
+      };
     },
     async listDiscoverableApps() {
       return [];

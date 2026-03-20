@@ -9,6 +9,13 @@ export {
 } from "./assets.ts";
 export { createBrowserRuntimeModelTransportAdapter } from "./transport.ts";
 export {
+  DEFAULT_BROWSER_CODEX_HOME,
+  DEFAULT_BROWSER_WORKSPACE_ROOT,
+  normalizeBrowserUserCwd,
+  sanitizeStoredThreadSession,
+  sanitizeStoredThreadSessionMetadata,
+} from "./layout.ts";
+export {
   applyWorkspacePatch,
   createBrowserWorkspaceAdapter,
   createLocalStorageWorkspaceAdapter,

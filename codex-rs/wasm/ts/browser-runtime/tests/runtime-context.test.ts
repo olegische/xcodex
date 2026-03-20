@@ -189,6 +189,58 @@ test("createBrowserCodexRuntimeContext normalizes requestUserInput answers into 
   });
 });
 
+test("createBrowserCodexRuntimeContext keeps stored thread cwd on workspace root", async () => {
+  const storage = createMemoryStorage();
+  const captured = createCapturedDeps();
+  const staleSession: StoredThreadSession = {
+    metadata: {
+      threadId: "thread-1",
+      rolloutId: "rollout-1",
+      createdAt: 1,
+      updatedAt: 2,
+      archived: false,
+      name: "Thread",
+      preview: "Preview",
+      cwd: "/codex-home",
+      modelProvider: "openai",
+    },
+    items: [],
+  };
+  await storage.saveSession(staleSession);
+
+  await createBrowserCodexRuntimeContextWithDeps(
+    {
+      cwd: "/codex-home",
+      storage,
+      workspace: createWorkspaceAdapter(),
+    },
+    captured.deps,
+  );
+
+  assert.deepEqual(await captured.hostDeps.loadThreadSession({ threadId: "thread-1" }), {
+    session: {
+      ...staleSession,
+      metadata: {
+        ...staleSession.metadata,
+        cwd: "/workspace",
+      },
+    },
+  });
+  assert.deepEqual(await captured.hostDeps.listThreadSessions(), {
+    sessions: [
+      {
+        ...staleSession.metadata,
+        cwd: "/workspace",
+      },
+    ],
+  });
+
+  await captured.hostDeps.saveThreadSession({ session: staleSession });
+  assert.deepEqual((await storage.loadSession("thread-1"))?.metadata.cwd, "/workspace");
+  await captured.hostDeps.loadBootstrap();
+  assert.equal(captured.bootstrapArgs?.cwd, "/workspace");
+});
+
 test("createIndexedDbCodexStorage persists auth, config, sessions and user config", async () => {
   installIndexedDbMock();
 
@@ -369,6 +421,9 @@ function createCapturedDeps() {
     get hostDeps() {
       return hostDeps as {
         loadBootstrap(): Promise<unknown>;
+        loadThreadSession(args: { threadId: string }): Promise<unknown>;
+        saveThreadSession(args: { session: StoredThreadSession }): Promise<unknown>;
+        listThreadSessions(): Promise<unknown>;
       };
     },
     emitNotification(notification: unknown) {
