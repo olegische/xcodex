@@ -18,17 +18,18 @@ clients, and give tarball-only consumers a stable contract.
 
 Current implementation status as of this plan update:
 
-- Phase 1 is effectively complete.
-- Phase 2 is largely complete.
-- Phase 3 is effectively complete.
-- Phase 4 is effectively complete for `ts/browser-runtime`.
-- Phase 5 is effectively complete for the current SDK/internal package split.
+- Phase 1 is complete.
+- Phase 2 is complete.
+- Phase 3 is complete.
+- Phase 4 is complete for `ts/browser-runtime`.
+- Phase 5 is complete for the `codex-rs/wasm/ts` package graph.
 
 What is already done:
 
 - `browser-runtime/README.md` now documents the package contract, root API, and
   tarball/bundle contract.
-- `TARBALL_CONTRACT.md` documents the canonical `xcodex-wasm.tar.gz` layout.
+- `ARCHITECTURE.md` now documents the package boundaries, steady-state codemap,
+  and canonical `xcodex-wasm.tar.gz` bundle contract.
 - `xcodex-runtime` root exports now include the browser happy-path API,
   including IndexedDB storage and workspace helpers.
 - `xcodex-runtime` now owns browser-facing `assets` and `transport` entrypoints
@@ -44,13 +45,17 @@ What is already done:
   a mixed public helper surface.
 - `runtime-client` no longer exports browser-facing assets, transport, or
   workspace helpers from its package root.
+- legacy internal helper modules were deleted from `runtime-client` and
+  `browser-host` once their responsibilities moved into `browser-runtime`.
+- the remaining `runtime-client` package is now just a transitional empty
+  internal placeholder instead of a second browser-facing façade.
 
 What remains:
 
-- trim compatibility exports and internal shims that are no longer needed after
-  the SDK promotion work.
-- optionally add a short follow-up status note or completion checklist once
-  the remaining internal packages are pared down further.
+- migrate out-of-tree or non-`ts/` consumers that still import old internal
+  package paths.
+- optionally remove the now-empty `runtime-client` package entirely in a
+  follow-up once external/internal consumers are migrated.
 
 ## Current Problems
 
