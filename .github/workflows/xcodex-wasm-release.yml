@@ -75,13 +75,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm install --prefix codex-rs/wasm/apps/webui
+          npm install --prefix codex-rs/wasm
 
       - name: Build xcodex browser runtime bundle
         shell: bash
         run: |
           set -euo pipefail
-          npm exec --prefix codex-rs/wasm/apps/webui esbuild -- \
+          npm exec --prefix codex-rs/wasm esbuild -- \
             codex-rs/wasm/ts/browser-runtime/src/index.ts \
             --bundle \
             --format=esm \
