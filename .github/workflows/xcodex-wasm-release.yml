@@ -1,12 +1,18 @@
 name: xcodex-wasm-release
 
 on:
-  workflow_run:
-    workflows:
-      - wasm-rust-ci
-    types:
-      - completed
+  # Temporary: release is decoupled from wasm-rust-ci and runs directly on
+  # pushes to the wasm branch until the workflow_run path is stable again.
+  push:
+    branches:
+      - wasm
   workflow_dispatch:
+  # Original trigger, kept here intentionally for easy restoration:
+  # workflow_run:
+  #   workflows:
+  #     - wasm-rust-ci
+  #   types:
+  #     - completed
 
 concurrency:
   group: xcodex-wasm-release
@@ -19,22 +25,24 @@ jobs:
     # Publish only from the dedicated wasm branch. This workflow is intentionally
     # scoped to the fork's WASM surface and does not validate or release
     # unrelated upstream crates.
-    if: >-
-      (
-        github.event_name == 'workflow_dispatch' &&
-        github.ref_name == 'wasm'
-      ) ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_branch == 'wasm'
-      )
+    # Temporary direct-release gate. Original workflow_run gate:
+    # if: >-
+    #   (
+    #     github.event_name == 'workflow_dispatch' &&
+    #     github.ref_name == 'wasm'
+    #   ) ||
+    #   (
+    #     github.event.workflow_run.conclusion == 'success' &&
+    #     github.event.workflow_run.head_branch == 'wasm'
+    #   )
+    if: github.ref_name == 'wasm'
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -94,7 +102,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          build_id="${{ github.event.workflow_run.head_sha || github.sha }}"
+          build_id="${{ github.sha }}"
           cat > dist/xcodex-wasm/manifest.json <<EOF
           {
             "buildId": "${build_id}",
@@ -130,8 +138,8 @@ jobs:
           sha256sum dist/xcodex-wasm.tar.gz > dist/xcodex-wasm.tar.gz.sha256
           cat > dist/xcodex-wasm-release.txt <<EOF
           xcodex-wasm rolling wasm build
-          commit=${{ github.event.workflow_run.head_sha || github.sha }}
-          ref=${{ github.event.workflow_run.head_branch || github.ref_name }}
+          commit=${{ github.sha }}
+          ref=${{ github.ref_name }}
           run_id=${GITHUB_RUN_ID}
           artifact=xcodex-wasm.tar.gz
           entry=/xcodex-wasm/current/xcodex.js
@@ -146,7 +154,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f xcodex-wasm "${{ github.event.workflow_run.head_sha || github.sha }}"
+          git tag -f xcodex-wasm "${{ github.sha }}"
           git push origin refs/tags/xcodex-wasm --force
 
       - name: Write release notes
@@ -156,15 +164,15 @@ jobs:
           cat > release-notes.md <<EOF
           Automated rolling browser/WASM build for \`xcodex-wasm\`.
 
-          - branch: \`${{ github.event.workflow_run.head_branch || github.ref_name }}\`
-          - commit: \`${{ github.event.workflow_run.head_sha || github.sha }}\`
+          - branch: \`${{ github.ref_name }}\`
+          - commit: \`${{ github.sha }}\`
           - artifact: \`xcodex-wasm.tar.gz\`
           - entrypoint: \`xcodex.js\`
           - wasm binary: \`xcodex_bg.wasm\`
           - runtime bundle: \`xcodex-runtime.js\`
           - manifest: \`manifest.json\`
 
-          This release is updated after successful \`wasm-rust-ci\` runs on \`wasm\`.
+          This release is updated on direct pushes to \`wasm\`.
           EOF
 
       - name: Publish GitHub Release
