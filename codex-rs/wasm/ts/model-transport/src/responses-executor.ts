@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { firstResponsesApiUrl } from "./http";
+import { firstResponsesApiUrl } from "./http.ts";
 
 export type ResponsesStreamEvent = Record<string, unknown>;
 

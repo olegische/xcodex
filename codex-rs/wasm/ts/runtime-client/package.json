@@ -3,11 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "dependencies": {
-    "@browser-codex/wasm-browser-host": "file:../browser-host",
-    "@browser-codex/wasm-model-transport": "file:../model-transport",
-    "@browser-codex/wasm-runtime-core": "file:../runtime-core"
-  },
   "exports": {
     ".": "./src/index.ts"
   }

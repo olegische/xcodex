@@ -1,9 +1,11 @@
 import type { XrouterRuntimeModule } from "@browser-codex/wasm-model-transport";
 import type { RuntimeModule } from "@browser-codex/wasm-runtime-core/types";
-import { BUILD_MANIFEST_PATH, XROUTER_MANIFEST_PATH } from "./constants";
+import { BUILD_MANIFEST_PATH, XROUTER_MANIFEST_PATH } from "./config.ts";
 
 type LoadableXrouterRuntimeModule = XrouterRuntimeModule & {
-  default(input?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module): Promise<void>;
+  default(
+    input?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module,
+  ): Promise<void>;
 };
 
 let xrouterModulePromise: Promise<XrouterRuntimeModule> | null = null;
@@ -47,7 +49,9 @@ export function toBrowserAssetUrl(path: string, buildId?: string): string {
 
 export async function loadRuntimeModule(): Promise<RuntimeModule> {
   const manifest = await loadBuildManifest();
-  const wasm = (await import(/* @vite-ignore */ toBrowserModuleUrl(manifest.entry, manifest.buildId))) as RuntimeModule;
+  const wasm = (await import(
+    /* @vite-ignore */ toBrowserModuleUrl(manifest.entry, manifest.buildId)
+  )) as RuntimeModule;
   await wasm.default({
     module_or_path: toBrowserAssetUrl(manifest.wasm, manifest.buildId),
   });
@@ -74,7 +78,10 @@ function appendVersionParam(url: string, buildId?: string): string {
 }
 
 async function loadXrouterRuntimeInner(): Promise<XrouterRuntimeModule> {
-  const manifest = await loadBuildManifest(XROUTER_MANIFEST_PATH, "xrouter-browser pkg");
+  const manifest = await loadBuildManifest(
+    XROUTER_MANIFEST_PATH,
+    "xrouter-browser pkg",
+  );
   const entryUrl = toBrowserModuleUrl(manifest.entry, manifest.buildId);
   const wasmUrl = toBrowserAssetUrl(manifest.wasm, manifest.buildId);
   const wasm = (await import(/* @vite-ignore */ entryUrl)) as LoadableXrouterRuntimeModule;

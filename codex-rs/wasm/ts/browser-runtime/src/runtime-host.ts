@@ -104,7 +104,11 @@ export function createBrowserRuntimeHostFromDeps(
       }
       return await deps.listDiscoverableApps(request);
     },
-    async runModelTurn(this: BrowserRuntimeHost, request: JsonValue, onEvent?: (event: unknown) => void) {
+    async runModelTurn(
+      this: BrowserRuntimeHost,
+      request: JsonValue,
+      onEvent?: (event: unknown) => void,
+    ) {
       if (deps.runNormalizedModelTurn === undefined) {
         throw new Error("Browser runtime host does not provide model transport execution");
       }
@@ -134,8 +138,12 @@ export function normalizeModelTurnRequest(
   const requestRecord = asJsonRecord(normalizeHostValuePreservingStrings(request));
   return {
     requestId:
-      typeof requestRecord.requestId === "string" ? requestRecord.requestId : crypto.randomUUID(),
-    requestBody: asJsonRecord(normalizeHostValuePreservingStrings(requestRecord.requestBody)),
+      typeof requestRecord.requestId === "string"
+        ? requestRecord.requestId
+        : crypto.randomUUID(),
+    requestBody: asJsonRecord(
+      normalizeHostValuePreservingStrings(requestRecord.requestBody),
+    ),
     transportOptions: asJsonRecord(
       normalizeHostValuePreservingStrings(requestRecord.transportOptions),
     ),
@@ -167,7 +175,7 @@ export function createNormalizedModelTurnRunner<TConfig, TResult>(
 ): (request: NormalizedModelTurnRequest) => Promise<TResult> {
   return async (request: NormalizedModelTurnRequest) => {
     const config = await deps.loadConfig();
-    const scope = deps.scope ?? "browser-host";
+    const scope = deps.scope ?? "browser-runtime";
     const extraHeaders = extraHeadersFromTransportOptions(request.transportOptions);
     console.info(`[${scope}] host.run-model-turn`, {
       requestId: request.requestId,

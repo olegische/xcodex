@@ -11,7 +11,6 @@ import {
   type XrouterStreamEventPayload,
 } from "@browser-codex/wasm-model-transport";
 import { normalizeHostValue } from "@browser-codex/wasm-runtime-core/host-values";
-import type { CodexCompatibleConfig, JsonValue, ModelPreset } from "./types";
 import {
   activeProviderApiKey,
   createHostError,
@@ -19,7 +18,8 @@ import {
   isAbortError,
   modelIdToDisplayName,
   normalizeDiscoveredModels,
-} from "./utils";
+} from "./config.ts";
+import type { CodexCompatibleConfig, JsonValue, ModelPreset } from "./types.ts";
 
 const activeModelCancels = new Map<string, () => void>();
 
@@ -31,7 +31,8 @@ export function createBrowserRuntimeModelTransportAdapter(deps: {
     getApiKey: activeProviderApiKey,
     normalizeDiscoveredModels,
     modelIdToDisplayName,
-    createError: (code, message, data) => createHostError(code, message, data as JsonValue | undefined),
+    createError: (code, message, data) =>
+      createHostError(code, message, data as JsonValue | undefined),
     loadXrouterRuntime: deps.loadXrouterRuntime,
     async runResponsesTurn(params) {
       return await runResponsesApiTurn({
@@ -74,7 +75,11 @@ async function runResponsesApiTurn(params: {
   emitModelEvent?: (event: JsonValue) => void | Promise<void>;
 }): Promise<JsonValue> {
   const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
-  let eventChain = enqueueModelEvent(Promise.resolve(), params.emitModelEvent, modelEvents[0]);
+  let eventChain = enqueueModelEvent(
+    Promise.resolve(),
+    params.emitModelEvent,
+    modelEvents[0],
+  );
 
   try {
     await runResponsesStreamingExecutor({
@@ -90,10 +95,17 @@ async function runResponsesApiTurn(params: {
         activeModelCancels.delete(params.requestId);
       },
       onEvent(event) {
-        const nextModelEvent = mapResponsesStreamEventToBrowserModelEvent(event, params.requestId);
+        const nextModelEvent = mapResponsesStreamEventToBrowserModelEvent(
+          event,
+          params.requestId,
+        );
         if (nextModelEvent !== null) {
           modelEvents.push(nextModelEvent);
-          eventChain = enqueueModelEvent(eventChain, params.emitModelEvent, nextModelEvent);
+          eventChain = enqueueModelEvent(
+            eventChain,
+            params.emitModelEvent,
+            nextModelEvent,
+          );
         }
       },
       onCompleted() {},
@@ -136,7 +148,11 @@ async function runXrouterTurn(params: {
   const modelEvents: JsonValue[] = [{ type: "started", requestId: params.requestId }];
   let streamError: JsonValue | null = null;
   const streamState = createStreamingState(params.transportOptions);
-  let eventChain = enqueueModelEvent(Promise.resolve(), params.emitModelEvent, modelEvents[0]);
+  let eventChain = enqueueModelEvent(
+    Promise.resolve(),
+    params.emitModelEvent,
+    modelEvents[0],
+  );
 
   try {
     await runXrouterStreamingExecutor({
@@ -150,14 +166,26 @@ async function runXrouterTurn(params: {
         activeModelCancels.delete(params.requestId);
       },
       onEvent(payload) {
-        const nextModelEvents = mapXrouterEventToBrowserModelEvents(payload, params.requestId, streamState);
+        const nextModelEvents = mapXrouterEventToBrowserModelEvents(
+          payload,
+          params.requestId,
+          streamState,
+        );
         modelEvents.push(...nextModelEvents);
-        eventChain = enqueueModelEvents(eventChain, params.emitModelEvent, nextModelEvents);
+        eventChain = enqueueModelEvents(
+          eventChain,
+          params.emitModelEvent,
+          nextModelEvents,
+        );
       },
       onCompleted(payload) {
-        const outputItems = Array.isArray(payload.output) ? (payload.output as JsonValue[]) : [];
+        const outputItems = Array.isArray(payload.output)
+          ? (payload.output as JsonValue[])
+          : [];
         const normalizedOutputItems = outputItems
-          .map((item) => mapXrouterOutputItemToCodexResponseItem(item, streamState.assistantItemId))
+          .map((item) =>
+            mapXrouterOutputItemToCodexResponseItem(item, streamState.assistantItemId),
+          )
           .filter((item): item is JsonValue => item !== null);
 
         for (const item of normalizedOutputItems) {
@@ -187,7 +215,10 @@ async function runXrouterTurn(params: {
               event.type === "outputItemDone",
           ),
         );
-        const completedEvent = { type: "completed", requestId: params.requestId } satisfies JsonValue;
+        const completedEvent = {
+          type: "completed",
+          requestId: params.requestId,
+        } satisfies JsonValue;
         modelEvents.push(completedEvent);
         eventChain = enqueueModelEvent(eventChain, params.emitModelEvent, completedEvent);
       },
@@ -212,7 +243,10 @@ async function runXrouterTurn(params: {
   }
   await eventChain;
   if (!modelEvents.some((event) => isCompletedEvent(event, params.requestId))) {
-    const completedEvent = { type: "completed", requestId: params.requestId } satisfies JsonValue;
+    const completedEvent = {
+      type: "completed",
+      requestId: params.requestId,
+    } satisfies JsonValue;
     modelEvents.push(completedEvent);
     await enqueueModelEvent(Promise.resolve(), params.emitModelEvent, completedEvent);
   }
@@ -224,11 +258,15 @@ type StreamingState = {
   assistantModelStarted: boolean;
 };
 
-function createStreamingState(transportOptions: Record<string, unknown> | undefined): StreamingState {
-  const options = transportOptions !== undefined && transportOptions !== null ? transportOptions : {};
+function createStreamingState(
+  transportOptions: Record<string, unknown> | undefined,
+): StreamingState {
+  const options = transportOptions ?? {};
   const turnId = typeof options.turnId === "string" ? options.turnId : null;
   const assistantItemId =
-    typeof options.assistantItemId === "string" ? options.assistantItemId : `${turnId ?? "turn"}:assistant`;
+    typeof options.assistantItemId === "string"
+      ? options.assistantItemId
+      : `${turnId ?? "turn"}:assistant`;
   return {
     assistantItemId,
     assistantModelStarted: false,
@@ -260,7 +298,10 @@ function mapResponsesStreamEventToBrowserModelEvent(
       item: event.item as JsonValue,
     };
   }
-  if (event.type === "response.reasoning_summary_text.delta" && typeof event.delta === "string") {
+  if (
+    event.type === "response.reasoning_summary_text.delta" &&
+    typeof event.delta === "string"
+  ) {
     return {
       type: "reasoningSummaryDelta",
       requestId,
@@ -310,7 +351,10 @@ function mapXrouterEventToBrowserModelEvents(
   return [];
 }
 
-function assistantStartedModelEvents(requestId: string, state: StreamingState): JsonValue[] {
+function assistantStartedModelEvents(
+  requestId: string,
+  state: StreamingState,
+): JsonValue[] {
   if (state.assistantModelStarted) {
     return [];
   }
@@ -320,14 +364,29 @@ function assistantStartedModelEvents(requestId: string, state: StreamingState): 
       type: "outputItemAdded",
       requestId,
       item: {
-        type: "message",
         id: state.assistantItemId,
+        type: "message",
         role: "assistant",
-        content: [{ type: "output_text", text: "" }],
-        end_turn: false,
+        content: [],
       },
     },
   ];
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isOutputItemDoneEvent(event: JsonValue, requestId: string): boolean {
+  return (
+    isJsonRecord(event) &&
+    event.requestId === requestId &&
+    event.type === "outputItemDone"
+  );
+}
+
+function isCompletedEvent(event: JsonValue, requestId: string): boolean {
+  return isJsonRecord(event) && event.requestId === requestId && event.type === "completed";
 }
 
 function enqueueModelEvent(
@@ -335,11 +394,8 @@ function enqueueModelEvent(
   emitModelEvent: ((event: JsonValue) => void | Promise<void>) | undefined,
   event: JsonValue,
 ): Promise<void> {
-  if (emitModelEvent === undefined) {
-    return chain;
-  }
   return chain.then(async () => {
-    await emitModelEvent(event);
+    await emitModelEvent?.(event);
   });
 }
 
@@ -348,34 +404,8 @@ function enqueueModelEvents(
   emitModelEvent: ((event: JsonValue) => void | Promise<void>) | undefined,
   events: JsonValue[],
 ): Promise<void> {
-  let next = chain;
-  for (const event of events) {
-    next = enqueueModelEvent(next, emitModelEvent, event);
-  }
-  return next;
-}
-
-function isCompletedEvent(event: JsonValue, requestId: string): boolean {
-  return (
-    event !== null &&
-    typeof event === "object" &&
-    "type" in event &&
-    event.type === "completed" &&
-    "requestId" in event &&
-    event.requestId === requestId
+  return events.reduce(
+    (nextChain, event) => enqueueModelEvent(nextChain, emitModelEvent, event),
+    chain,
   );
-}
-
-function isOutputItemDoneEvent(event: JsonValue, requestId: string): boolean {
-  return (
-    event !== null &&
-    typeof event === "object" &&
-    !Array.isArray(event) &&
-    event.type === "outputItemDone" &&
-    event.requestId === requestId
-  );
-}
-
-function isJsonRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
 }

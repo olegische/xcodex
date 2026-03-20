@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
-import { prepareXrouterResponsesRequest } from "./xrouter-request";
-import type { BrowserTransportProvider, XrouterBrowserClient } from "./browser-adapter";
+import { prepareXrouterResponsesRequest } from "./xrouter-request.ts";
+import type { BrowserTransportProvider, XrouterBrowserClient } from "./browser-adapter.ts";
 
 export type XrouterStreamEventPayload = Record<string, unknown>;
 

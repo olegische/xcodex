@@ -1,16 +1,27 @@
-export { createBrowserCodexRuntimeContext } from "./runtime-context";
+export { createBrowserCodexRuntimeContext } from "./runtime-context.ts";
+export { createIndexedDbCodexStorage } from "./storage.ts";
+export {
+  loadBuildManifest,
+  loadRuntimeModule,
+  loadXrouterRuntime,
+  toBrowserAssetUrl,
+  toBrowserModuleUrl,
+} from "./assets.ts";
+export { createBrowserRuntimeModelTransportAdapter } from "./transport.ts";
 export {
   applyWorkspacePatch,
   createBrowserWorkspaceAdapter,
   createLocalStorageWorkspaceAdapter,
   listWorkspaceDir,
   loadStoredWorkspaceSnapshot,
+  parentDirectory,
   normalizeWorkspaceDirectoryPath,
   normalizeWorkspaceFilePath,
+  DEFAULT_WORKSPACE_ROOT,
   readWorkspaceFile,
   saveStoredWorkspaceSnapshot,
   searchWorkspace,
-} from "./workspace";
+} from "./workspace.ts";
 
 export {
   DEFAULT_CODEX_CONFIG,
@@ -22,4 +33,4 @@ export {
   getActiveProvider,
   materializeCodexConfig,
   normalizeCodexConfig,
-} from "./config";
+} from "./config.ts";

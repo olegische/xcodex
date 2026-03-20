@@ -5,7 +5,7 @@ export {
   handleRemoteMcpPopupCallback,
   resolveRemoteMcpOauthRedirectUri,
   waitForRemoteMcpOauthCallback,
-} from "./mcp-oauth";
+} from "./mcp-oauth.ts";
 
 export type BrowserRemoteMcpConnectionState = "idle" | "refreshing" | "error";
 

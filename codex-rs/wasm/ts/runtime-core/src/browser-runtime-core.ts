@@ -2,11 +2,11 @@ import type { ClientRequest } from "../../../../app-server-protocol/schema/types
 import type { DynamicToolCallOutputContentItem } from "../../../../app-server-protocol/schema/typescript/v2/DynamicToolCallOutputContentItem";
 import type { ServerNotification } from "../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ServerRequest } from "../../../../app-server-protocol/schema/typescript/ServerRequest";
-import type { AppServerClientEvent } from "./app-server-client";
-import type { BrowserRuntimeHost, RuntimeModule } from "./types";
-import type { WasmProtocolRuntime } from "./types";
-import { AppServerClient } from "./app-server-client";
-import type { JsonValue } from "./types";
+import type { AppServerClientEvent } from "./app-server-client.ts";
+import type { BrowserRuntimeHost, RuntimeModule } from "./types.ts";
+import type { WasmProtocolRuntime } from "./types.ts";
+import { AppServerClient } from "./app-server-client.ts";
+import type { JsonValue } from "./types.ts";
 
 export async function startBrowserAppServerClient(
   runtimeModule: RuntimeModule,

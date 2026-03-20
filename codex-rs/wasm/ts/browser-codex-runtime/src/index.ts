@@ -1,4 +1,4 @@
-export { BrowserCodexRuntime, createBrowserCodexRuntime } from "./runtime-adapter";
+export { BrowserCodexRuntime, createBrowserCodexRuntime } from "./runtime-adapter.ts";
 export type {
   BrowserCodexProtocolClient,
   BrowserCodexRuntimeDeps,
@@ -8,4 +8,4 @@ export type {
   BrowserRuntimeRequestUserInputQuestion,
   BrowserRuntimeRequestUserInputResponse,
   CreateBrowserCodexRuntimeParams,
-} from "./types";
+} from "./types.ts";

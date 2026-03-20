@@ -2,23 +2,23 @@ export {
   candidateApiUrls,
   firstResponsesApiUrl,
   sendJsonRequestWithFallback,
-} from "./http";
-export { runResponsesStreamingExecutor } from "./responses-executor";
+} from "./http.ts";
+export { runResponsesStreamingExecutor } from "./responses-executor.ts";
 export type {
   ResponsesStreamEvent,
   ResponsesStreamingExecutorParams,
-} from "./responses-executor";
+} from "./responses-executor.ts";
 export {
   createXrouterBrowserClient,
   runXrouterStreamingExecutor,
-} from "./xrouter-executor";
+} from "./xrouter-executor.ts";
 export type {
   XrouterStreamEventPayload,
   XrouterStreamingExecutorParams,
-} from "./xrouter-executor";
-export { mapXrouterOutputItemToCodexResponseItem } from "./xrouter-codex";
+} from "./xrouter-executor.ts";
+export { mapXrouterOutputItemToCodexResponseItem } from "./xrouter-codex.ts";
 export { splitQualifiedToolNameForCodex } from "@browser-codex/wasm-runtime-core";
-export { createBrowserModelTransportAdapter } from "./browser-adapter";
+export { createBrowserModelTransportAdapter } from "./browser-adapter.ts";
 export type {
   BrowserModelTransportAdapterDeps,
   BrowserTransportProvider,
@@ -26,11 +26,11 @@ export type {
   ResolvedBrowserModelTransportTurnParams,
   XrouterBrowserClient,
   XrouterRuntimeModule,
-} from "./browser-adapter";
-export { createResolvedBrowserModelTransportAdapter } from "./browser-adapter";
+} from "./browser-adapter.ts";
+export { createResolvedBrowserModelTransportAdapter } from "./browser-adapter.ts";
 export type {
   ModelDiscoveryResult,
   ModelTransportAdapter,
   ModelTransportTurnParams,
-} from "./types";
-export { prepareXrouterResponsesRequest } from "./xrouter-request";
+} from "./types.ts";
+export { prepareXrouterResponsesRequest } from "./xrouter-request.ts";

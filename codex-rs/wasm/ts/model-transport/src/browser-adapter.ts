@@ -1,10 +1,10 @@
-import { candidateApiUrls, sendJsonRequestWithFallback } from "./http";
-import { createXrouterBrowserClient } from "./xrouter-executor";
+import { candidateApiUrls, sendJsonRequestWithFallback } from "./http.ts";
+import { createXrouterBrowserClient } from "./xrouter-executor.ts";
 import type {
   ModelDiscoveryResult,
   ModelTransportAdapter,
   ModelTransportTurnParams,
-} from "./types";
+} from "./types.ts";
 
 export type BrowserTransportProvider = {
   name: string;

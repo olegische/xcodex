@@ -5,12 +5,12 @@ import type {
   CodexCompatibleConfig,
   ModelPreset,
   StoredUserConfig,
-} from "./config";
+} from "./config.ts";
 import type {
   JsonValue,
   StoredThreadSession,
   StoredThreadSessionMetadata,
-} from "./core";
+} from "./core.ts";
 
 export type BrowserCodexProtocolClient = InternalBrowserCodexProtocolClient;
 

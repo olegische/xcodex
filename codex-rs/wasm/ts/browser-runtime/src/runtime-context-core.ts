@@ -1,17 +1,17 @@
-import type { JsonValue, StoredThreadSession } from "./types/core";
+import type { JsonValue, StoredThreadSession } from "./types/core.ts";
 import type {
   Account,
   AuthState,
   CodexCompatibleConfig,
   DemoInstructions,
   ModelPreset,
-} from "./types/config";
+} from "./types/config.ts";
 import type {
   BrowserRuntimeContext,
   BrowserRuntimeNotification,
   BrowserRuntimeStorage,
   CreateBrowserCodexRuntimeContextOptions,
-} from "./types/runtime";
+} from "./types/runtime.ts";
 
 export async function createBrowserCodexRuntimeContextWithDeps(
   options: CreateBrowserCodexRuntimeContextOptions,

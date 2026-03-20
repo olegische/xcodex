@@ -1,6 +1,6 @@
 import { normalizeHostValue } from "@browser-codex/wasm-runtime-core/host-values";
-import type { JsonValue } from "./types/core";
-import type { BrowserWorkspaceAdapter } from "./types/runtime";
+import type { JsonValue } from "./types/core.ts";
+import type { BrowserWorkspaceAdapter } from "./types/runtime.ts";
 
 export const DEFAULT_WORKSPACE_ROOT = "/workspace";
 export const DEFAULT_WORKSPACE_STORAGE_KEY =

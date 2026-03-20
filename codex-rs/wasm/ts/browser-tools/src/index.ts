@@ -1,3 +1,3 @@
-export * from "./browser-sandbox-tools";
-export * from "./browser-tools";
-export * from "./page-telemetry";
+export * from "./browser-sandbox-tools.ts";
+export * from "./browser-tools.ts";
+export * from "./page-telemetry.ts";

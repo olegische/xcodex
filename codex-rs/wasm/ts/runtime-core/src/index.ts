@@ -2,7 +2,7 @@ export {
   AppServerClient,
   AppServerJsonRpcError,
   TypedRequestError,
-} from "./app-server-client";
+} from "./app-server-client.ts";
 export {
   asDynamicToolContentItems,
   BrowserAppServerRuntimeCore,
@@ -11,22 +11,22 @@ export {
   summarizeServerNotification,
   summarizeServerRequest,
   turnIdFromNotification,
-} from "./browser-runtime-core";
+} from "./browser-runtime-core.ts";
 export {
   qualifyDynamicToolName,
   resolveDynamicToolTarget,
   splitQualifiedToolNameForCodex,
   unqualifyBrowserToolName,
-} from "./dynamic-tool-names";
+} from "./dynamic-tool-names.ts";
 export type {
   AppServerClientEvent,
   AppServerClientStartArgs,
   RequestResult,
-} from "./app-server-client";
+} from "./app-server-client.ts";
 export {
   normalizeHostValue,
   normalizeHostValuePreservingStrings,
-} from "./host-values";
+} from "./host-values.ts";
 export type {
   BrowserRuntimeHost,
   DeleteThreadSessionRequest,
@@ -44,4 +44,4 @@ export type {
   TurnContextItem,
   TurnContextNetworkItem,
   WasmProtocolRuntime,
-} from "./types";
+} from "./types.ts";

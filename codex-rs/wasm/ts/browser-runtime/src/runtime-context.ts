@@ -1,25 +1,29 @@
 import { createBrowserCodexRuntime } from "@browser-codex/wasm-browser-codex-runtime";
 import {
-  buildBrowserRuntimeBootstrap,
-  createBrowserRuntimeHostFromDeps,
-  createNormalizedModelTurnRunner,
-} from "@browser-codex/wasm-browser-host";
-import {
   createBrowserAwareToolExecutor,
   initializePageTelemetry,
 } from "@browser-codex/wasm-browser-tools";
 import {
+  buildBrowserRuntimeBootstrap,
+} from "./bootstrap.ts";
+import {
+  createBrowserRuntimeHostFromDeps,
+  createNormalizedModelTurnRunner,
+} from "./runtime-host.ts";
+import {
   activeProviderApiKey,
-  createBrowserRuntimeModelTransportAdapter,
   DEFAULT_CODEX_CONFIG,
   DEFAULT_DEMO_INSTRUCTIONS,
   formatError,
   getActiveProvider,
-  loadRuntimeModule,
-  loadXrouterRuntime,
-} from "@browser-codex/wasm-runtime-client";
-import { createBrowserCodexRuntimeContextWithDeps } from "./runtime-context-core";
-import type { BrowserRuntimeContext, CreateBrowserCodexRuntimeContextOptions } from "./types/runtime";
+} from "./config.ts";
+import { loadRuntimeModule, loadXrouterRuntime } from "./assets.ts";
+import { createBrowserRuntimeModelTransportAdapter } from "./transport.ts";
+import { createBrowserCodexRuntimeContextWithDeps } from "./runtime-context-core.ts";
+import type {
+  BrowserRuntimeContext,
+  CreateBrowserCodexRuntimeContextOptions,
+} from "./types/runtime.ts";
 
 export async function createBrowserCodexRuntimeContext(
   options: CreateBrowserCodexRuntimeContextOptions,
@@ -42,4 +46,4 @@ export async function createBrowserCodexRuntimeContext(
   });
 }
 
-export { createBrowserCodexRuntimeContextWithDeps } from "./runtime-context-core";
+export { createBrowserCodexRuntimeContextWithDeps } from "./runtime-context-core.ts";

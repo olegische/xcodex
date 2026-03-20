@@ -10,9 +10,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./constants": "./src/constants.ts",
     "./mcp": "./src/mcp.ts",
-    "./runtime-host": "./src/runtime-host.ts",
-    "./workspace-storage": "./src/workspace-storage.ts"
+    "./mcp-oauth": "./src/mcp-oauth.ts"
   }
 }

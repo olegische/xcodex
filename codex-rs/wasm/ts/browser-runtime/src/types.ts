@@ -9,7 +9,7 @@ export type {
   ProviderKind,
   StoredUserConfig,
   XrouterProvider,
-} from "./types/config";
+} from "./types/config.ts";
 
 export type {
   BrowserCodexProtocolClient,
@@ -22,13 +22,13 @@ export type {
   BrowserRuntimeClient,
   CreateBrowserCodexRuntimeContextOptions,
   CreateIndexedDbCodexStorageOptions,
-} from "./types/runtime";
+} from "./types/runtime.ts";
 
 export type {
   JsonValue,
   StoredThreadSession,
   StoredThreadSessionMetadata,
-} from "./types/core";
+} from "./types/core.ts";
 
 export type {
   LocalStorageWorkspaceAdapterOptions,
@@ -36,4 +36,4 @@ export type {
   WorkspaceFileRecord,
   WorkspaceSnapshot,
   WorkspaceStorageLike,
-} from "./workspace";
+} from "./workspace.ts";

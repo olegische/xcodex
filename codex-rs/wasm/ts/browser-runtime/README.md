@@ -7,6 +7,7 @@ This package provides a facade over the internal browser/WASM modules in `codex-
 - runtime context creation
 - config helpers
 - IndexedDB-backed storage
+- browser workspace adapters and helpers
 - type exports for browser runtime integrations
 
 It is intended to be the public TypeScript SDK surface for the XCodex browser runtime.
@@ -18,12 +19,49 @@ This package is an early `v0.1.0` SDK surface for the XCodex WASM Runtime.
 The intended public API is:
 
 - `xcodex-runtime`
+- `xcodex-runtime/assets`
+- `xcodex-runtime/transport`
 - `xcodex-runtime/workspace`
 - `xcodex-runtime/config`
 - `xcodex-runtime/storage`
 - `xcodex-runtime/types`
 
 Internal `wasm-*` packages should be treated as implementation details behind the XCodex WASM Runtime facade.
+
+## Contracts
+
+### Package contract
+
+`xcodex-runtime` is the canonical browser integration SDK. Real browser consumers
+should prefer root exports from `xcodex-runtime` and only use subpaths as an
+optional organizational convenience.
+
+Internal `@browser-codex/*` packages are runtime implementation details. They
+are not part of the supported integration contract for external consumers.
+`@browser-codex/wasm-runtime-client` specifically is a transitional internal
+composition layer, not the browser SDK surface.
+
+### Release bundle contract
+
+The release tarball is a browser asset bundle, not an unpacked npm package. The
+official tarball contract is:
+
+```text
+xcodex-wasm/
+  manifest.json
+  current/
+    xcodex.js
+    xcodex_bg.wasm
+    xcodex-runtime.js
+    xcodex-runtime.js.map
+    xcodex.d.ts
+    xcodex_bg.wasm.d.ts
+```
+
+Tarball consumers should load `manifest.json` and `current/*` assets and treat
+`xcodex-runtime.js` as the single-file browser bundle for the root SDK API.
+They should not assume npm package semantics such as `package.json`, package
+subpath imports, or a `dist/` layout inside the tarball.
 
 ## Installation
 
@@ -36,12 +74,17 @@ pnpm add xcodex-runtime
 ### `xcodex-runtime`
 
 - `createBrowserCodexRuntimeContext`
+- `createIndexedDbCodexStorage`
 - `createLocalStorageWorkspaceAdapter`
 - `createBrowserWorkspaceAdapter`
 - `readWorkspaceFile`
 - `listWorkspaceDir`
 - `searchWorkspace`
 - `applyWorkspacePatch`
+- `loadStoredWorkspaceSnapshot`
+- `saveStoredWorkspaceSnapshot`
+- `normalizeWorkspaceFilePath`
+- `normalizeWorkspaceDirectoryPath`
 - `DEFAULT_CODEX_CONFIG`
 - `DEFAULT_DEMO_INSTRUCTIONS`
 - `XROUTER_PROVIDER_OPTIONS`
@@ -65,6 +108,18 @@ pnpm add xcodex-runtime
 - `normalizeWorkspaceFilePath`
 - `normalizeWorkspaceDirectoryPath`
 
+### `xcodex-runtime/assets`
+
+- `loadBuildManifest`
+- `loadRuntimeModule`
+- `loadXrouterRuntime`
+- `toBrowserAssetUrl`
+- `toBrowserModuleUrl`
+
+### `xcodex-runtime/transport`
+
+- `createBrowserRuntimeModelTransportAdapter`
+
 ### `xcodex-runtime/storage`
 
 - `createIndexedDbCodexStorage`
@@ -83,10 +138,10 @@ Type-only exports for:
 ```ts
 import {
   createBrowserCodexRuntimeContext,
+  createIndexedDbCodexStorage,
+  createLocalStorageWorkspaceAdapter,
   DEFAULT_CODEX_CONFIG,
 } from "xcodex-runtime";
-import { createIndexedDbCodexStorage } from "xcodex-runtime/storage";
-import { createLocalStorageWorkspaceAdapter } from "xcodex-runtime/workspace";
 import type {
   AuthState,
   CodexCompatibleConfig,
@@ -130,7 +185,9 @@ const context = await createBrowserCodexRuntimeContext({
 - `search`
 - `applyPatch`
 
-`xcodex-runtime/workspace` now provides the default browser/localStorage implementation used by browser consumers, plus direct helper exports if you want to keep assembling the adapter manually:
+The root `xcodex-runtime` entrypoint exposes the normal browser happy-path API.
+`xcodex-runtime/workspace` remains available if you want direct helper imports
+for manual adapter assembly:
 
 ```ts
 import {
@@ -150,7 +207,8 @@ const workspace = {
 
 ## Storage
 
-`createIndexedDbCodexStorage()` creates a generic IndexedDB-backed store for:
+`createIndexedDbCodexStorage()` is available from both `xcodex-runtime` and
+`xcodex-runtime/storage`. It creates a generic IndexedDB-backed store for:
 
 - auth state
 - runtime config
@@ -162,8 +220,14 @@ You can use your own storage implementation as long as it satisfies the exported
 ## Build
 
 ```bash
-pnpm --filter xcodex-runtime build
+cd /Users/olegromanchuk/Projects/xcodex/codex-rs/wasm
+npm install
+npm --workspace xcodex-runtime run build
 ```
+
+The shared TypeScript toolchain lives at the `codex-rs/wasm` workspace root.
+`apps/webui` consumes the built runtime artifacts; it does not define the SDK
+build contract.
 
 ## License
 

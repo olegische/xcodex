@@ -5,8 +5,8 @@ import type { InitializeParams } from "../../../../app-server-protocol/schema/ty
 import type { RequestId } from "../../../../app-server-protocol/schema/typescript/RequestId";
 import type { ServerNotification } from "../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ServerRequest } from "../../../../app-server-protocol/schema/typescript/ServerRequest";
-import { normalizeHostValue } from "./host-values";
-import type { JsonValue, WasmProtocolRuntime } from "./types";
+import { normalizeHostValue } from "./host-values.ts";
+import type { JsonValue, WasmProtocolRuntime } from "./types.ts";
 
 const DEFAULT_CHANNEL_CAPACITY = 128;
 

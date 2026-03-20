@@ -28,7 +28,7 @@ import type {
   BrowserCodexProtocolClient,
   BrowserCodexRuntimeDeps,
   CreateBrowserCodexRuntimeParams,
-} from "./types";
+} from "./types.ts";
 
 export class BrowserCodexRuntime<
   TAuthState,

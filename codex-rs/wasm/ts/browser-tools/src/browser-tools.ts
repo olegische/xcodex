@@ -7,7 +7,7 @@ import {
 import {
   recordPageEvent,
   refreshPageRuntimeSnapshot,
-} from "./page-telemetry";
+} from "./page-telemetry.ts";
 import {
   inspectBrowserStorage,
   inspectCookies,
@@ -15,7 +15,7 @@ import {
   performanceSnapshot,
   probeHttpSurface,
   runProbe,
-} from "./browser-sandbox-tools";
+} from "./browser-sandbox-tools.ts";
 
 type BrowserAiSurfaceSnapshot = {
   domain: string;
