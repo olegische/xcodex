@@ -1,6 +1,9 @@
 {
   "name": "codex-wasm-ts-workspace",
   "private": true,
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  },
   "workspaces": [
     "apps/webui",
     "integrations/codexui",
