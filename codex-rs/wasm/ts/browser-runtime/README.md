@@ -136,6 +136,15 @@ Type-only exports for:
 
 ## Security Contract
 
+This browser-hosted runtime is not just a WASM packaging exercise.
+
+Shipping Codex inside the browser required runtime-owned security controls for
+browser-native capabilities such as page-context execution, DOM access,
+browser-managed storage, and network egress from the active tab. In practice,
+these capabilities can be as sensitive as traditional OS-level tools, and in
+some cases more surprising, because they run inside a trusted application or
+site context.
+
 The browser runtime now enforces several security-relevant parts of the public
 SDK contract:
 
@@ -148,6 +157,13 @@ SDK contract:
 
 These checks are enforced by the runtime itself. Downstream UI is responsible
 for presenting policy and approval UX, not for replacing runtime enforcement.
+
+Important:
+
+- approval is a mediation step, not a sandbox boundary
+- if a dangerous tool is structurally allowed by runtime policy, approval may
+  permit execution
+- if runtime policy denies a tool, approval is not reached
 
 ## Consumer Responsibilities
 
@@ -189,6 +205,24 @@ The first browser-tool approval contract is intentionally narrow and applies to:
 - `browser__evaluate`
 - `browser__inspect_http`
 - `browser__navigate`
+
+Current runtime behavior:
+
+- `browser__evaluate` is approval-eligible only in `chaos`
+- `browser__inspect_http` and `browser__navigate` are approval-eligible in
+  `default` and `chaos`
+- `allow_once` grants are turn-scoped
+- `allow_for_session` grants survive turn resets within the same runtime
+  instance
+- `deny` and `abort` do not create sticky grants; the next eligible call will
+  request approval again
+
+`browser__evaluate` is a high-trust capability:
+
+- it executes JavaScript in the current page context
+- it is not limited to the narrower inspection helpers exposed by the other
+  browser tools
+- consumers should not treat approval UX alone as a sufficient safety boundary
 
 ## Provider Validation
 
@@ -272,6 +306,31 @@ Relevant config fields for browser security:
 - `browser_security.allow_localhost`
 - `browser_security.allow_private_network`
 
+Current browser-tool policy matrix:
+
+- `default`
+  - baseline read-only inspection surface
+  - `browser__inspect_http` and `browser__navigate` are approval-gated when
+    origin policy allows them
+- `demo`
+  - approved read-only inspection surface
+  - no approval-only or mutating browser tools
+- `chaos`
+  - broader browser surface, including `browser__click`, `browser__fill`, and
+    `browser__evaluate`
+  - `browser__evaluate` requires an allowlisted current origin plus approval
+  - localhost/loopback requires `browser_security.allow_localhost`
+  - private/link-local targets require `browser_security.allow_private_network`
+
+For `browser__evaluate`, origin policy and approval are both required:
+
+- non-allowlisted origins are denied
+- localhost/loopback is denied unless `browser_security.allow_localhost=true`
+- private/link-local origins are denied unless
+  `browser_security.allow_private_network=true`
+- when those checks pass in `chaos`, `browser__evaluate` proceeds through the
+  approval path
+
 Example:
 
 ```ts
@@ -293,6 +352,8 @@ Consumers should treat the following as expected runtime behavior, not SDK bugs:
 - dangerous browser tools fail when no approval mediator is configured
 - browser tool requests fail when origin policy blocks the current page or
   target URL
+- `browser__evaluate` may execute once approved when the current origin is
+  structurally allowed by runtime policy
 - `openai-compatible` providers fail with `invalid_provider_base_url` when the
   target URL violates runtime transport policy
 
