@@ -1,20 +1,17 @@
 import {
+  createIndexedDbCodexStorage,
+  DEFAULT_CODEX_CONFIG,
   loadStoredWorkspaceSnapshot,
   normalizeWorkspaceDirectoryPath,
   normalizeWorkspaceFilePath,
   parentDirectory,
-  previewWorkspaceContent,
   saveStoredWorkspaceSnapshot,
-  upsertWorkspaceFile,
   type WorkspaceSnapshot,
-} from "@browser-codex/wasm-browser-host/workspace-storage";
-import {
-  createIndexedDbRuntimeStorage,
-  DEFAULT_CODEX_CONFIG,
-  PROVIDER_CONFIG_KEY,
-  USER_CONFIG_STORAGE_KEY,
-} from "@browser-codex/wasm-runtime-client";
-import type { StoredThreadSession, StoredThreadSessionMetadata } from "@browser-codex/wasm-runtime-core";
+} from "xcodex-runtime";
+import type {
+  StoredThreadSession,
+  StoredThreadSessionMetadata,
+} from "xcodex-runtime/types";
 import {
   DB_NAME,
   DB_VERSION,
@@ -32,7 +29,10 @@ import type {
 } from "./types";
 import { normalizeCodexConfig, normalizeDemoInstructions } from "./utils";
 
-const storage = createIndexedDbRuntimeStorage<
+const PROVIDER_CONFIG_KEY = "current";
+const USER_CONFIG_STORAGE_KEY = "current";
+
+const storage = createIndexedDbCodexStorage<
   AuthState,
   CodexCompatibleConfig,
   StoredThreadSession,
@@ -64,6 +64,25 @@ export const saveStoredCodexConfig = storage.saveConfig;
 export const clearStoredCodexConfig = storage.clearConfig;
 export const loadStoredUserConfig = storage.loadUserConfig;
 export const saveStoredUserConfig = storage.saveUserConfig;
+export const webUiRuntimeStorage = storage;
+
+export function previewWorkspaceContent(content: string): string {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  if (normalized.length === 0) {
+    return "";
+  }
+  return normalized.slice(0, 160);
+}
+
+export function upsertWorkspaceFile(
+  files: WorkspaceSnapshot["files"],
+  nextFile: WorkspaceSnapshot["files"][number],
+): WorkspaceSnapshot["files"] {
+  const nextFiles = files.filter((file) => file.path !== nextFile.path);
+  nextFiles.push(nextFile);
+  nextFiles.sort((left, right) => left.path.localeCompare(right.path));
+  return nextFiles;
+}
 
 export async function loadStoredThreadBinding(): Promise<string | null> {
   const value = window.localStorage.getItem(THREAD_BINDING_STORAGE_KEY);
@@ -163,8 +182,6 @@ export {
   normalizeWorkspaceDirectoryPath,
   normalizeWorkspaceFilePath,
   parentDirectory,
-  previewWorkspaceContent,
   saveStoredWorkspaceSnapshot,
-  upsertWorkspaceFile,
 };
 export type { WorkspaceSnapshot };

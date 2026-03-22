@@ -1,30 +1,35 @@
 export type {
-  BrowserRuntimeHost,
   JsonValue,
-  RuntimeModule,
-  WasmProtocolRuntime,
 } from "@browser-codex/wasm-runtime-core/types";
 export type {
   Account,
   AuthState,
+  BrowserRuntimeClient,
+  BrowserToolApprovalRequest,
+  BrowserToolApprovalResponse,
   CodexCompatibleConfig,
   CodexModelProviderConfig,
   DemoInstructions,
   DemoTransportMode,
   ModelPreset,
   ProviderKind,
+  StoredThreadSession,
+  StoredThreadSessionMetadata,
   XrouterProvider,
-} from "@browser-codex/wasm-runtime-client";
+} from "xcodex-runtime/types";
 import type {
   Account,
   AuthState,
+  BrowserRuntimeClient,
+  BrowserToolApprovalRequest,
+  BrowserToolApprovalResponse,
   CodexCompatibleConfig,
   DemoInstructions,
   DemoTransportMode,
   JsonValue,
   ModelPreset,
   XrouterProvider,
-} from "@browser-codex/wasm-runtime-client";
+} from "xcodex-runtime/types";
 import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ThreadReadResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadReadResponse";
 import type { ThreadResumeParams } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadResumeParams";
@@ -139,27 +144,9 @@ export type DemoState = {
 };
 
 export type BrowserRuntime = {
-  loadAuthState(): Promise<AuthState | null>;
-  saveAuthState(authState: AuthState): Promise<void>;
-  clearAuthState(): Promise<void>;
   readAccount(request: { refreshToken: boolean }): Promise<{
     account: Account | null;
     requiresOpenaiAuth: boolean;
-  }>;
-  listModels(request: {
-    cursor: string | null;
-    limit: number | null;
-  }): Promise<{
-    data: ModelPreset[];
-    nextCursor: string | null;
-  }>;
-  refreshAuth(context: {
-    reason: "unauthorized";
-    previousAccountId: string | null;
-  }): Promise<{
-    accessToken: string;
-    chatgptAccountId: string;
-    chatgptPlanType: string | null;
   }>;
   threadStart(params: ThreadStartParams): Promise<ThreadStartResponse>;
   threadResume(params: ThreadResumeParams): Promise<ThreadResumeResponse>;
@@ -167,7 +154,10 @@ export type BrowserRuntime = {
   turnStart(params: TurnStartParams): Promise<TurnStartResponse>;
   turnInterrupt(params: TurnInterruptParams): Promise<TurnInterruptResponse>;
   subscribeToNotifications(listener: (notification: ServerNotification) => void): () => void;
-};
+} & Pick<
+  BrowserRuntimeClient,
+  "loadAuthState" | "saveAuthState" | "clearAuthState" | "listModels"
+>;
 
 export type ProviderDraft = {
   transportMode: DemoTransportMode;
@@ -192,23 +182,4 @@ export type SendTurnResult = {
   output: string;
   turnId: string;
   events: RuntimeEvent[];
-};
-
-export type XrouterRuntimeModule = {
-  default(input?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module): Promise<void>;
-  WasmBrowserClient: new (
-    provider: string,
-    baseUrl?: string | null,
-    apiKey?: string | null,
-  ) => XrouterBrowserClient;
-};
-
-export type XrouterBrowserClient = {
-  fetchModelIds(): Promise<unknown>;
-  runResponsesStream(
-    requestId: string,
-    request: JsonValue,
-    onEvent: (event: unknown) => void,
-  ): Promise<unknown>;
-  cancel(requestId: string): void;
 };

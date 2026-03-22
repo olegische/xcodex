@@ -1,19 +1,21 @@
 export {
   activeProviderApiKey,
-  createHostError,
-  createProviderConfig,
-  defaultXrouterProviderBaseUrl,
   detectTransportMode,
   formatError,
   getActiveProvider,
-  isAbortError,
   materializeCodexConfig,
-  modelIdToDisplayName,
   normalizeCodexConfig,
+} from "xcodex-runtime";
+export {
+  createProviderConfig,
+  createHostError,
+  defaultXrouterProviderBaseUrl,
+  isAbortError,
+  modelIdToDisplayName,
   normalizeDemoInstructions,
   normalizeDiscoveredModels,
   toProviderLabel,
-} from "@browser-codex/wasm-runtime-client";
+} from "xcodex-runtime/config";
 
 export {
   normalizeHostValue,

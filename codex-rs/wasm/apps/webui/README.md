@@ -19,18 +19,30 @@ Legacy browser shells and experiments remain under `codex-rs/wasm-arch`.
 
 ## Running the demo
 
-From the repository root, build the browser runtime assets for the official app:
+The app now targets the public `xcodex-runtime` browser SDK contract and the
+released runtime bundle layout:
+
+- `/pkg/manifest.json`
+- `/pkg/current/*`
+- `/xrouter-browser/manifest.json`
+- `/xrouter-browser/current/*`
+
+`apps/webui` now uses released tarballs for both `xcodex-wasm` and
+`xrouter-browser`. It does not need a local Rust/WASM rebuild for routine demo
+startup.
+
+From the repository root, refresh the local browser runtime assets when needed:
 
 ```bash
-cd /Users/olegromanchuk/Projects/browser-codex
-just wasm-build-runtime apps/webui wasm
+cd /Users/olegromanchuk/Projects/xcodex
+just wasm-runtime-pull apps/webui
 ```
 
-This command builds:
+This refresh step prepares:
 
-- the WASM Codex browser runtime;
-- the app assets under `codex-rs/wasm/apps/webui/public/pkg`;
-- the `xrouter-browser` bundle under `codex-rs/wasm/apps/webui/public/xrouter-browser`.
+- the `xcodex-wasm` assets under `codex-rs/wasm/apps/webui/public/pkg`;
+- the `xrouter-browser` assets under `codex-rs/wasm/apps/webui/public/xrouter-browser`;
+- matching manifests under `pkg/` and `xrouter-browser-pkg/`.
 
 `xrouter-browser` comes from the XRouter repository:
 
@@ -38,17 +50,17 @@ This command builds:
 
 If you want to audit how browser routing, provider access, and API-key handling work, start there.
 
-By default, the build script pulls the `xrouter-browser` release tarball from GitHub. You can
-override that with:
+By default, the runtime pull step downloads both release tarballs from GitHub.
+You can override that with:
 
+- `XCODEX_WASM_TARBALL=/path/to/xcodex-wasm.tar.gz`
 - `XROUTER_BROWSER_TARBALL=/path/to/xrouter-browser.tar.gz`
-- `XROUTER_BROWSER_DIR=/path/to/local/xrouter`
 
 Then start the app:
 
 ```bash
-cd /Users/olegromanchuk/Projects/browser-codex/codex-rs/wasm/apps/webui
-npm run dev
+cd /Users/olegromanchuk/Projects/xcodex
+just wasm-webui-dev
 ```
 
 Open the local URL from Vite, usually:

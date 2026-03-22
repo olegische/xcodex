@@ -93,6 +93,9 @@ log *args:
 wasm-build-runtime app="examples/browser-codex-demo" runtime="wasm":
     ./wasm/scripts/build-web-runtime.sh --app {{app}} --runtime {{runtime}}
 
+wasm-runtime-pull app="apps/webui":
+    ./wasm/scripts/build-web-runtime.sh --app {{app}} --runtime wasm
+
 wasm-webui-build-runtime:
     ./wasm/scripts/build-web-runtime.sh --app apps/webui --runtime wasm
 

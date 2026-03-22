@@ -15,12 +15,10 @@
     "vite": "^6.3.5"
   },
   "dependencies": {
-    "@browser-codex/wasm-browser-host": "file:../../ts/browser-host",
-    "@browser-codex/wasm-browser-codex-runtime": "file:../../ts/browser-codex-runtime",
     "@browser-codex/wasm-browser-tools": "file:../../ts/browser-tools",
     "@browser-codex/wasm-model-transport": "file:../../ts/model-transport",
-    "@browser-codex/wasm-runtime-client": "file:../../ts/runtime-client",
     "@browser-codex/wasm-runtime-core": "file:../../ts/runtime-core",
+    "xcodex-runtime": "file:../../ts/browser-runtime",
     "openai": "latest"
   }
 }

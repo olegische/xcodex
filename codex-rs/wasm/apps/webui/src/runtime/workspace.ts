@@ -1,17 +1,16 @@
-import { WORKSPACE_ROOT } from "@browser-codex/wasm-browser-host/constants";
 import {
   loadStoredWorkspaceSnapshot,
   normalizeWorkspaceFilePath,
-  previewWorkspaceContent,
   saveStoredWorkspaceSnapshot,
   type WorkspaceSnapshot,
-  upsertWorkspaceFile,
-} from "@browser-codex/wasm-browser-host/workspace-storage";
-import {
+  DEFAULT_WORKSPACE_ROOT,
   listWorkspaceDir as listSharedWorkspaceDir,
   readWorkspaceFile as readSharedWorkspaceFile,
   searchWorkspace as searchSharedWorkspace,
-} from "@browser-codex/wasm-runtime-client";
+} from "xcodex-runtime";
+import {
+  previewWorkspaceContent,
+} from "./storage";
 import type { JsonValue, WorkspaceDebugFile } from "./types";
 import { createHostError, normalizeHostValue } from "./utils";
 
@@ -41,7 +40,7 @@ export async function loadWorkspaceDebugSnapshot(): Promise<WorkspaceDebugFile[]
 
 export async function resetWorkspace(): Promise<void> {
   await saveStoredWorkspaceSnapshot({
-    rootPath: WORKSPACE_ROOT,
+    rootPath: DEFAULT_WORKSPACE_ROOT,
     files: [],
   });
 }
@@ -73,6 +72,16 @@ export async function writeWorkspaceFile(request: JsonValue): Promise<JsonValue>
     path,
     bytesWritten: new TextEncoder().encode(content).length,
   };
+}
+
+function upsertWorkspaceFile(
+  files: WorkspaceSnapshot["files"],
+  nextFile: WorkspaceSnapshot["files"][number],
+): WorkspaceSnapshot["files"] {
+  const nextFiles = files.filter((file) => file.path !== nextFile.path);
+  nextFiles.push(nextFile);
+  nextFiles.sort((left, right) => left.path.localeCompare(right.path));
+  return nextFiles;
 }
 
 export async function applyWorkspacePatch(request: JsonValue): Promise<JsonValue> {

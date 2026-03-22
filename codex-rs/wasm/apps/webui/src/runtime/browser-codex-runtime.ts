@@ -1,51 +1,34 @@
 import { collaborationStore } from "../stores/collaboration";
 import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
-import { createBrowserCodexRuntime as createSharedBrowserCodexRuntime } from "../../../../ts/browser-codex-runtime/src";
+import {
+  activeProviderApiKey,
+  createBrowserCodexRuntimeContext,
+  getActiveProvider,
+} from "xcodex-runtime";
 import {
   configurePageTelemetry,
-  createBrowserAwareToolExecutor,
 } from "@browser-codex/wasm-browser-tools";
 import { emitRuntimeActivity } from "./activity";
 import { emitRuntimeEvent } from "./events";
 import { installRuntimeActivityBridge } from "./notifications";
 import {
-  loadStoredAuthState,
-  loadStoredCodexConfig,
-  saveStoredAuthState,
+  loadStoredDemoInstructions,
+  webUiRuntimeStorage,
 } from "./storage";
-import { webUiModelTransportAdapter } from "./transport-adapter";
-import { formatError, getActiveProvider, normalizeHostValue } from "./utils";
-import { normalizeBrowserSecurityConfig } from "../../../../ts/browser-runtime/src/config.ts";
+import {
+  applyWorkspacePatch,
+  listWorkspaceDir,
+  readWorkspaceFile,
+  searchWorkspace,
+} from "./workspace";
 import type {
   Account,
-  AuthState,
   BrowserRuntime,
   JsonValue,
-  ModelPreset,
   RuntimeEvent,
-  RuntimeModule,
 } from "./types";
 
-const browserToolExecutor = createBrowserAwareToolExecutor({
-  async loadRuntimeMode() {
-    const config = await loadStoredCodexConfig();
-    return config.runtime_mode ?? "default";
-  },
-  async loadBrowserSecurityPolicy() {
-    const config = await loadStoredCodexConfig();
-    const browserSecurity = normalizeBrowserSecurityConfig(config.browser_security);
-    return {
-      allowedOrigins: browserSecurity.allowed_origins,
-      allowLocalhost: browserSecurity.allow_localhost,
-      allowPrivateNetwork: browserSecurity.allow_private_network,
-    };
-  },
-});
-
-export async function createBrowserCodexRuntime(
-  runtimeModule: RuntimeModule,
-  host: unknown,
-): Promise<BrowserRuntime> {
+export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
   configurePageTelemetry({
     emitActivity(activity) {
       emitRuntimeActivity({
@@ -60,60 +43,54 @@ export async function createBrowserCodexRuntime(
     },
   });
   installRuntimeActivityBridge();
-  const runtime = await createSharedBrowserCodexRuntime({
-    runtimeModule,
-    host,
-    deps: {
-      persistence: {
-        loadAuthState: loadStoredAuthState,
-        saveAuthState: saveStoredAuthState,
-        async clearAuthState() {
-          await saveStoredAuthState({
-            authMode: "apiKey",
-            openaiApiKey: null,
-            accessToken: null,
-            refreshToken: null,
-            chatgptAccountId: null,
-            chatgptPlanType: null,
-            lastRefreshAt: null,
-          });
-        },
-        loadConfig: loadStoredCodexConfig,
-      },
-      dynamicTools: browserToolExecutor,
-      async readAccount({ authState, config }) {
-        const provider = getActiveProvider(config);
-        if (authState === null || authState.openaiApiKey === null || authState.openaiApiKey.trim().length === 0) {
-          return {
-            account: null,
-            requiresOpenaiAuth: provider.providerKind === "openai",
-          };
-        }
+  const demoInstructions = await loadStoredDemoInstructions();
+  const context = await createBrowserCodexRuntimeContext({
+    cwd: "/workspace",
+    storage: webUiRuntimeStorage,
+    workspace: {
+      readFile: readWorkspaceFile,
+      listDir: listWorkspaceDir,
+      search: searchWorkspace,
+      applyPatch: applyWorkspacePatch,
+    },
+    bootstrap: {
+      baseInstructions: demoInstructions.baseInstructions,
+      developerInstructions:
+        demoInstructions.agentsInstructions.trim().length > 0
+          ? demoInstructions.agentsInstructions
+          : null,
+      userInstructions: buildSkillInstructions(demoInstructions),
+      ephemeral: false,
+    },
+    readAccount: async ({ authState, config }) => {
+      const provider = getActiveProvider(config);
+      const apiKey =
+        authState?.authMode === "apiKey" && authState.openaiApiKey !== null
+          ? authState.openaiApiKey
+          : activeProviderApiKey(config);
+      if (apiKey.trim().length === 0) {
         return {
-          account: {
-            email: null,
-            planType: authState.chatgptPlanType,
-            chatgptAccountId: authState.chatgptAccountId,
-            authMode: authState.authMode,
-          } satisfies Account,
-          requiresOpenaiAuth: false,
+          account: null,
+          requiresOpenaiAuth: provider.providerKind === "openai",
         };
-      },
-      async discoverModels({ config }) {
-        return await webUiModelTransportAdapter.discoverModels(config);
-      },
-      async refreshAuth(_context) {
-        throw new Error("Browser terminal uses API keys only.");
-      },
-      normalizeThread(thread) {
-        return normalizeHostValue(thread) as Record<string, unknown>;
-      },
-      formatError,
-      async requestUserInput(request) {
-        return await collaborationStore.requestUserInput(request);
-      },
+      }
+      return {
+        account: {
+          email: null,
+          planType: authState?.chatgptPlanType ?? null,
+          chatgptAccountId: authState?.chatgptAccountId ?? null,
+          authMode: authState?.authMode ?? null,
+        } satisfies Account,
+        requiresOpenaiAuth: false,
+      };
+    },
+    requestBrowserToolApproval: async (request) =>
+      await collaborationStore.requestBrowserToolApproval(request),
+    async requestUserInput(request) {
+      return await collaborationStore.requestUserInput(request);
     },
   });
+  const runtime = context.runtime as BrowserRuntime;
 
   runtime.subscribeToNotifications((notification: ServerNotification) => {
     emitRuntimeEvent({
@@ -123,4 +100,19 @@ export async function createBrowserCodexRuntime(
   });
 
   return runtime as unknown as BrowserRuntime;
+}
+
+function buildSkillInstructions(
+  demoInstructions: Awaited<ReturnType<typeof loadStoredDemoInstructions>>,
+): string | null {
+  const skillContents = demoInstructions.skillContents.trim();
+  if (skillContents.length === 0) {
+    return null;
+  }
+  return [
+    `Skill: ${demoInstructions.skillName}`,
+    `Path: ${demoInstructions.skillPath}`,
+    "",
+    skillContents,
+  ].join("\n");
 }

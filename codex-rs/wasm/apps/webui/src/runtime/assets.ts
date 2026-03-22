@@ -4,4 +4,4 @@ export {
   loadXrouterRuntime,
   toBrowserAssetUrl,
   toBrowserModuleUrl,
-} from "@browser-codex/wasm-runtime-client";
+} from "xcodex-runtime";

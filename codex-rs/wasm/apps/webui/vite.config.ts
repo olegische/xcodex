@@ -6,23 +6,17 @@ export default defineConfig({
   plugins: [svelte()],
   resolve: {
     alias: {
-      "@browser-codex/wasm-browser-codex-runtime": fileURLToPath(
-        new URL("../../ts/browser-codex-runtime/src", import.meta.url),
-      ),
-      "@browser-codex/wasm-browser-host": fileURLToPath(
-        new URL("../../ts/browser-host/src", import.meta.url),
-      ),
       "@browser-codex/wasm-browser-tools": fileURLToPath(
         new URL("../../ts/browser-tools/src", import.meta.url),
-      ),
-      "@browser-codex/wasm-runtime-core": fileURLToPath(
-        new URL("../../ts/runtime-core/src", import.meta.url),
       ),
       "@browser-codex/wasm-model-transport": fileURLToPath(
         new URL("../../ts/model-transport/src", import.meta.url),
       ),
-      "@browser-codex/wasm-runtime-client": fileURLToPath(
-        new URL("../../ts/runtime-client/src", import.meta.url),
+      "@browser-codex/wasm-runtime-core": fileURLToPath(
+        new URL("../../ts/runtime-core/src", import.meta.url),
+      ),
+      "xcodex-runtime": fileURLToPath(
+        new URL("../../ts/browser-runtime/src", import.meta.url),
       ),
     },
   },
