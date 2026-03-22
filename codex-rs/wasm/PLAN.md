@@ -525,6 +525,32 @@ Recommended structure:
 This lines up with established policy-engine / enforcement separation and keeps
 the runtime-owned enforcement root clear.
 
+### Reference Material
+
+The Phase 2 design should be implemented with the following references in mind:
+
+- OAuth 2.0 scope semantics:
+  [RFC 6749 §3.3](https://www.rfc-editor.org/rfc/rfc6749#section-3.3)
+- Bearer-token authorization error semantics such as `insufficient_scope`:
+  [RFC 6750 §3.1](https://www.rfc-editor.org/rfc/rfc6750#section-3.1)
+- Resource indicators and resource-oriented authorization context:
+  [RFC 8707](https://www.rfc-editor.org/rfc/rfc8707)
+- Policy decision / policy enforcement separation:
+  [OPA documentation](https://www.openpolicyagent.org/docs)
+- Policy Enforcement Point definition:
+  [NIST PEP glossary](https://csrc.nist.gov/glossary/term/policy_enforcement_point)
+- Practical least-privilege and incremental-authorization guidance:
+  [Google OAuth best practices](https://developers.google.com/identity/protocols/oauth2/resources/best-practices)
+
+These references do not dictate the exact WASM runtime implementation, but they
+should inform:
+
+- scope naming
+- blocked error shape
+- least-privilege defaults
+- PDP / PEP separation
+- future compatibility with external authorization systems
+
 ### Registry Responsibilities
 
 The registry should own:
