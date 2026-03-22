@@ -131,7 +131,79 @@ Type-only exports for:
 - runtime context contracts
 - storage contracts
 - config types
+- browser tool approval request/response types
 - thread session/core types
+
+## Security Contract
+
+The browser runtime now enforces several security-relevant parts of the public
+SDK contract:
+
+- `runtime_mode` controls baseline browser-tool capability grants
+- `browser_security` controls allowed browser origins plus explicit localhost
+  and private-network opt-ins
+- dangerous browser tools may require `requestBrowserToolApproval`
+- `openai-compatible` provider `baseUrl` values are runtime-validated and may be
+  blocked before model requests are sent
+
+These checks are enforced by the runtime itself. Downstream UI is responsible
+for presenting policy and approval UX, not for replacing runtime enforcement.
+
+## Consumer Responsibilities
+
+Browser SDK consumers are expected to:
+
+- load and persist `CodexCompatibleConfig`
+- explicitly set `runtime_mode` and `browser_security` when non-default behavior
+  is desired
+- provide `requestBrowserToolApproval` if they want the runtime to mediate
+  dangerous browser tools instead of fail-closing them
+- handle runtime validation errors from blocked provider URLs or denied browser
+  tool actions
+
+Browser SDK consumers are not expected to:
+
+- re-implement browser tool policy decisions
+- bypass runtime provider validation
+- treat internal `@browser-codex/*` packages as the supported integration
+  contract
+
+## Approval Mediation
+
+Dangerous browser tools can surface a browser-tool approval request through the
+optional `requestBrowserToolApproval` callback on
+`createBrowserCodexRuntimeContext(...)`.
+
+The exported approval types are:
+
+- `BrowserToolApprovalRequest`
+- `BrowserToolApprovalResponse`
+
+If `requestBrowserToolApproval` is omitted:
+
+- dangerous browser tools fail closed
+- the runtime returns structured blocked errors instead of executing the action
+
+The first browser-tool approval contract is intentionally narrow and applies to:
+
+- `browser__evaluate`
+- `browser__inspect_http`
+- `browser__navigate`
+
+## Provider Validation
+
+Built-in providers keep their runtime-owned allowlist validation.
+
+For `openai-compatible` providers:
+
+- custom endpoints must use absolute `https` URLs
+- localhost and loopback are denied by default
+- private-network and link-local targets are denied by default
+- localhost access requires `browser_security.allow_localhost`
+- private-network access requires `browser_security.allow_private_network`
+
+This is a transport-layer runtime check. It is not mediated by the browser tool
+approval callback.
 
 ## Example
 
@@ -144,6 +216,8 @@ import {
 } from "xcodex-runtime";
 import type {
   AuthState,
+  BrowserToolApprovalRequest,
+  BrowserToolApprovalResponse,
   CodexCompatibleConfig,
   StoredThreadSession,
   StoredThreadSessionMetadata,
@@ -173,8 +247,57 @@ const context = await createBrowserCodexRuntimeContext({
   cwd: "/workspace",
   storage,
   workspace: createLocalStorageWorkspaceAdapter(),
+  requestBrowserToolApproval: async (
+    request: BrowserToolApprovalRequest,
+  ): Promise<BrowserToolApprovalResponse> => {
+    const allow = window.confirm(
+      `Allow ${request.canonicalToolName} for ${request.displayOrigin}?`,
+    );
+    return {
+      decision: allow ? "allow_once" : "deny",
+    };
+  },
 });
 ```
+
+## Config Notes
+
+Relevant config fields for browser security:
+
+- `runtime_mode`
+  - `default`
+  - `demo`
+  - `chaos`
+- `browser_security.allowed_origins`
+- `browser_security.allow_localhost`
+- `browser_security.allow_private_network`
+
+Example:
+
+```ts
+const config: CodexCompatibleConfig = {
+  ...DEFAULT_CODEX_CONFIG,
+  runtime_mode: "demo",
+  browser_security: {
+    allowed_origins: ["https://app.example.com"],
+    allow_localhost: false,
+    allow_private_network: false,
+  },
+};
+```
+
+## Failure Modes
+
+Consumers should treat the following as expected runtime behavior, not SDK bugs:
+
+- dangerous browser tools fail when no approval mediator is configured
+- browser tool requests fail when origin policy blocks the current page or
+  target URL
+- `openai-compatible` providers fail with `invalid_provider_base_url` when the
+  target URL violates runtime transport policy
+
+The runtime returns structured errors so consumers can render clear messages
+without re-implementing the enforcement logic.
 
 ## Workspace Adapter
 

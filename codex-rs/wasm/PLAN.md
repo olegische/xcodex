@@ -12,7 +12,7 @@ Current phase status:
 - Phase 2 tool classification and policy wrapper: complete
 - Phase 3 approval contract: complete
 - Phase 4 network and provider integration: complete
-- Phase 5 downstream integration contract: not started
+- Phase 5 downstream integration contract: complete
 
 It is intentionally not an implementation checklist to execute blindly.
 
@@ -1492,7 +1492,27 @@ Expected outputs:
 - explicit consumer responsibilities
 - clear failure modes for clients that do not implement approval mediation
 
-Must be designed separately before implementation.
+### Phase 5 Completed Scope
+
+Implemented in the public browser SDK surface:
+
+- public type exports include browser approval request/response types
+- `createBrowserCodexRuntimeContext(...)` documents the optional
+  `requestBrowserToolApproval` callback
+- runtime-facing README documents:
+  - `runtime_mode`
+  - `browser_security`
+  - approval mediation responsibilities
+  - provider `baseUrl` validation behavior
+  - expected failure modes for blocked tools and blocked providers
+- consumer responsibilities are now explicitly documented at the SDK layer
+
+Phase 5 completion boundary:
+
+- the SDK contract for phases 1-4 is now documented as a consumer-facing
+  browser integration contract
+- downstream clients can adopt the runtime without reading internal
+  implementation packages
 
 ## Testing Expectations
 
