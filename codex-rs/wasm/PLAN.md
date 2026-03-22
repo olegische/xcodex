@@ -1009,14 +1009,286 @@ Must be designed separately before implementation.
 
 Goal:
 
-- define structured human mediation for dangerous actions
+- define structured human mediation for dangerous browser actions without
+  changing the Rust core approval protocol surface
 
 Expected outputs:
 
-- approval request payload shape
-- approval response payload shape
-- session-grant semantics
-- runtime error behavior when no mediator exists
+- explicit browser-runtime authorization context model
+- approval request payload shape for browser tools
+- approval response payload shape for browser tools
+- turn-grant and session-grant semantics
+- fail-closed runtime behavior when no browser approval mediator exists
+- clear separation between:
+  - static policy inputs from config
+  - session-local authorization state
+  - optional persistent remembered grants
+
+### Phase 3 Design Direction
+
+Phase 3 does not redefine tool-to-scope mapping.
+
+Important rule:
+
+- approvals must not mutate scope classification
+- approvals must not mutate canonical tool identity
+- approvals must not bypass browser origin policy
+- approvals only extend the currently granted authorization set within existing
+  policy boundaries
+
+That means:
+
+- registry continues to own `tool -> required scopes`
+- `runtime_mode` continues to define baseline grants
+- `browser_security` continues to define structural origin boundaries
+- approvals only add temporary grants on top of the baseline policy
+
+### Authorization Context Model
+
+The browser runtime must maintain an explicit session-level authorization
+context.
+
+This context is built at runtime creation from normalized config and then
+mutated only through explicit approval decisions.
+
+Conceptual shape:
+
+- `runtime_mode`
+- `browser_security`
+- baseline grants derived from mode
+- turn grants
+- session grants
+- optional persistent grants if the consumer later supports remembered access
+
+Effective authorization is computed as:
+
+- baseline grants from mode
+- plus persistent grants
+- plus session grants
+- plus turn grants
+
+This means:
+
+- config is not live approval state
+- approval decisions do not rewrite config by default
+- each runtime session rebuilds its authorization context from config inputs
+- turn-scoped grants are cleared when a new turn starts
+- session-scoped grants live only for the lifetime of the runtime session
+- persistent remembered grants, if supported later, are loaded explicitly as a
+  separate input layer
+
+### Storage Boundary
+
+Phase 3 should keep the storage boundary explicit.
+
+Default behavior:
+
+- no approval is persisted automatically across sessions
+- session approvals remain in runtime memory only
+- turn approvals remain in runtime memory only
+
+If remembered approvals are added later:
+
+- they must be opt-in
+- they must be stored explicitly as persistent policy input
+- the runtime must rebuild authorization context from that stored input on the
+  next session
+
+### Policy Evaluation Contract
+
+The policy layer should evolve from a binary allow/deny result into:
+
+- `allow`
+- `deny`
+- `requires_approval`
+
+`requires_approval` should be returned only when:
+
+- the tool is structurally known and classified
+- the action is eligible for approval by design
+- origin policy has already passed
+- the request is not already covered by effective grants
+
+Approval must never be used to rescue:
+
+- unknown tools
+- unmapped tools
+- blocked localhost/private-network targets when config forbids them
+- structurally denied origins
+
+### Grant Model
+
+Approval grants should be resource-bound.
+
+They should not be modeled as raw booleans like:
+
+- `tool X approved`
+
+They should instead be modeled as constrained authorization grants over:
+
+- scopes
+- origin/resource
+- grant lifetime
+- optional approval kind metadata
+
+Conceptual grant fields:
+
+- granted scopes
+- protected origin or target origin
+- approval kind
+- lifetime: `turn` or `session`
+
+Examples:
+
+- `browser.js:execute` for `https://app.example.com` for one turn
+- `browser.http:read` for `https://api.example.com` for this runtime session
+- `browser.page:navigate` for `https://docs.example.com` for one turn
+
+This aligns with standard authorization practice:
+
+- scopes answer "what"
+- origin/resource answers "where"
+- approval grant answers "for how long"
+
+### Browser Tool Approval Request Contract
+
+Phase 3 should introduce a browser-only approval request contract in the
+ TypeScript runtime layers.
+
+This contract does not need protocol-level parity with Rust core exec/patch
+ approvals.
+
+The request payload should include at least:
+
+- `approvalId`
+- `toolName`
+- `canonicalToolName`
+- `requiredScopes`
+- `runtimeMode`
+- `origin`
+- `targetUrl` when applicable
+- `approvalKind`
+- `reason`
+- `grantOptions`
+
+Recommended approval kinds:
+
+- `code_execution`
+- `network`
+- `navigation`
+- `mutation`
+- `sensitive_read`
+
+`grantOptions` should start with:
+
+- `allow_once`
+- `allow_for_session`
+- `deny`
+- `abort`
+
+### Browser Tool Approval Response Contract
+
+The response payload should be minimal and explicit.
+
+Recommended shape:
+
+- `decision`
+
+Where `decision` is one of:
+
+- `allow_once`
+- `allow_for_session`
+- `deny`
+- `abort`
+
+Runtime behavior:
+
+- `allow_once` adds a turn-scoped grant
+- `allow_for_session` adds a session-scoped grant
+- `deny` rejects the tool request
+- `abort` interrupts the active action or turn consistently with other browser
+  runtime interruption behavior
+
+### Runtime Placement
+
+Phase 3 should not require moving browser approvals into `codex-rs/wasm/core`.
+
+Design decision:
+
+- normalized policy inputs are still assembled by `ts/browser-runtime`
+- live authorization context is owned by `ts/browser-codex-runtime`
+- browser tool policy evaluation reads that live authorization context
+- browser approval mediation is implemented in the TypeScript browser runtime
+  layers
+
+This keeps:
+
+- Rust core approval plumbing unchanged
+- browser-tool approvals local to browser-tool execution
+- room for later convergence if protocol-level parity is ever needed
+
+### No-Mediator Behavior
+
+The browser runtime must fail closed when a required approval cannot be
+mediated.
+
+That includes:
+
+- no approval callback provided by the consumer
+- callback failure
+- invalid approval response
+- cancelled approval flow
+
+In those cases:
+
+- the tool request must not execute
+- the runtime should return a structured blocked error
+
+### Initial Scope Of Approval Eligibility
+
+The first Phase 3 implementation should keep approval eligibility narrow and
+explicit.
+
+Expected initial candidates:
+
+- `browser__evaluate`
+- `browser__inspect_http`
+- `browser__navigate`
+
+Other tools such as mutations or sensitive reads may remain deny-only until
+their approval semantics are separately confirmed.
+
+### Phase 3 Implementation Plan
+
+1. Introduce explicit browser authorization context types in the TypeScript
+   browser runtime layers.
+2. Build session authorization context from normalized config when the runtime
+   session is created.
+3. Replace ad hoc config-based policy reads with authorization-context-based
+   policy evaluation.
+4. Extend the browser tool policy result model to support
+   `requires_approval`.
+5. Add browser approval grant storage for:
+   - turn scope
+   - session scope
+6. Add browser approval request/response callback types to the public browser
+   runtime API.
+7. Trigger approval mediation for explicitly eligible dangerous browser tools.
+8. Apply approval decisions by mutating authorization context grants only.
+9. Clear turn grants on new turn boundaries.
+10. Return structured blocked errors when no mediator is available or approval
+    is denied.
+
+### Phase 3 Review Checkpoints
+
+- confirm the exact initial set of approval-eligible browser tools
+- confirm whether any sensitive read tools should be approval-eligible in the
+  first implementation
+- confirm whether persistent remembered grants are out of scope for the first
+  implementation
+- confirm whether `abort` should interrupt only the pending tool action or the
+  whole turn
+- confirm exact public TypeScript names before treating them as SDK contract
 
 Must be designed separately before implementation.
 
