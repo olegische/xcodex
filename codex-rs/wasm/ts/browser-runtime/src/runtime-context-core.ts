@@ -1,4 +1,7 @@
-import { wrapBrowserToolExecutorWithAuthorization } from "@browser-codex/wasm-browser-tools/browser-tool-authorization";
+import {
+  createBrowserToolAuthorizationContext,
+  wrapBrowserToolExecutorWithAuthorization,
+} from "@browser-codex/wasm-browser-tools/browser-tool-authorization";
 import type { JsonValue, StoredThreadSession } from "./types/core.ts";
 import {
   DEFAULT_BROWSER_CODEX_HOME,
@@ -37,23 +40,18 @@ export async function createBrowserCodexRuntimeContextWithDeps(
   const modelTransport = deps.createBrowserRuntimeModelTransportAdapter({
     loadXrouterRuntime: async () => await transport.loadXrouterRuntime(),
   });
-  const loadRuntimeMode = async () => {
-    const config = await storage
-      .loadConfig()
-      .catch(() => structuredClone(deps.defaultConfig));
-    return config.runtime_mode ?? "default";
-  };
-  const loadBrowserSecurityPolicy = async () => {
-    const config = await storage
-      .loadConfig()
-      .catch(() => structuredClone(deps.defaultConfig));
-    const browserSecurity = normalizeBrowserSecurityConfig(config.browser_security);
-    return {
+  const initialConfig = await storage
+    .loadConfig()
+    .catch(() => structuredClone(deps.defaultConfig));
+  const browserSecurity = normalizeBrowserSecurityConfig(initialConfig.browser_security);
+  const authorizationContext = createBrowserToolAuthorizationContext({
+    runtimeMode: initialConfig.runtime_mode ?? "default",
+    browserSecurityPolicy: {
       allowedOrigins: browserSecurity.allowed_origins,
       allowLocalhost: browserSecurity.allow_localhost,
       allowPrivateNetwork: browserSecurity.allow_private_network,
-    };
-  };
+    },
+  });
 
   if (options.telemetry?.initializePageTelemetry !== false) {
     deps.initializePageTelemetry();
@@ -163,12 +161,12 @@ export async function createBrowserCodexRuntimeContextWithDeps(
       dynamicTools:
         options.dynamicTools === undefined
           ? deps.createBrowserAwareToolExecutor({
-              loadRuntimeMode,
-              loadBrowserSecurityPolicy,
+              getAuthorizationContext: () => authorizationContext,
+              requestApproval: options.requestBrowserToolApproval,
             })
           : wrapBrowserToolExecutorWithAuthorization(options.dynamicTools, {
-              loadRuntimeMode,
-              loadBrowserSecurityPolicy,
+              getAuthorizationContext: () => authorizationContext,
+              requestApproval: options.requestBrowserToolApproval,
             }),
       async readAccount({
         authState,
@@ -195,6 +193,7 @@ export async function createBrowserCodexRuntimeContextWithDeps(
         throw new Error("Browser runtime context does not provide auth refresh.");
       },
       formatError: deps.formatError,
+      requestBrowserToolApproval: options.requestBrowserToolApproval,
       async requestUserInput(request: {
         questions: Array<{
           id: string;
@@ -213,6 +212,9 @@ export async function createBrowserCodexRuntimeContextWithDeps(
             value: normalizeJsonValue(answer.value),
           })),
         };
+      },
+      onTurnStart() {
+        authorizationContext.clearTurnGrants();
       },
       logScope: "browser-runtime",
     },
@@ -246,12 +248,22 @@ export type RuntimeContextDeps = {
     runModelTurn(params: unknown): Promise<unknown>;
   }): (request: unknown) => Promise<unknown>;
   createBrowserAwareToolExecutor(args: {
-    loadRuntimeMode(): Promise<"default" | "demo" | "chaos">;
-    loadBrowserSecurityPolicy(): Promise<{
-      allowedOrigins: string[];
-      allowLocalhost: boolean;
-      allowPrivateNetwork: boolean;
+    getAuthorizationContext(): Promise<{
+      runtimeMode: "default" | "demo" | "chaos";
+      browserSecurityPolicy: {
+        allowedOrigins: string[];
+        allowLocalhost: boolean;
+        allowPrivateNetwork: boolean;
+      };
+      baselineGrants: string[];
+      turnGrants: unknown[];
+      sessionGrants: unknown[];
+      addGrant(grant: unknown): void;
+      clearTurnGrants(): void;
+      effectiveScopes(origin: string | null): string[];
+      hasGrant(origin: string, scopes: string[]): boolean;
     }>;
+    requestApproval?(request: unknown): Promise<unknown>;
   }): unknown;
   initializePageTelemetry(): void;
   activeProviderApiKey(config: CodexCompatibleConfig): string;

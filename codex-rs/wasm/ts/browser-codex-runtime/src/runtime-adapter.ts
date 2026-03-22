@@ -142,6 +142,7 @@ export class BrowserCodexRuntime<
   }
 
   async turnStart(params: TurnStartParams): Promise<TurnStartResponse> {
+    await this.deps.onTurnStart?.();
     return await this.requestTyped<TurnStartResponse>("turn/start", {
       ...params,
       threadId: this.resolveThreadId(params.threadId),

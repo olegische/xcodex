@@ -1,5 +1,9 @@
 import type { BrowserCodexProtocolClient as InternalBrowserCodexProtocolClient } from "@browser-codex/wasm-browser-codex-runtime";
 import type {
+  BrowserToolApprovalRequest,
+  BrowserToolApprovalResponse,
+} from "@browser-codex/wasm-browser-codex-runtime";
+import type {
   Account,
   AuthState,
   CodexCompatibleConfig,
@@ -13,6 +17,10 @@ import type {
 } from "./core.ts";
 
 export type BrowserCodexProtocolClient = InternalBrowserCodexProtocolClient;
+export type {
+  BrowserToolApprovalRequest,
+  BrowserToolApprovalResponse,
+};
 
 export type BrowserWorkspaceAdapter = {
   readFile(request: JsonValue): Promise<JsonValue>;
@@ -152,6 +160,9 @@ export type CreateBrowserCodexRuntimeContextOptions = {
       value: unknown;
     }>;
   }>;
+  requestBrowserToolApproval?: (
+    request: BrowserToolApprovalRequest,
+  ) => Promise<BrowserToolApprovalResponse>;
   readAccount?: (args: {
     authState: AuthState | null;
     config: CodexCompatibleConfig;

@@ -38,6 +38,38 @@ export type BrowserDynamicToolExecutor = {
   }>;
 };
 
+export type BrowserToolApprovalKind =
+  | "code_execution"
+  | "network"
+  | "navigation"
+  | "mutation"
+  | "sensitive_read";
+
+export type BrowserToolApprovalOption =
+  | "allow_once"
+  | "allow_for_session"
+  | "deny"
+  | "abort";
+
+export type BrowserToolApprovalRequest = {
+  approvalId: string;
+  toolName: string;
+  canonicalToolName: string;
+  requiredScopes: string[];
+  runtimeMode: "default" | "demo" | "chaos";
+  origin: string;
+  displayOrigin: string;
+  targetOrigin: string | null;
+  targetUrl: string | null;
+  approvalKind: BrowserToolApprovalKind;
+  reason: string;
+  grantOptions: BrowserToolApprovalOption[];
+};
+
+export type BrowserToolApprovalResponse = {
+  decision: BrowserToolApprovalOption;
+};
+
 export type BrowserRuntimePersistence<TAuthState, TConfig> = {
   loadAuthState(): Promise<TAuthState | null>;
   saveAuthState(authState: TAuthState): Promise<void>;
@@ -106,12 +138,16 @@ export type BrowserCodexRuntimeDeps<
   requestUserInput?(request: {
     questions: BrowserRuntimeRequestUserInputQuestion[];
   }): Promise<BrowserRuntimeRequestUserInputResponse>;
+  requestBrowserToolApproval?(
+    request: BrowserToolApprovalRequest,
+  ): Promise<BrowserToolApprovalResponse>;
   resolveUnhandledServerRequest?(request: ServerRequest): Promise<Record<string, unknown>>;
   resolveDynamicToolTarget?(toolName: string): {
     toolNamespace: string;
     toolName: string;
   } | null;
   normalizeDynamicToolName?(tool: BrowserDynamicToolCatalogEntry): string;
+  onTurnStart?(): void | Promise<void>;
   logScope?: string;
 };
 

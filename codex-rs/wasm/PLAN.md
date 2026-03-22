@@ -10,7 +10,8 @@ Current phase status:
 - Phase 0 design review: complete
 - Phase 1 config contract hardening: in progress
 - Phase 2 tool classification and policy wrapper: complete
-- Phases 3-5: not started
+- Phase 3 approval contract: complete
+- Phases 4-5: not started
 
 It is intentionally not an implementation checklist to execute blindly.
 
@@ -1094,6 +1095,14 @@ If remembered approvals are added later:
 - the runtime must rebuild authorization context from that stored input on the
   next session
 
+MVP decision:
+
+- the first Phase 3 implementation should not include remembered grants
+- the first Phase 3 implementation should not add new user-facing settings for
+  approval persistence or expiry
+- `allow_for_session` should mean "until this runtime session ends", with no
+  extra TTL knobs in the MVP
+
 ### Policy Evaluation Contract
 
 The policy layer should evolve from a binary allow/deny result into:
@@ -1166,10 +1175,21 @@ The request payload should include at least:
 - `requiredScopes`
 - `runtimeMode`
 - `origin`
+- `displayOrigin`
+- `targetOrigin` when applicable
 - `targetUrl` when applicable
 - `approvalKind`
 - `reason`
 - `grantOptions`
+
+For MVP UX:
+
+- the payload should give the UI enough structured data to render a short,
+  human-readable consent prompt without exposing raw policy internals
+- the runtime should provide normalized origin fields so downstream UIs do not
+  invent their own origin parsing or risk labeling
+- the first implementation should avoid additional per-tool configuration
+  surfaces beyond the existing runtime config and the approval callback itself
 
 Recommended approval kinds:
 
@@ -1206,8 +1226,8 @@ Runtime behavior:
 - `allow_once` adds a turn-scoped grant
 - `allow_for_session` adds a session-scoped grant
 - `deny` rejects the tool request
-- `abort` interrupts the active action or turn consistently with other browser
-  runtime interruption behavior
+- `abort` interrupts only the pending tool action in the first implementation;
+  it should not implicitly cancel the whole turn
 
 ### Runtime Placement
 
@@ -1258,6 +1278,11 @@ Expected initial candidates:
 Other tools such as mutations or sensitive reads may remain deny-only until
 their approval semantics are separately confirmed.
 
+MVP bias:
+
+- prefer deny-only over adding more approval-eligible tools too early
+- prefer fewer, clearer prompts over broad approval coverage with confusing UX
+
 ### Phase 3 Implementation Plan
 
 1. Introduce explicit browser authorization context types in the TypeScript
@@ -1284,13 +1309,49 @@ their approval semantics are separately confirmed.
 - confirm the exact initial set of approval-eligible browser tools
 - confirm whether any sensitive read tools should be approval-eligible in the
   first implementation
-- confirm whether persistent remembered grants are out of scope for the first
+- confirm that persistent remembered grants stay out of scope for the first
   implementation
-- confirm whether `abort` should interrupt only the pending tool action or the
-  whole turn
+- confirm that `abort` interrupts only the pending tool action in the first
+  implementation
 - confirm exact public TypeScript names before treating them as SDK contract
 
-Must be designed separately before implementation.
+### Phase 3 Completed Scope
+
+Implemented in the WASM runtime core:
+
+- explicit browser authorization context with:
+  - baseline grants derived from `runtime_mode`
+  - turn grants
+  - session grants
+- authorization-context-based browser tool policy evaluation
+- policy result model supporting:
+  - `allow`
+  - `deny`
+  - `requires_approval`
+- browser approval request/response contract in the TypeScript runtime layers
+- fail-closed approval mediation for dangerous browser tools
+- structured blocked errors for:
+  - missing approval mediator
+  - approval callback failure
+  - invalid approval response
+  - denied or aborted approval decisions
+- turn-grant clearing on new turn boundaries
+- initial approval-eligible browser tools:
+  - `browser__evaluate`
+  - `browser__inspect_http`
+  - `browser__navigate`
+
+Phase 3 intentionally does not include:
+
+- remembered/persistent grants across sessions
+- new user-facing settings for approval persistence or expiry
+- downstream approval UI implementation
+- widening approval eligibility to additional sensitive-read or mutation tools
+
+Phase 3 completion boundary:
+
+- the WASM runtime now defines and enforces the browser approval contract
+- downstream clients remain responsible for presenting approval UX later
 
 ## Phase 4: Network And Provider Integration
 

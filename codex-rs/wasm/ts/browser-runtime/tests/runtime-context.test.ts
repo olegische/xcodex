@@ -203,6 +203,46 @@ test("createBrowserCodexRuntimeContext normalizes requestUserInput answers into 
   });
 });
 
+test("createBrowserCodexRuntimeContext wires browser tool approval callback and clears turn grants", async () => {
+  const storage = createMemoryStorage();
+  const captured = createCapturedDeps();
+  const approvalCalls: unknown[] = [];
+
+  await createBrowserCodexRuntimeContextWithDeps(
+    {
+      cwd: "/workspace",
+      storage,
+      workspace: createWorkspaceAdapter(),
+      requestBrowserToolApproval: async (request) => {
+        approvalCalls.push(request);
+        return { decision: "allow_once" };
+      },
+    },
+    captured.deps,
+  );
+
+  const approvalResponse = await captured.runtimeDeps.requestBrowserToolApproval?.({
+    approvalId: "approval-1",
+    toolName: "browser__navigate",
+    canonicalToolName: "browser__navigate",
+    requiredScopes: ["browser.page:navigate"],
+    runtimeMode: "default",
+    origin: "https://example.test",
+    displayOrigin: "https://example.test",
+    targetOrigin: "https://example.test",
+    targetUrl: "https://example.test/path",
+    approvalKind: "navigation",
+    reason: "Navigate the current page to the requested URL.",
+    grantOptions: ["allow_once", "deny"],
+  });
+
+  captured.runtimeDeps.onTurnStart?.();
+  captured.runtimeDeps.onTurnStart?.();
+
+  assert.deepEqual(approvalResponse, { decision: "allow_once" });
+  assert.equal(approvalCalls.length, 1);
+});
+
 test("createBrowserCodexRuntimeContext keeps stored thread cwd on workspace root", async () => {
   const storage = createMemoryStorage();
   const captured = createCapturedDeps();
@@ -427,9 +467,11 @@ function createCapturedDeps() {
           config: CodexCompatibleConfig;
           refreshToken: boolean;
         }): Promise<unknown>;
+        requestBrowserToolApproval?(request: unknown): Promise<unknown>;
         requestUserInput(args: {
           questions: unknown[];
         }): Promise<unknown>;
+        onTurnStart?(): void;
       };
     },
     get hostDeps() {
@@ -480,12 +522,8 @@ function createCapturedDeps() {
         return async () => null;
       },
       createBrowserAwareToolExecutor(_args: {
-        loadRuntimeMode(): Promise<"default" | "demo" | "chaos">;
-        loadBrowserSecurityPolicy(): Promise<{
-          allowedOrigins: string[];
-          allowLocalhost: boolean;
-          allowPrivateNetwork: boolean;
-        }>;
+        getAuthorizationContext(): Promise<unknown>;
+        requestApproval?(request: unknown): Promise<unknown>;
       }) {
         return {
           async list() {

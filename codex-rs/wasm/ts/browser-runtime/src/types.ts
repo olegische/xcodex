@@ -17,6 +17,8 @@ export type {
   BrowserCodexProtocolClient,
   BrowserDynamicToolCatalogEntry,
   BrowserDynamicToolExecutor,
+  BrowserToolApprovalRequest,
+  BrowserToolApprovalResponse,
   BrowserRuntimeContext,
   BrowserRuntimeNotification,
   BrowserRuntimeStorage,

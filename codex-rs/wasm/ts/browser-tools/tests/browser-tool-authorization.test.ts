@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { BrowserDynamicToolExecutor } from "@browser-codex/wasm-browser-codex-runtime/types";
-import { BrowserToolAuthorizationError, wrapBrowserToolExecutorWithAuthorization } from "../src/browser-tool-authorization.ts";
+import {
+  BrowserToolAuthorizationError,
+  createBrowserToolAuthorizationContext,
+  wrapBrowserToolExecutorWithAuthorization,
+} from "../src/browser-tool-authorization.ts";
 
-test("list filters tools by runtime mode and fails closed for unmapped tools", async () => {
+test("list exposes approval-eligible tools and fails closed for unmapped tools", async () => {
   const executor = createWrappedExecutor("default");
   const { tools } = await executor.list();
 
@@ -16,24 +20,29 @@ test("list filters tools by runtime mode and fails closed for unmapped tools", a
       "browser__wait_for",
       "browser__inspect_performance",
       "browser__tool_search",
+      "browser__inspect_http",
+      "browser__navigate",
     ],
   );
 });
 
-test("demo mode exposes broader read-only inspection surface", async () => {
+test("demo mode exposes broader inspection surface plus approval-eligible tools", async () => {
   const executor = createWrappedExecutor("demo");
   const { tools } = await executor.list();
 
   assert(tools.some((tool) => tool.toolName === "inspect_resources"));
-  assert(tools.some((tool) => tool.toolName === "inspect_dom"));
+  assert(tools.some((tool) => tool.toolName === "inspect_http"));
+  assert(tools.some((tool) => tool.toolName === "navigate"));
   assert(!tools.some((tool) => tool.toolName === "click"));
-  assert(!tools.some((tool) => tool.toolName === "inspect_http"));
+  assert(!tools.some((tool) => tool.toolName === "evaluate"));
 });
 
 test("chaos mode exposes evaluate only for allowlisted current origins", async () => {
   const blocked = createWrappedExecutor("chaos");
   const blockedTools = await blocked.list();
   assert(!blockedTools.tools.some((tool) => tool.toolName === "evaluate"));
+  assert(blockedTools.tools.some((tool) => tool.toolName === "inspect_http"));
+  assert(blockedTools.tools.some((tool) => tool.toolName === "navigate"));
 
   const allowed = createWrappedExecutor("chaos", {
     browserSecurityPolicy: {
@@ -46,8 +55,6 @@ test("chaos mode exposes evaluate only for allowlisted current origins", async (
   const allowedTools = await allowed.list();
 
   assert(allowedTools.tools.some((tool) => tool.toolName === "evaluate"));
-  assert(allowedTools.tools.some((tool) => tool.toolName === "inspect_http"));
-  assert(allowedTools.tools.some((tool) => tool.toolName === "navigate"));
 });
 
 test("invoke normalizes aliases through the canonical policy path", async () => {
@@ -127,7 +134,7 @@ test("DOM inspection policy is input-sensitive", async () => {
   ]);
 });
 
-test("browser.js:execute requires chaos and an allowlisted non-local origin", async () => {
+test("browser.js:execute remains chaos-only and requires explicit approval", async () => {
   for (const runtimeMode of ["default", "demo"] as const) {
     const executor = createWrappedExecutor(runtimeMode, {
       browserSecurityPolicy: {
@@ -136,6 +143,7 @@ test("browser.js:execute requires chaos and an allowlisted non-local origin", as
         allowPrivateNetwork: false,
       },
       currentPageUrl: "https://app.example.test/page",
+      requestApproval: async () => ({ decision: "allow_once" }),
     });
     await assert.rejects(
       executor.invoke({
@@ -151,6 +159,26 @@ test("browser.js:execute requires chaos and an allowlisted non-local origin", as
     );
   }
 
+  const noMediator = createWrappedExecutor("chaos", {
+    browserSecurityPolicy: {
+      allowedOrigins: ["https://app.example.test"],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    },
+    currentPageUrl: "https://app.example.test/page",
+  });
+  await assert.rejects(
+    noMediator.invoke({
+      callId: "call-chaos-deny",
+      toolName: "browser__run_probe",
+      toolNamespace: "browser",
+      input: { script: "return 1;" },
+    }),
+    (error: unknown) =>
+      error instanceof BrowserToolAuthorizationError &&
+      error.code === "approval_mediator_unavailable",
+  );
+
   const executor = createWrappedExecutor("chaos", {
     browserSecurityPolicy: {
       allowedOrigins: ["https://app.example.test"],
@@ -158,6 +186,11 @@ test("browser.js:execute requires chaos and an allowlisted non-local origin", as
       allowPrivateNetwork: false,
     },
     currentPageUrl: "https://app.example.test/page",
+    requestApproval: async (request) => {
+      assert.equal(request.approvalKind, "code_execution");
+      assert.equal(request.origin, "https://app.example.test");
+      return { decision: "allow_once" };
+    },
   });
   const result = await executor.invoke({
     callId: "call-chaos",
@@ -220,6 +253,7 @@ test("evaluate can be explicitly enabled for localhost and private network origi
       allowPrivateNetwork: false,
     },
     currentPageUrl: "http://localhost:3000",
+    requestApproval: async () => ({ decision: "allow_once" }),
   });
   assert.deepEqual(
     await localhostExecutor.invoke({
@@ -238,6 +272,7 @@ test("evaluate can be explicitly enabled for localhost and private network origi
       allowPrivateNetwork: true,
     },
     currentPageUrl: "http://10.0.0.5:5173",
+    requestApproval: async () => ({ decision: "allow_once" }),
   });
   assert.deepEqual(
     await privateExecutor.invoke({
@@ -250,28 +285,25 @@ test("evaluate can be explicitly enabled for localhost and private network origi
   );
 });
 
-test("navigate and inspect_http require allowlisted target origins", async () => {
-  const executor = createWrappedExecutor("chaos", {
-    browserSecurityPolicy: {
-      allowedOrigins: ["https://allowed.example.test"],
-      allowLocalhost: false,
-      allowPrivateNetwork: false,
+test("navigate and inspect_http require approval when baseline scopes are absent", async () => {
+  const calls: Array<{ toolName: string; input: unknown }> = [];
+  const approvals: string[] = [];
+  const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor(calls), {
+    getAuthorizationContext: async () =>
+      createBrowserToolAuthorizationContext({
+        runtimeMode: "default",
+        browserSecurityPolicy: {
+          allowedOrigins: ["https://allowed.example.test"],
+          allowLocalhost: false,
+          allowPrivateNetwork: false,
+        },
+      }),
+    getCurrentPageUrl: async () => "https://app.example.test/current",
+    requestApproval: async (request) => {
+      approvals.push(`${request.canonicalToolName}:${request.targetOrigin}`);
+      return { decision: "allow_once" };
     },
-    currentPageUrl: "https://app.example.test/current",
   });
-
-  await assert.rejects(
-    executor.invoke({
-      callId: "call-nav-deny",
-      toolName: "browser__navigate",
-      toolNamespace: "browser",
-      input: { url: "https://denied.example.test/path" },
-    }),
-    (error: unknown) =>
-      error instanceof BrowserToolAuthorizationError &&
-      error.code === "origin_not_allowlisted" &&
-      error.resolvedOrigin === "https://denied.example.test",
-  );
 
   assert.deepEqual(
     await executor.invoke({
@@ -292,6 +324,125 @@ test("navigate and inspect_http require allowlisted target origins", async () =>
     }),
     { output: { ok: true } },
   );
+
+  assert.deepEqual(approvals, [
+    "browser__navigate:https://allowed.example.test",
+    "browser__inspect_http:https://allowed.example.test",
+  ]);
+  assert.deepEqual(calls, [
+    {
+      toolName: "browser__navigate",
+      input: { url: "https://allowed.example.test/path" },
+    },
+    {
+      toolName: "browser__inspect_http",
+      input: { url: "https://allowed.example.test/api" },
+    },
+  ]);
+});
+
+test("navigate and inspect_http still require allowlisted target origins", async () => {
+  const executor = createWrappedExecutor("default", {
+    browserSecurityPolicy: {
+      allowedOrigins: ["https://allowed.example.test"],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    },
+    currentPageUrl: "https://app.example.test/current",
+    requestApproval: async () => ({ decision: "allow_once" }),
+  });
+
+  await assert.rejects(
+    executor.invoke({
+      callId: "call-nav-deny",
+      toolName: "browser__navigate",
+      toolNamespace: "browser",
+      input: { url: "https://denied.example.test/path" },
+    }),
+    (error: unknown) =>
+      error instanceof BrowserToolAuthorizationError &&
+      error.code === "origin_not_allowlisted" &&
+      error.resolvedOrigin === "https://denied.example.test",
+  );
+});
+
+test("allow_once grants are cleared on new turn boundaries", async () => {
+  const calls: Array<{ toolName: string; input: unknown }> = [];
+  const authorizationContext = createBrowserToolAuthorizationContext({
+    runtimeMode: "default",
+    browserSecurityPolicy: {
+      allowedOrigins: ["https://allowed.example.test"],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    },
+  });
+  let approvals = 0;
+  const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor(calls), {
+    getAuthorizationContext: async () => authorizationContext,
+    getCurrentPageUrl: async () => "https://app.example.test/current",
+    requestApproval: async () => {
+      approvals += 1;
+      return { decision: "allow_once" };
+    },
+  });
+
+  await executor.invoke({
+    callId: "call-1",
+    toolName: "browser__navigate",
+    toolNamespace: "browser",
+    input: { url: "https://allowed.example.test/path" },
+  });
+  await executor.invoke({
+    callId: "call-2",
+    toolName: "browser__navigate",
+    toolNamespace: "browser",
+    input: { url: "https://allowed.example.test/again" },
+  });
+  authorizationContext.clearTurnGrants();
+  await executor.invoke({
+    callId: "call-3",
+    toolName: "browser__navigate",
+    toolNamespace: "browser",
+    input: { url: "https://allowed.example.test/fresh-turn" },
+  });
+
+  assert.equal(approvals, 2);
+});
+
+test("allow_for_session grants survive turn resets", async () => {
+  const authorizationContext = createBrowserToolAuthorizationContext({
+    runtimeMode: "default",
+    browserSecurityPolicy: {
+      allowedOrigins: ["https://allowed.example.test"],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    },
+  });
+  let approvals = 0;
+  const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor([]), {
+    getAuthorizationContext: async () => authorizationContext,
+    getCurrentPageUrl: async () => "https://app.example.test/current",
+    requestApproval: async () => {
+      approvals += 1;
+      return { decision: "allow_for_session" };
+    },
+  });
+
+  await executor.invoke({
+    callId: "call-1",
+    toolName: "browser__probe_http",
+    toolNamespace: "browser",
+    input: { url: "https://allowed.example.test/api" },
+  });
+  authorizationContext.clearTurnGrants();
+  await executor.invoke({
+    callId: "call-2",
+    toolName: "browser__probe_http",
+    toolNamespace: "browser",
+    input: { url: "https://allowed.example.test/other" },
+  });
+
+  assert.equal(approvals, 1);
 });
 
 function createWrappedExecutor(
@@ -303,22 +454,29 @@ function createWrappedExecutor(
       allowPrivateNetwork: boolean;
     };
     currentPageUrl?: string | null;
+    requestApproval?: (request: {
+      approvalKind: string;
+      canonicalToolName: string;
+      origin: string;
+      targetOrigin: string | null;
+    }) => Promise<{ decision: "allow_once" | "allow_for_session" | "deny" | "abort" }>;
   },
 ) {
   return wrapBrowserToolExecutorWithAuthorization(createRawExecutor([]), {
-    async loadRuntimeMode() {
-      return runtimeMode;
-    },
-    async loadBrowserSecurityPolicy() {
-      return options?.browserSecurityPolicy ?? {
-        allowedOrigins: [],
-        allowLocalhost: false,
-        allowPrivateNetwork: false,
-      };
+    async getAuthorizationContext() {
+      return createBrowserToolAuthorizationContext({
+        runtimeMode,
+        browserSecurityPolicy: options?.browserSecurityPolicy ?? {
+          allowedOrigins: [],
+          allowLocalhost: false,
+          allowPrivateNetwork: false,
+        },
+      });
     },
     async getCurrentPageUrl() {
       return options?.currentPageUrl ?? "https://app.example.test/current";
     },
+    requestApproval: options?.requestApproval,
   });
 }
 
