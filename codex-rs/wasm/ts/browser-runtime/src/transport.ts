@@ -18,6 +18,7 @@ import {
   getActiveProvider,
   isAbortError,
   modelIdToDisplayName,
+  normalizeBrowserSecurityConfig,
   normalizeDiscoveredModels,
 } from "./config.ts";
 import type { CodexCompatibleConfig, JsonValue, ModelPreset } from "./types.ts";
@@ -29,7 +30,10 @@ export function createBrowserRuntimeModelTransportAdapter(deps: {
 }): ModelTransportAdapter<CodexCompatibleConfig, ModelPreset, JsonValue> {
   return createResolvedBrowserModelTransportAdapter({
     getProvider(config) {
-      return validateBrowserTransportProvider(getActiveProvider(config));
+      return validateBrowserTransportProvider(
+        getActiveProvider(config),
+        normalizeBrowserSecurityConfig(config.browser_security),
+      );
     },
     getApiKey: activeProviderApiKey,
     normalizeDiscoveredModels,
@@ -63,6 +67,7 @@ export function createBrowserRuntimeModelTransportAdapter(deps: {
 
 export function validateBrowserTransportProvider(
   provider: BrowserTransportProvider,
+  browserSecurity = normalizeBrowserSecurityConfig(undefined),
 ): BrowserTransportProvider {
   const normalizedBaseUrl = normalizeProviderBaseUrl(provider.baseUrl);
   switch (provider.providerKind) {
@@ -86,6 +91,11 @@ export function validateBrowserTransportProvider(
       );
       break;
     case "openai_compatible":
+      validateOpenAiCompatibleProviderBaseUrl(
+        normalizedBaseUrl,
+        provider,
+        browserSecurity,
+      );
       break;
   }
 
@@ -124,6 +134,108 @@ function normalizeProviderBaseUrl(baseUrl: string): string {
     );
   }
   return trimmed;
+}
+
+function validateOpenAiCompatibleProviderBaseUrl(
+  baseUrl: string,
+  provider: Pick<BrowserTransportProvider, "name" | "providerKind">,
+  browserSecurity: {
+    allow_localhost?: boolean | null;
+    allow_private_network?: boolean | null;
+  },
+): void {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw createProviderBaseUrlError(
+      provider,
+      baseUrl,
+      "invalid_url",
+      "must be a valid absolute URL",
+    );
+  }
+
+  if (url.protocol !== "https:") {
+    throw createProviderBaseUrlError(
+      provider,
+      baseUrl,
+      "insecure_protocol",
+      "must use https",
+    );
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  if (isLocalhostHostname(hostname) && browserSecurity.allow_localhost !== true) {
+    throw createProviderBaseUrlError(
+      provider,
+      baseUrl,
+      "localhost_not_allowed",
+      "targets localhost or loopback and browser_security.allow_localhost is false",
+    );
+  }
+
+  if (isPrivateNetworkHostname(hostname) && browserSecurity.allow_private_network !== true) {
+    throw createProviderBaseUrlError(
+      provider,
+      baseUrl,
+      "private_network_not_allowed",
+      "targets a private or link-local network and browser_security.allow_private_network is false",
+    );
+  }
+}
+
+function createProviderBaseUrlError(
+  provider: Pick<BrowserTransportProvider, "name" | "providerKind">,
+  baseUrl: string,
+  reason:
+    | "invalid_url"
+    | "insecure_protocol"
+    | "localhost_not_allowed"
+    | "private_network_not_allowed",
+  detail: string,
+): Error {
+  return createHostError(
+    "invalid_provider_base_url",
+    `Provider \`${provider.name}\` (${provider.providerKind}) uses a blocked baseUrl: ${baseUrl} (${detail})`,
+    {
+      providerKind: provider.providerKind,
+      baseUrl,
+      reason,
+    },
+  );
+}
+
+function isLocalhostHostname(hostname: string): boolean {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return hostname.slice(1, -1).toLowerCase() === "::1";
+  }
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isPrivateNetworkHostname(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return false;
+  }
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    const normalized = hostname.slice(1, -1).toLowerCase();
+    return normalized === "::1" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      normalized.startsWith("fe80:");
+  }
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    return false;
+  }
+  const octets = hostname.split(".").map(Number);
+  const [first, second] = octets;
+  if (octets.some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)) {
+    return false;
+  }
+  return first === 10 ||
+    (first === 192 && second === 168) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 169 && second === 254);
 }
 
 export function cancelActiveModelRequests(requestId: string): void {

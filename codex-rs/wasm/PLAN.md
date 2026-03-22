@@ -11,7 +11,8 @@ Current phase status:
 - Phase 1 config contract hardening: in progress
 - Phase 2 tool classification and policy wrapper: complete
 - Phase 3 approval contract: complete
-- Phases 4-5: not started
+- Phase 4 network and provider integration: complete
+- Phase 5 downstream integration contract: not started
 
 It is intentionally not an implementation checklist to execute blindly.
 
@@ -1357,16 +1358,126 @@ Phase 3 completion boundary:
 
 Goal:
 
-- align tool policy and provider egress policy
+- harden provider `baseUrl` handling for the browser MVP without expanding the
+  approval model or introducing heavy configuration UX
 
 Expected outputs:
 
-- runtime policy for browser network tools
-- runtime policy for provider base URLs
-- private-network and localhost handling
-- explicit story for local development exceptions if needed
+- keep built-in providers on their existing strict allowlists
+- add runtime policy for `openai-compatible` provider `baseUrl`
+- require `https` for custom `openai-compatible` provider URLs by default
+- deny localhost, loopback, private-network, and link-local provider targets by
+  default for `openai-compatible`
+- allow local development exceptions only through explicit config opt-ins
+- avoid introducing a large unified tool-policy + provider-policy abstraction in
+  this phase
 
-Must be designed separately before implementation.
+### MVP Design Direction
+
+Phase 4 is intentionally narrow.
+
+It should not try to solve:
+
+- a general-purpose unified egress policy engine
+- per-provider approval UX
+- remembered grants for model transports
+- a large new provider-security settings surface
+
+Instead, it should solve the most important browser-MVP gap:
+
+- custom `openai-compatible` provider URLs are currently the main unrestricted
+  provider egress path
+
+### Scope Boundary
+
+For MVP:
+
+- built-in providers should keep their current strict URL validation model
+- `openai-compatible` should be treated as the only custom-provider path that
+  needs new hardening in this phase
+- browser tool policy and provider policy may remain separate implementations as
+  long as they do not contradict each other
+
+### Provider Policy Direction
+
+For `openai-compatible`:
+
+- default allow:
+  - `https` origins on public networks
+- default deny:
+  - `http` origins
+  - localhost / loopback
+  - private-network targets
+  - link-local targets
+
+Local development exception policy:
+
+- localhost access must require an explicit config opt-in
+- private-network access must require an explicit config opt-in
+- these opt-ins should be narrow and should not expand into general remembered
+  grants or approval prompts
+
+### UX Constraint
+
+This phase should not turn provider setup into a permission maze.
+
+Preferred MVP behavior:
+
+- safe defaults
+- clear validation errors
+- minimal new settings
+- explicit local-dev escape hatches only when needed
+
+### Phase 4 Implementation Plan
+
+1. Keep built-in provider allowlist validation as-is.
+2. Add explicit runtime validation rules for `openai-compatible` `baseUrl`.
+3. Require valid absolute `https` URLs for custom public provider endpoints.
+4. Deny localhost / loopback targets unless explicitly enabled by config.
+5. Deny private-network and link-local targets unless explicitly enabled by
+   config.
+6. Return structured provider validation errors that explain why the `baseUrl`
+   is blocked.
+7. Cover the new validation rules with transport-layer tests.
+
+### Phase 4 Review Checkpoints
+
+- confirm whether the existing `browser_security` config should carry the
+  localhost/private-network provider opt-ins for MVP, or whether a small
+  provider-specific config addition is clearer
+- confirm exact localhost/private-network matching rules for provider URLs
+- confirm whether plain `http` should be fully forbidden for
+  `openai-compatible` in MVP
+- confirm whether custom public `https` endpoints should remain allowed without
+  additional approval UX
+
+### Phase 4 Completed Scope
+
+Implemented in the WASM runtime core:
+
+- built-in provider allowlist validation remains in place
+- `openai-compatible` provider `baseUrl` is now runtime-validated
+- custom `openai-compatible` provider URLs must be valid absolute `https` URLs
+- localhost and loopback provider targets are denied by default
+- private-network and link-local provider targets are denied by default
+- localhost access is allowed only with explicit `browser_security.allow_localhost`
+- private-network access is allowed only with explicit
+  `browser_security.allow_private_network`
+- blocked provider URLs return structured transport validation errors
+- transport-layer tests cover the new allow/deny rules
+
+Phase 4 intentionally does not include:
+
+- a unified tool-policy + provider-policy engine
+- per-provider approval UX
+- remembered grants for provider transports
+- a large new provider-security config surface
+
+Phase 4 completion boundary:
+
+- the browser runtime now closes the main custom-provider egress gap for MVP
+- provider validation remains a transport-layer concern, not part of browser
+  tool authorization context
 
 ## Phase 5: Downstream Integration Contract
 

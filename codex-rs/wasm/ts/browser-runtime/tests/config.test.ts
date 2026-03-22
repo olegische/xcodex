@@ -134,3 +134,126 @@ test("validateBrowserTransportProvider allows openai-compatible custom URLs", ()
 
   assert.equal(validated.baseUrl, "https://router.example.test/custom/v1");
 });
+
+test("validateBrowserTransportProvider rejects non-https openai-compatible URLs", () => {
+  assert.throws(
+    () =>
+      validateBrowserTransportProvider({
+        name: "OpenAI-Compatible",
+        baseUrl: "http://router.example.test/v1",
+        envKey: "OPENAI_COMPATIBLE_API_KEY",
+        providerKind: "openai_compatible",
+        wireApi: "responses",
+        metadata: null,
+      }),
+    (error: unknown) => {
+      assert.equal(typeof error, "object");
+      assert.equal((error as { code?: string }).code, "invalid_provider_base_url");
+      assert.equal(
+        (error as { data?: { reason?: string } }).data?.reason,
+        "insecure_protocol",
+      );
+      return true;
+    },
+  );
+});
+
+test("validateBrowserTransportProvider rejects localhost openai-compatible URLs by default", () => {
+  assert.throws(
+    () =>
+      validateBrowserTransportProvider(
+        {
+          name: "OpenAI-Compatible",
+          baseUrl: "https://localhost:11434/v1",
+          envKey: "OPENAI_COMPATIBLE_API_KEY",
+          providerKind: "openai_compatible",
+          wireApi: "responses",
+          metadata: null,
+        },
+        {
+          allowed_origins: [],
+          allow_localhost: false,
+          allow_private_network: false,
+        },
+      ),
+    (error: unknown) => {
+      assert.equal(typeof error, "object");
+      assert.equal((error as { code?: string }).code, "invalid_provider_base_url");
+      assert.equal(
+        (error as { data?: { reason?: string } }).data?.reason,
+        "localhost_not_allowed",
+      );
+      return true;
+    },
+  );
+});
+
+test("validateBrowserTransportProvider allows localhost openai-compatible URLs with opt-in", () => {
+  const validated = validateBrowserTransportProvider(
+    {
+      name: "OpenAI-Compatible",
+      baseUrl: "https://localhost:11434/v1",
+      envKey: "OPENAI_COMPATIBLE_API_KEY",
+      providerKind: "openai_compatible",
+      wireApi: "responses",
+      metadata: null,
+    },
+    {
+      allowed_origins: [],
+      allow_localhost: true,
+      allow_private_network: false,
+    },
+  );
+
+  assert.equal(validated.baseUrl, "https://localhost:11434/v1");
+});
+
+test("validateBrowserTransportProvider rejects private-network openai-compatible URLs by default", () => {
+  assert.throws(
+    () =>
+      validateBrowserTransportProvider(
+        {
+          name: "OpenAI-Compatible",
+          baseUrl: "https://10.0.0.5:11434/v1",
+          envKey: "OPENAI_COMPATIBLE_API_KEY",
+          providerKind: "openai_compatible",
+          wireApi: "responses",
+          metadata: null,
+        },
+        {
+          allowed_origins: [],
+          allow_localhost: false,
+          allow_private_network: false,
+        },
+      ),
+    (error: unknown) => {
+      assert.equal(typeof error, "object");
+      assert.equal((error as { code?: string }).code, "invalid_provider_base_url");
+      assert.equal(
+        (error as { data?: { reason?: string } }).data?.reason,
+        "private_network_not_allowed",
+      );
+      return true;
+    },
+  );
+});
+
+test("validateBrowserTransportProvider allows private-network openai-compatible URLs with opt-in", () => {
+  const validated = validateBrowserTransportProvider(
+    {
+      name: "OpenAI-Compatible",
+      baseUrl: "https://10.0.0.5:11434/v1",
+      envKey: "OPENAI_COMPATIBLE_API_KEY",
+      providerKind: "openai_compatible",
+      wireApi: "responses",
+      metadata: null,
+    },
+    {
+      allowed_origins: [],
+      allow_localhost: false,
+      allow_private_network: true,
+    },
+  );
+
+  assert.equal(validated.baseUrl, "https://10.0.0.5:11434/v1");
+});
