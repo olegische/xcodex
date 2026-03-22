@@ -9,8 +9,12 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./browser-tool-authorization": "./src/browser-tool-authorization.ts",
     "./browser-sandbox-tools": "./src/browser-sandbox-tools.ts",
     "./browser-tools": "./src/browser-tools.ts",
     "./page-telemetry": "./src/page-telemetry.ts"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts"
   }
 }

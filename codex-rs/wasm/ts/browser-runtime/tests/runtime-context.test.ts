@@ -120,11 +120,15 @@ test("createBrowserCodexRuntimeContext respects readAccount override and allowRe
 test("createBrowserCodexRuntimeContext respects dynamicTools override", async () => {
   const storage = createMemoryStorage();
   const captured = createCapturedDeps();
+  let listed = false;
+  let invoked = false;
   const customTools: BrowserDynamicToolExecutor = {
     async list() {
+      listed = true;
       return { tools: [] };
     },
     async invoke() {
+      invoked = true;
       return { output: null };
     },
   };
@@ -139,7 +143,17 @@ test("createBrowserCodexRuntimeContext respects dynamicTools override", async ()
     captured.deps,
   );
 
-  assert.equal(captured.runtimeDeps.dynamicTools, customTools);
+  await captured.runtimeDeps.dynamicTools.list();
+  await captured.runtimeDeps.dynamicTools.invoke({
+    callId: "call-1",
+    toolName: "browser__inspect_page",
+    toolNamespace: "browser",
+    input: null,
+  });
+
+  assert.equal(listed, true);
+  assert.equal(invoked, true);
+  assert.notEqual(captured.runtimeDeps.dynamicTools, customTools);
 });
 
 test("createBrowserCodexRuntimeContext normalizes requestUserInput answers into JsonValue", async () => {
@@ -465,7 +479,9 @@ function createCapturedDeps() {
       createNormalizedModelTurnRunner() {
         return async () => null;
       },
-      createBrowserAwareToolExecutor() {
+      createBrowserAwareToolExecutor(_args: {
+        loadRuntimeMode(): Promise<"default" | "demo" | "chaos">;
+      }) {
         return {
           async list() {
             return { tools: [] };

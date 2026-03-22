@@ -1,3 +1,4 @@
+import { wrapBrowserToolExecutorWithAuthorization } from "@browser-codex/wasm-browser-tools/browser-tool-authorization";
 import type { JsonValue, StoredThreadSession } from "./types/core.ts";
 import {
   DEFAULT_BROWSER_CODEX_HOME,
@@ -35,6 +36,12 @@ export async function createBrowserCodexRuntimeContextWithDeps(
   const modelTransport = deps.createBrowserRuntimeModelTransportAdapter({
     loadXrouterRuntime: async () => await transport.loadXrouterRuntime(),
   });
+  const loadRuntimeMode = async () => {
+    const config = await storage
+      .loadConfig()
+      .catch(() => structuredClone(deps.defaultConfig));
+    return config.runtime_mode ?? "default";
+  };
 
   if (options.telemetry?.initializePageTelemetry !== false) {
     deps.initializePageTelemetry();
@@ -141,7 +148,12 @@ export async function createBrowserCodexRuntimeContextWithDeps(
         loadConfig: async () =>
           await storage.loadConfig().catch(() => structuredClone(deps.defaultConfig)),
       },
-      dynamicTools: options.dynamicTools ?? deps.createBrowserAwareToolExecutor(),
+      dynamicTools:
+        options.dynamicTools === undefined
+          ? deps.createBrowserAwareToolExecutor({ loadRuntimeMode })
+          : wrapBrowserToolExecutorWithAuthorization(options.dynamicTools, {
+              loadRuntimeMode,
+            }),
       async readAccount({
         authState,
         config,
@@ -217,7 +229,9 @@ export type RuntimeContextDeps = {
     getProviderKind(config: CodexCompatibleConfig): string;
     runModelTurn(params: unknown): Promise<unknown>;
   }): (request: unknown) => Promise<unknown>;
-  createBrowserAwareToolExecutor(): unknown;
+  createBrowserAwareToolExecutor(args: {
+    loadRuntimeMode(): Promise<"default" | "demo" | "chaos">;
+  }): unknown;
   initializePageTelemetry(): void;
   activeProviderApiKey(config: CodexCompatibleConfig): string;
   createBrowserRuntimeModelTransportAdapter(deps: {

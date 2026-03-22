@@ -25,7 +25,12 @@ import type {
   RuntimeModule,
 } from "./types";
 
-const browserToolExecutor = createBrowserAwareToolExecutor();
+const browserToolExecutor = createBrowserAwareToolExecutor({
+  async loadRuntimeMode() {
+    const config = await loadStoredCodexConfig();
+    return config.runtime_mode ?? "default";
+  },
+});
 
 export async function createBrowserCodexRuntime(
   runtimeModule: RuntimeModule,

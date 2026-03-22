@@ -9,7 +9,8 @@ Current phase status:
 
 - Phase 0 design review: complete
 - Phase 1 config contract hardening: in progress
-- Phases 2-5: not started
+- Phase 2 tool classification and policy wrapper: complete
+- Phases 3-5: not started
 
 It is intentionally not an implementation checklist to execute blindly.
 
@@ -939,6 +940,25 @@ Phase 2 review checkpoints:
 - confirm whether `browser.resources:read` belongs in `demo`
 - confirm whether `browser.page:wait` should stay in `default`
 - confirm whether future custom tools must declare scopes at registration time
+
+Implementation status:
+
+- done: added a dedicated browser tool authorization registry
+- done: aliases now normalize through a single canonical policy path
+- done: scope resolution now runs through a centralized policy decision layer
+- done: denied tools are filtered out of `list()`
+- done: denied requests are blocked before `invoke()` dispatch
+- done: unknown and unmapped tools fail closed
+- done: custom browser dynamic tool executors passed through the SDK are wrapped
+  by the same runtime-owned policy layer
+- done: `browser__inspect_dom` policy is input-sensitive via `includeHtml`
+- done: `browser__evaluate` / `browser__run_probe` are denied in all modes
+- done: regression tests cover discovery filtering, invoke blocking, alias
+  parity, unknown tool denial, input-sensitive DOM policy, and execute denial
+
+Remaining phase 2 scope:
+
+- none for the implemented phase 2 design
 
 Must be designed separately before implementation.
 

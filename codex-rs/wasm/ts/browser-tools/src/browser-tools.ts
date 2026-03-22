@@ -16,6 +16,10 @@ import {
   probeHttpSurface,
   runProbe,
 } from "./browser-sandbox-tools.ts";
+import {
+  type BrowserRuntimeMode,
+  wrapBrowserToolExecutorWithAuthorization,
+} from "./browser-tool-authorization.ts";
 
 type BrowserAiSurfaceSnapshot = {
   domain: string;
@@ -242,7 +246,13 @@ export function registerBrowserToolCatalogSource(source: BrowserToolCatalogSourc
   };
 }
 
-export function createBrowserAwareToolExecutor(): BrowserDynamicToolExecutor {
+export function createBrowserAwareToolExecutor(options?: {
+  loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
+}): BrowserDynamicToolExecutor {
+  return wrapBrowserToolExecutorWithAuthorization(createRawBrowserAwareToolExecutor(), options);
+}
+
+function createRawBrowserAwareToolExecutor(): BrowserDynamicToolExecutor {
   return {
     async list() {
       const tools = await listBrowserToolCatalog();
