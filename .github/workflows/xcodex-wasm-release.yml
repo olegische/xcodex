@@ -1,11 +1,11 @@
 name: xcodex-wasm-release
 
 on:
-  # workflow_run:
-  #   workflows:
-  #     - wasm-rust-ci
-  #   types:
-  #     - completed
+  workflow_run:
+    workflows:
+      - wasm-rust-ci
+    types:
+      - completed
   workflow_dispatch:
 
 concurrency:
@@ -20,15 +20,17 @@ jobs:
     # scoped to the fork's WASM surface and does not validate or release
     # unrelated upstream crates.
     if: >-
-      github.event_name == 'workflow_dispatch' &&
-      github.ref_name == 'wasm'
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'wasm') ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'wasm'
+      )
     permissions:
       contents: write
     env:
-      # RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-      # RELEASE_REF_NAME: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
-      RELEASE_SHA: ${{ github.sha }}
-      RELEASE_REF_NAME: ${{ github.ref_name }}
+      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      RELEASE_REF_NAME: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
 
     steps:
       - uses: actions/checkout@v6
@@ -163,7 +165,8 @@ jobs:
           - runtime bundle: \`xcodex-runtime.js\`
           - manifest: \`manifest.json\`
 
-          This release is published manually from the \`wasm\` branch.
+          This release is published from the \`wasm\` branch after successful CI
+          or by a manual workflow dispatch.
           EOF
 
       - name: Publish GitHub Release
