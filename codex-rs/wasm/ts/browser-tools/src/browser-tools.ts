@@ -19,6 +19,7 @@ import {
 import {
   authorizeBrowserToolRequest,
   createBrowserToolAuthorizationContext,
+  type BrowserToolAuthorizationContext,
   type BrowserSecurityPolicy,
   type BrowserRuntimeMode,
   wrapBrowserToolExecutorWithAuthorization,
@@ -253,6 +254,8 @@ export function createBrowserAwareToolExecutor(options?: {
   loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
   loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
   getCurrentPageUrl?: () => string | null | Promise<string | null>;
+  getAuthorizationContext?:
+    | (() => BrowserToolAuthorizationContext | Promise<BrowserToolAuthorizationContext>);
 }): BrowserDynamicToolExecutor {
   return wrapBrowserToolExecutorWithAuthorization(createRawBrowserAwareToolExecutor(options), options);
 }
@@ -261,6 +264,8 @@ function createRawBrowserAwareToolExecutor(options?: {
   loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
   loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
   getCurrentPageUrl?: () => string | null | Promise<string | null>;
+  getAuthorizationContext?:
+    | (() => BrowserToolAuthorizationContext | Promise<BrowserToolAuthorizationContext>);
 }): BrowserDynamicToolExecutor {
   return {
     async list() {
@@ -346,21 +351,14 @@ async function listAuthorizedBrowserToolCatalog(options?: {
   loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
   loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
   getCurrentPageUrl?: () => string | null | Promise<string | null>;
+  getAuthorizationContext?:
+    | (() => BrowserToolAuthorizationContext | Promise<BrowserToolAuthorizationContext>);
 }): Promise<BrowserToolCatalogEntry[]> {
-  const [catalog, runtimeMode, browserSecurityPolicy, currentPageUrl] = await Promise.all([
+  const [catalog, authorizationContext, currentPageUrl] = await Promise.all([
     listBrowserToolCatalog(),
-    options?.loadRuntimeMode?.() ?? "default",
-    options?.loadBrowserSecurityPolicy?.() ?? {
-      allowedOrigins: [],
-      allowLocalhost: false,
-      allowPrivateNetwork: false,
-    } satisfies BrowserSecurityPolicy,
+    loadCatalogAuthorizationContext(options),
     options?.getCurrentPageUrl?.() ?? (typeof window === "undefined" ? null : window.location.href),
   ]);
-  const authorizationContext = createBrowserToolAuthorizationContext({
-    runtimeMode,
-    browserSecurityPolicy,
-  });
 
   return catalog.filter((tool) => {
     const decision = authorizeBrowserToolRequest({
@@ -380,6 +378,8 @@ async function searchBrowserToolCatalog(
     loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
     loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
     getCurrentPageUrl?: () => string | null | Promise<string | null>;
+    getAuthorizationContext?:
+      | (() => BrowserToolAuthorizationContext | Promise<BrowserToolAuthorizationContext>);
   },
 ): Promise<JsonValue> {
   const query = typeof input.query === "string" ? input.query.trim() : "";
@@ -422,6 +422,31 @@ async function searchBrowserToolCatalog(
       inputSchema: includeSchema ? entry.inputSchema : null,
     })),
   } satisfies JsonValue;
+}
+
+async function loadCatalogAuthorizationContext(options?: {
+  loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
+  loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
+  getAuthorizationContext?:
+    | (() => BrowserToolAuthorizationContext | Promise<BrowserToolAuthorizationContext>);
+}): Promise<BrowserToolAuthorizationContext> {
+  if (options?.getAuthorizationContext !== undefined) {
+    return await options.getAuthorizationContext();
+  }
+
+  const [runtimeMode, browserSecurityPolicy] = await Promise.all([
+    options?.loadRuntimeMode?.() ?? "default",
+    options?.loadBrowserSecurityPolicy?.() ?? {
+      allowedOrigins: [],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    } satisfies BrowserSecurityPolicy,
+  ]);
+
+  return createBrowserToolAuthorizationContext({
+    runtimeMode,
+    browserSecurityPolicy,
+  });
 }
 
 function dedupeBrowserToolCatalog(tools: BrowserToolCatalogEntry[]): BrowserToolCatalogEntry[] {

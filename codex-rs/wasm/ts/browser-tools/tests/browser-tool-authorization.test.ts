@@ -147,6 +147,61 @@ test("tool_search in demo only returns tools from the approved inspection surfac
   assert(searchToolNames.includes("browser__inspect_resources"));
 });
 
+test("tool_search honors getAuthorizationContext and matches demo list surface", async () => {
+  const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
+  const executor = createBrowserAwareToolExecutor({
+    async getAuthorizationContext() {
+      return createBrowserToolAuthorizationContext({
+        runtimeMode: "demo",
+        browserSecurityPolicy: {
+          allowedOrigins: [],
+          allowLocalhost: false,
+          allowPrivateNetwork: false,
+        },
+      });
+    },
+    async getCurrentPageUrl() {
+      return "https://app.example.test/current";
+    },
+  });
+
+  const listed = await executor.list();
+  const listedToolNames = listed.tools.map((tool) => `browser__${tool.toolName}`);
+  const result = await executor.invoke({
+    callId: "call-search-demo-context",
+    toolName: "tool_search",
+    toolNamespace: "browser",
+    input: {
+      query: "inspect_storage inspect_cookies inspect_resources inspect_http navigate",
+      limit: 20,
+    },
+  });
+  const searchToolNames = ((result.output as { tools?: Array<{ toolName?: string }> }).tools ?? [])
+    .map((tool) => tool.toolName)
+    .filter((toolName): toolName is string => typeof toolName === "string");
+
+  assert.deepEqual(listedToolNames, [
+    "browser__tool_search",
+    "browser__inspect_page",
+    "browser__inspect_dom",
+    "browser__list_interactives",
+    "browser__wait_for",
+    "browser__inspect_storage",
+    "browser__inspect_cookies",
+    "browser__inspect_resources",
+    "browser__inspect_performance",
+  ]);
+  assert(!searchToolNames.includes("browser__inspect_http"));
+  assert(!searchToolNames.includes("browser__navigate"));
+  assert(searchToolNames.includes("browser__inspect_storage"));
+  assert(searchToolNames.includes("browser__inspect_cookies"));
+  assert(searchToolNames.includes("browser__inspect_resources"));
+  assert.deepEqual(
+    searchToolNames.filter((toolName) => !listedToolNames.includes(toolName)),
+    [],
+  );
+});
+
 test("demo mode blocks approval-only and mutating tools policy-wise", async () => {
   const approvals: string[] = [];
   const executor = createWrappedExecutor("demo", {
