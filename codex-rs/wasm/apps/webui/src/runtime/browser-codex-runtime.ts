@@ -15,6 +15,7 @@ import {
 } from "./storage";
 import { webUiModelTransportAdapter } from "./transport-adapter";
 import { formatError, getActiveProvider, normalizeHostValue } from "./utils";
+import { normalizeBrowserSecurityConfig } from "../../../../ts/browser-runtime/src/config.ts";
 import type {
   Account,
   AuthState,
@@ -29,6 +30,15 @@ const browserToolExecutor = createBrowserAwareToolExecutor({
   async loadRuntimeMode() {
     const config = await loadStoredCodexConfig();
     return config.runtime_mode ?? "default";
+  },
+  async loadBrowserSecurityPolicy() {
+    const config = await loadStoredCodexConfig();
+    const browserSecurity = normalizeBrowserSecurityConfig(config.browser_security);
+    return {
+      allowedOrigins: browserSecurity.allowed_origins,
+      allowLocalhost: browserSecurity.allow_localhost,
+      allowPrivateNetwork: browserSecurity.allow_private_network,
+    };
   },
 });
 

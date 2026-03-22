@@ -1,5 +1,6 @@
 import { DEFAULT_WORKSPACE_ROOT } from "./workspace.ts";
 import type {
+  BrowserSecurityConfig,
   CodexCompatibleConfig,
   CodexModelProviderConfig,
   DemoInstructions,
@@ -32,11 +33,17 @@ export const OPENAI_ENV_KEY = "OPENAI_API_KEY";
 export const XROUTER_ENV_KEY = "XROUTER_API_KEY";
 export const OPENAI_COMPATIBLE_ENV_KEY = "OPENAI_COMPATIBLE_API_KEY";
 export const DEFAULT_RUNTIME_MODE: RuntimeMode = "default";
+export const DEFAULT_BROWSER_SECURITY_CONFIG: Required<BrowserSecurityConfig> = {
+  allowed_origins: [],
+  allow_localhost: false,
+  allow_private_network: false,
+};
 
 export const DEFAULT_CODEX_CONFIG: CodexCompatibleConfig = {
   model: "",
   modelProvider: XROUTER_BROWSER_PROVIDER_ID,
   runtime_mode: DEFAULT_RUNTIME_MODE,
+  browser_security: structuredClone(DEFAULT_BROWSER_SECURITY_CONFIG),
   modelReasoningEffort: "medium",
   personality: "pragmatic",
   modelProviders: {
@@ -245,11 +252,13 @@ export function normalizeCodexConfig(
   const activeProvider = getActiveProvider(config);
   const runtimeMode = normalizeRuntimeMode(config.runtime_mode);
   const runtimeArchitecture = normalizeOptionalString(config.runtime_architecture);
+  const browserSecurity = normalizeBrowserSecurityConfig(config.browser_security);
   return materializeCodexConfig({
     transportMode,
     model: config.model.trim(),
     runtimeMode,
     runtimeArchitecture,
+    browserSecurity,
     modelReasoningEffort: config.modelReasoningEffort,
     personality: config.personality,
     displayName: activeProvider.name,
@@ -264,6 +273,7 @@ export function materializeCodexConfig(params: {
   model: string;
   runtimeMode?: RuntimeMode | null;
   runtimeArchitecture?: string | null;
+  browserSecurity?: BrowserSecurityConfig | null;
   modelReasoningEffort: string | null;
   personality: string | null;
   displayName: string;
@@ -289,6 +299,7 @@ export function materializeCodexConfig(params: {
     modelProvider,
     runtime_mode: normalizeRuntimeMode(params.runtimeMode),
     runtime_architecture: normalizeOptionalString(params.runtimeArchitecture),
+    browser_security: normalizeBrowserSecurityConfig(params.browserSecurity),
     modelReasoningEffort: params.modelReasoningEffort,
     personality: params.personality,
     modelProviders: {
@@ -313,12 +324,55 @@ export function normalizeRuntimeMode(
   }
 }
 
+export function normalizeBrowserSecurityConfig(
+  browserSecurity: BrowserSecurityConfig | null | undefined,
+): Required<BrowserSecurityConfig> {
+  const record =
+    browserSecurity !== null && typeof browserSecurity === "object"
+      ? browserSecurity
+      : {};
+  return {
+    allowed_origins: normalizeAllowedOrigins(record.allowed_origins),
+    allow_localhost: record.allow_localhost === true,
+    allow_private_network: record.allow_private_network === true,
+  };
+}
+
 function normalizeOptionalString(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null;
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function normalizeAllowedOrigins(value: string[] | null | undefined): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const normalized = value
+    .map((entry) => normalizeOrigin(entry))
+    .filter((entry): entry is string => entry !== null);
+  return [...new Set(normalized)];
+}
+
+function normalizeOrigin(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
 }
 
 export function normalizeDiscoveredModels(

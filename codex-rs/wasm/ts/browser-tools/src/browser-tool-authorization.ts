@@ -4,7 +4,21 @@ import { qualifyDynamicToolName } from "@browser-codex/wasm-runtime-core";
 
 export type BrowserRuntimeMode = "default" | "demo" | "chaos";
 
+export type BrowserSecurityPolicy = {
+  allowedOrigins: string[];
+  allowLocalhost: boolean;
+  allowPrivateNetwork: boolean;
+};
+
 export type BrowserToolAuthorizationPhase = "list" | "invoke";
+
+type BrowserToolAuthorizationContext = {
+  browserSecurityPolicy: BrowserSecurityPolicy;
+  currentPageUrl: string | null;
+  input: JsonValue;
+  requestPhase: BrowserToolAuthorizationPhase;
+  runtimeMode: BrowserRuntimeMode;
+};
 
 export type BrowserToolAuthorizationDecision =
   | {
@@ -13,6 +27,7 @@ export type BrowserToolAuthorizationDecision =
       requiredScopes: string[];
       grantedScopes: string[];
       runtimeMode: BrowserRuntimeMode;
+      resolvedOrigin: string | null;
     }
   | {
       decision: "deny";
@@ -21,10 +36,15 @@ export type BrowserToolAuthorizationDecision =
         | "unknown_tool"
         | "invalid_runtime_mode"
         | "insufficient_scope"
-        | "unsupported_capability";
+        | "current_origin_unavailable"
+        | "invalid_target_url"
+        | "origin_not_allowlisted"
+        | "localhost_not_allowed"
+        | "private_network_not_allowed";
       requiredScopes: string[];
       grantedScopes: string[];
       runtimeMode: BrowserRuntimeMode;
+      resolvedOrigin: string | null;
     };
 
 type BrowserToolAuthorizationEntry = {
@@ -32,6 +52,8 @@ type BrowserToolAuthorizationEntry = {
   aliases: string[];
   discoveryScopes: string[];
   resolveInvokeScopes(input: JsonValue): string[];
+  resolveProtectedOrigin?(context: BrowserToolAuthorizationContext): string | null;
+  enforceOriginPolicyInList?: boolean;
 };
 
 export class BrowserToolAuthorizationError extends Error {
@@ -42,15 +64,25 @@ export class BrowserToolAuthorizationError extends Error {
   readonly requiredScopes: string[];
   readonly grantedScopes: string[];
   readonly runtimeMode: BrowserRuntimeMode;
+  readonly resolvedOrigin: string | null;
 
   constructor(params: {
-    code: "unknown_tool" | "invalid_runtime_mode" | "insufficient_scope" | "unsupported_capability";
+    code:
+      | "unknown_tool"
+      | "invalid_runtime_mode"
+      | "insufficient_scope"
+      | "current_origin_unavailable"
+      | "invalid_target_url"
+      | "origin_not_allowlisted"
+      | "localhost_not_allowed"
+      | "private_network_not_allowed";
     canonicalToolName: string | null;
     originalToolName: string;
     requestPhase: BrowserToolAuthorizationPhase;
     requiredScopes: string[];
     grantedScopes: string[];
     runtimeMode: BrowserRuntimeMode;
+    resolvedOrigin: string | null;
     message: string;
   }) {
     super(params.message);
@@ -62,6 +94,7 @@ export class BrowserToolAuthorizationError extends Error {
     this.requiredScopes = params.requiredScopes;
     this.grantedScopes = params.grantedScopes;
     this.runtimeMode = params.runtimeMode;
+    this.resolvedOrigin = params.resolvedOrigin;
   }
 }
 
@@ -69,11 +102,17 @@ export function wrapBrowserToolExecutorWithAuthorization(
   executor: BrowserDynamicToolExecutor,
   options?: {
     loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
+    loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
+    getCurrentPageUrl?: () => string | null | Promise<string | null>;
   },
 ): BrowserDynamicToolExecutor {
   return {
     async list() {
-      const runtimeMode = await loadRuntimeMode(options?.loadRuntimeMode);
+      const [runtimeMode, browserSecurityPolicy, currentPageUrl] = await Promise.all([
+        loadRuntimeMode(options?.loadRuntimeMode),
+        loadBrowserSecurityPolicy(options?.loadBrowserSecurityPolicy),
+        loadCurrentPageUrl(options?.getCurrentPageUrl),
+      ]);
       const { tools } = await executor.list();
       return {
         tools: tools.filter((tool) => {
@@ -82,19 +121,27 @@ export function wrapBrowserToolExecutorWithAuthorization(
             input: null,
             requestPhase: "list",
             runtimeMode,
+            browserSecurityPolicy,
+            currentPageUrl,
           });
           return decision.decision === "allow";
         }),
       };
     },
     async invoke(params) {
-      const runtimeMode = await loadRuntimeMode(options?.loadRuntimeMode);
+      const [runtimeMode, browserSecurityPolicy, currentPageUrl] = await Promise.all([
+        loadRuntimeMode(options?.loadRuntimeMode),
+        loadBrowserSecurityPolicy(options?.loadBrowserSecurityPolicy),
+        loadCurrentPageUrl(options?.getCurrentPageUrl),
+      ]);
       const originalToolName = qualifyDynamicToolName(params);
       const decision = authorizeBrowserToolRequest({
         toolName: originalToolName,
         input: params.input,
         requestPhase: "invoke",
         runtimeMode,
+        browserSecurityPolicy,
+        currentPageUrl,
       });
       if (decision.decision === "deny") {
         throw authorizationErrorFromDecision(decision, originalToolName, "invoke");
@@ -113,20 +160,26 @@ export function authorizeBrowserToolRequest(params: {
   input: JsonValue;
   requestPhase: BrowserToolAuthorizationPhase;
   runtimeMode: BrowserRuntimeMode;
+  browserSecurityPolicy?: BrowserSecurityPolicy;
+  currentPageUrl?: string | null;
 }): BrowserToolAuthorizationDecision {
   const entry = findAuthorizationEntry(params.toolName);
+  const browserSecurityPolicy =
+    params.browserSecurityPolicy ?? DEFAULT_BROWSER_SECURITY_POLICY;
+  const grantedScopes = grantedScopesForRuntimeMode(params.runtimeMode);
+
   if (entry === null) {
     return {
       decision: "deny",
       canonicalToolName: null,
       reason: "unknown_tool",
       requiredScopes: [],
-      grantedScopes: grantedScopesForRuntimeMode(params.runtimeMode),
+      grantedScopes,
       runtimeMode: params.runtimeMode,
+      resolvedOrigin: null,
     };
   }
 
-  const grantedScopes = grantedScopesForRuntimeMode(params.runtimeMode);
   if (grantedScopes.length === 0 && params.runtimeMode !== "default") {
     return {
       decision: "deny",
@@ -135,6 +188,7 @@ export function authorizeBrowserToolRequest(params: {
       requiredScopes: [],
       grantedScopes,
       runtimeMode: params.runtimeMode,
+      resolvedOrigin: null,
     };
   }
 
@@ -142,17 +196,6 @@ export function authorizeBrowserToolRequest(params: {
     params.requestPhase === "list"
       ? entry.discoveryScopes
       : entry.resolveInvokeScopes(params.input);
-
-  if (requiredScopes.includes("browser.js:execute")) {
-    return {
-      decision: "deny",
-      canonicalToolName: entry.canonicalToolName,
-      reason: "unsupported_capability",
-      requiredScopes,
-      grantedScopes,
-      runtimeMode: params.runtimeMode,
-    };
-  }
 
   const hasAllScopes = requiredScopes.every((scope) => grantedScopes.includes(scope));
   if (!hasAllScopes) {
@@ -163,6 +206,57 @@ export function authorizeBrowserToolRequest(params: {
       requiredScopes,
       grantedScopes,
       runtimeMode: params.runtimeMode,
+      resolvedOrigin: null,
+    };
+  }
+
+  if (
+    entry.resolveProtectedOrigin === undefined ||
+    (params.requestPhase === "list" && entry.enforceOriginPolicyInList !== true)
+  ) {
+    return {
+      decision: "allow",
+      canonicalToolName: entry.canonicalToolName,
+      requiredScopes,
+      grantedScopes,
+      runtimeMode: params.runtimeMode,
+      resolvedOrigin: null,
+    };
+  }
+
+  const authorizationContext: BrowserToolAuthorizationContext = {
+    browserSecurityPolicy,
+    currentPageUrl: params.currentPageUrl ?? null,
+    input: params.input,
+    requestPhase: params.requestPhase,
+    runtimeMode: params.runtimeMode,
+  };
+  const resolvedOrigin = entry.resolveProtectedOrigin(authorizationContext);
+  if (resolvedOrigin === null) {
+    return {
+      decision: "deny",
+      canonicalToolName: entry.canonicalToolName,
+      reason:
+        entry.canonicalToolName === "browser__evaluate"
+          ? "current_origin_unavailable"
+          : "invalid_target_url",
+      requiredScopes,
+      grantedScopes,
+      runtimeMode: params.runtimeMode,
+      resolvedOrigin: null,
+    };
+  }
+
+  const originDecision = authorizeProtectedOrigin(resolvedOrigin, browserSecurityPolicy);
+  if (originDecision !== "allow") {
+    return {
+      decision: "deny",
+      canonicalToolName: entry.canonicalToolName,
+      reason: originDecision,
+      requiredScopes,
+      grantedScopes,
+      runtimeMode: params.runtimeMode,
+      resolvedOrigin,
     };
   }
 
@@ -172,6 +266,7 @@ export function authorizeBrowserToolRequest(params: {
     requiredScopes,
     grantedScopes,
     runtimeMode: params.runtimeMode,
+    resolvedOrigin,
   };
 }
 
@@ -188,6 +283,7 @@ function authorizationErrorFromDecision(
     requiredScopes: decision.requiredScopes,
     grantedScopes: decision.grantedScopes,
     runtimeMode: decision.runtimeMode,
+    resolvedOrigin: decision.resolvedOrigin,
     message: formatAuthorizationErrorMessage(decision, originalToolName, requestPhase),
   });
 }
@@ -204,8 +300,20 @@ function formatAuthorizationErrorMessage(
   if (decision.reason === "invalid_runtime_mode") {
     return `${requestPhase} blocked: runtime mode ${decision.runtimeMode} is not supported by browser tool policy`;
   }
-  if (decision.reason === "unsupported_capability") {
-    return `${requestPhase} blocked: ${toolName} requires browser.js:execute, which is denied in every runtime mode`;
+  if (decision.reason === "current_origin_unavailable") {
+    return `${requestPhase} blocked: ${toolName} requires a current page origin, but none is available`;
+  }
+  if (decision.reason === "invalid_target_url") {
+    return `${requestPhase} blocked: ${toolName} requires a valid target URL that can be resolved to an origin`;
+  }
+  if (decision.reason === "origin_not_allowlisted") {
+    return `${requestPhase} blocked: ${toolName} target origin ${decision.resolvedOrigin} is not in browser_security.allowed_origins`;
+  }
+  if (decision.reason === "localhost_not_allowed") {
+    return `${requestPhase} blocked: ${toolName} target origin ${decision.resolvedOrigin} resolves to localhost or loopback and browser_security.allow_localhost is false`;
+  }
+  if (decision.reason === "private_network_not_allowed") {
+    return `${requestPhase} blocked: ${toolName} target origin ${decision.resolvedOrigin} resolves to a private or link-local network and browser_security.allow_private_network is false`;
   }
   return `${requestPhase} blocked: ${toolName} requires scopes [${decision.requiredScopes.join(", ")}] in ${decision.runtimeMode} mode`;
 }
@@ -229,14 +337,119 @@ async function loadRuntimeMode(
   return (await loadRuntimeModeOverride?.()) ?? "default";
 }
 
+async function loadBrowserSecurityPolicy(
+  loadBrowserSecurityPolicyOverride?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>,
+): Promise<BrowserSecurityPolicy> {
+  return (await loadBrowserSecurityPolicyOverride?.()) ?? DEFAULT_BROWSER_SECURITY_POLICY;
+}
+
+async function loadCurrentPageUrl(
+  getCurrentPageUrlOverride?: () => string | null | Promise<string | null>,
+): Promise<string | null> {
+  if (getCurrentPageUrlOverride !== undefined) {
+    return (await getCurrentPageUrlOverride()) ?? null;
+  }
+  return typeof window === "undefined" ? null : window.location.href;
+}
+
 function domInspectionScopes(input: JsonValue): string[] {
-  const record =
-    input !== null && typeof input === "object" && !Array.isArray(input)
-      ? (input as Record<string, unknown>)
-      : {};
+  const record = asRecord(input);
   return record.includeHtml === true
     ? ["browser.dom:read", "browser.dom.html:read"]
     : ["browser.dom:read"];
+}
+
+function resolveCurrentPageOrigin(context: BrowserToolAuthorizationContext): string | null {
+  return originFromUrl(context.currentPageUrl);
+}
+
+function resolveTargetOriginFromInput(context: BrowserToolAuthorizationContext): string | null {
+  const record = asRecord(context.input);
+  return originFromUrl(
+    typeof record.url === "string" ? record.url : null,
+    context.currentPageUrl,
+  );
+}
+
+function authorizeProtectedOrigin(
+  origin: string,
+  browserSecurityPolicy: BrowserSecurityPolicy,
+):
+  | "allow"
+  | "origin_not_allowlisted"
+  | "localhost_not_allowed"
+  | "private_network_not_allowed" {
+  const hostname = hostnameFromOrigin(origin);
+  if (hostname === null) {
+    return "origin_not_allowlisted";
+  }
+
+  if (isLocalhostHostname(hostname) && !browserSecurityPolicy.allowLocalhost) {
+    return "localhost_not_allowed";
+  }
+
+  if (isPrivateNetworkHostname(hostname) && !browserSecurityPolicy.allowPrivateNetwork) {
+    return "private_network_not_allowed";
+  }
+
+  return browserSecurityPolicy.allowedOrigins.includes(origin)
+    ? "allow"
+    : "origin_not_allowlisted";
+}
+
+function originFromUrl(url: string | null | undefined, baseUrl?: string | null): string | null {
+  if (typeof url !== "string" || url.trim().length === 0) {
+    return null;
+  }
+  try {
+    const resolved = baseUrl === undefined || baseUrl === null
+      ? new URL(url)
+      : new URL(url, baseUrl);
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
+      return null;
+    }
+    return resolved.origin;
+  } catch {
+    return null;
+  }
+}
+
+function hostnameFromOrigin(origin: string): string | null {
+  try {
+    return new URL(origin).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function isLocalhostHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function isPrivateNetworkHostname(hostname: string): boolean {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    const normalized = hostname.slice(1, -1).toLowerCase();
+    return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:");
+  }
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    return false;
+  }
+  const octets = hostname.split(".").map(Number);
+  const [first, second] = octets;
+  if (octets.some((octet) => Number.isNaN(octet) || octet < 0 || octet > 255)) {
+    return false;
+  }
+  return first === 10 ||
+    first === 127 ||
+    (first === 192 && second === 168) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 169 && second === 254);
+}
+
+function asRecord(value: JsonValue): Record<string, JsonValue> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, JsonValue>)
+    : {};
 }
 
 const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
@@ -281,6 +494,7 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     aliases: [],
     discoveryScopes: ["browser.page:navigate"],
     resolveInvokeScopes: () => ["browser.page:navigate"],
+    resolveProtectedOrigin: resolveTargetOriginFromInput,
   },
   {
     canonicalToolName: "browser__wait_for",
@@ -305,6 +519,7 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     aliases: ["browser__probe_http"],
     discoveryScopes: ["browser.http:read"],
     resolveInvokeScopes: () => ["browser.http:read"],
+    resolveProtectedOrigin: resolveTargetOriginFromInput,
   },
   {
     canonicalToolName: "browser__inspect_resources",
@@ -323,6 +538,8 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     aliases: ["browser__run_probe"],
     discoveryScopes: ["browser.js:execute"],
     resolveInvokeScopes: () => ["browser.js:execute"],
+    resolveProtectedOrigin: resolveCurrentPageOrigin,
+    enforceOriginPolicyInList: true,
   },
 ];
 
@@ -360,7 +577,14 @@ const RUNTIME_MODE_SCOPE_GRANTS: Record<BrowserRuntimeMode, string[]> = {
     "browser.page:click",
     "browser.page:fill",
     "browser.page:navigate",
+    "browser.js:execute",
   ],
+};
+
+const DEFAULT_BROWSER_SECURITY_POLICY: BrowserSecurityPolicy = {
+  allowedOrigins: [],
+  allowLocalhost: false,
+  allowPrivateNetwork: false,
 };
 
 export function createBrowserToolCatalogEntry(params: {

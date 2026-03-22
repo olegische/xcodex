@@ -31,6 +31,7 @@ export {
 } from "./workspace.ts";
 
 export {
+  DEFAULT_BROWSER_SECURITY_CONFIG,
   DEFAULT_CODEX_CONFIG,
   DEFAULT_DEMO_INSTRUCTIONS,
   XROUTER_PROVIDER_OPTIONS,
@@ -39,5 +40,6 @@ export {
   formatError,
   getActiveProvider,
   materializeCodexConfig,
+  normalizeBrowserSecurityConfig,
   normalizeCodexConfig,
 } from "./config.ts";

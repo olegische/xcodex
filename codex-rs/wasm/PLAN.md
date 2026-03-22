@@ -373,6 +373,14 @@ Important:
 
 `code_exec` should still be noisy and explicit even in `chaos`.
 
+Current implementation note:
+
+- `browser__evaluate` is available only in `chaos`
+- even in `chaos`, execution is additionally gated by browser origin policy
+- the current page origin must be explicitly allowlisted
+- localhost, loopback, and private/link-local network targets are denied by
+  default unless explicitly enabled in config
+
 ## Scope Mapping Direction
 
 The final mapping must be designed in its own phase, but the current direction
@@ -413,6 +421,33 @@ should look roughly like this.
 - `browser__evaluate` -> `browser.js:execute`
 - aliases like `browser__run_probe` -> `browser.js:execute`
 - any future JS execution primitive -> explicit execute-style scope
+
+## Browser Origin Policy
+
+High-risk browser capabilities require both:
+
+- a mode grant via `runtime_mode`
+- an allow decision from browser origin policy
+
+Current config shape:
+
+- `browser_security.allowed_origins`
+- `browser_security.allow_localhost`
+- `browser_security.allow_private_network`
+
+Current behavior:
+
+- dangerous browser-originated capabilities are not trusted purely because
+  `chaos` is enabled
+- `browser__evaluate` checks the current page origin
+- `browser__inspect_http` checks the target URL origin
+- `browser__navigate` checks the target URL origin
+- target origins must be explicitly allowlisted
+- localhost and loopback are denied by default
+- private and link-local network IPs are denied by default
+
+This keeps `runtime_mode` as the coarse capability preset while origin policy
+remains a separate trust boundary.
 
 ## Provider Base URL Policy
 
@@ -952,9 +987,17 @@ Implementation status:
 - done: custom browser dynamic tool executors passed through the SDK are wrapped
   by the same runtime-owned policy layer
 - done: `browser__inspect_dom` policy is input-sensitive via `includeHtml`
-- done: `browser__evaluate` / `browser__run_probe` are denied in all modes
+- done: `browser__evaluate` / `browser__run_probe` require `chaos` and an
+  explicit origin allow decision
+- done: added `browser_security` config for allowlisted origins plus explicit
+  localhost/private-network opt-ins
+- done: localhost, loopback, private, and link-local targets are denied by
+  default for dangerous browser-originated capabilities
+- done: origin-aware policy is enforced for current-page execution and target
+  URL browser actions
 - done: regression tests cover discovery filtering, invoke blocking, alias
-  parity, unknown tool denial, input-sensitive DOM policy, and execute denial
+  parity, unknown tool denial, input-sensitive DOM policy, and origin-aware
+  execute/navigation/network policy
 
 Remaining phase 2 scope:
 

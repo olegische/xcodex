@@ -17,6 +17,7 @@ import {
   runProbe,
 } from "./browser-sandbox-tools.ts";
 import {
+  type BrowserSecurityPolicy,
   type BrowserRuntimeMode,
   wrapBrowserToolExecutorWithAuthorization,
 } from "./browser-tool-authorization.ts";
@@ -248,6 +249,8 @@ export function registerBrowserToolCatalogSource(source: BrowserToolCatalogSourc
 
 export function createBrowserAwareToolExecutor(options?: {
   loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
+  loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
+  getCurrentPageUrl?: () => string | null | Promise<string | null>;
 }): BrowserDynamicToolExecutor {
   return wrapBrowserToolExecutorWithAuthorization(createRawBrowserAwareToolExecutor(), options);
 }

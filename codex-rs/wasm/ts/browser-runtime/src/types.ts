@@ -1,6 +1,7 @@
 export type {
   Account,
   AuthState,
+  BrowserSecurityConfig,
   CodexCompatibleConfig,
   CodexModelProviderConfig,
   DemoInstructions,

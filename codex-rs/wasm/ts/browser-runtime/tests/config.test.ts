@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DEFAULT_BROWSER_SECURITY_CONFIG,
   DEFAULT_CODEX_CONFIG,
   DEFAULT_RUNTIME_MODE,
   DEEPSEEK_API_BASE_URL,
   OPENAI_API_BASE_URL,
   createProviderConfig,
   materializeCodexConfig,
+  normalizeBrowserSecurityConfig,
   normalizeCodexConfig,
 } from "../src/config.ts";
 import { validateBrowserTransportProvider } from "../src/transport.ts";
@@ -31,12 +33,39 @@ test("normalizeCodexConfig preserves trimmed runtime_architecture as client meta
   assert.equal(normalized.runtime_architecture, "wasm-client");
 });
 
+test("normalizeCodexConfig normalizes browser_security origins and defaults", () => {
+  const normalized = normalizeCodexConfig({
+    ...DEFAULT_CODEX_CONFIG,
+    browser_security: {
+      allowed_origins: [
+        " https://example.com/path ",
+        "https://example.com",
+        "http://localhost:3000",
+        "javascript:alert(1)",
+      ],
+      allow_localhost: true,
+      allow_private_network: null,
+    },
+  });
+
+  assert.deepEqual(normalized.browser_security, {
+    allowed_origins: ["https://example.com", "http://localhost:3000"],
+    allow_localhost: true,
+    allow_private_network: false,
+  });
+});
+
 test("materializeCodexConfig persists runtime metadata alongside provider config", () => {
   const config = materializeCodexConfig({
     transportMode: "xrouter-browser",
     model: "gpt-5",
     runtimeMode: "demo",
     runtimeArchitecture: "web-preview",
+    browserSecurity: {
+      allowed_origins: ["https://example.com"],
+      allow_localhost: false,
+      allow_private_network: false,
+    },
     modelReasoningEffort: "medium",
     personality: "pragmatic",
     displayName: "DeepSeek via Browser Runtime",
@@ -47,7 +76,19 @@ test("materializeCodexConfig persists runtime metadata alongside provider config
 
   assert.equal(config.runtime_mode, "demo");
   assert.equal(config.runtime_architecture, "web-preview");
+  assert.deepEqual(config.browser_security, {
+    allowed_origins: ["https://example.com"],
+    allow_localhost: false,
+    allow_private_network: false,
+  });
   assert.equal(config.modelProviders[config.modelProvider]?.baseUrl, DEEPSEEK_API_BASE_URL);
+});
+
+test("normalizeBrowserSecurityConfig backfills strict defaults", () => {
+  assert.deepEqual(
+    normalizeBrowserSecurityConfig(undefined),
+    DEFAULT_BROWSER_SECURITY_CONFIG,
+  );
 });
 
 test("validateBrowserTransportProvider normalizes allowed built-in provider URLs", () => {

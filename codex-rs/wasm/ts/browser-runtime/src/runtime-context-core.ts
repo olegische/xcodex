@@ -6,6 +6,7 @@ import {
   sanitizeStoredThreadSession,
   sanitizeStoredThreadSessionMetadata,
 } from "./layout.ts";
+import { normalizeBrowserSecurityConfig } from "./config.ts";
 import type {
   Account,
   AuthState,
@@ -41,6 +42,17 @@ export async function createBrowserCodexRuntimeContextWithDeps(
       .loadConfig()
       .catch(() => structuredClone(deps.defaultConfig));
     return config.runtime_mode ?? "default";
+  };
+  const loadBrowserSecurityPolicy = async () => {
+    const config = await storage
+      .loadConfig()
+      .catch(() => structuredClone(deps.defaultConfig));
+    const browserSecurity = normalizeBrowserSecurityConfig(config.browser_security);
+    return {
+      allowedOrigins: browserSecurity.allowed_origins,
+      allowLocalhost: browserSecurity.allow_localhost,
+      allowPrivateNetwork: browserSecurity.allow_private_network,
+    };
   };
 
   if (options.telemetry?.initializePageTelemetry !== false) {
@@ -150,9 +162,13 @@ export async function createBrowserCodexRuntimeContextWithDeps(
       },
       dynamicTools:
         options.dynamicTools === undefined
-          ? deps.createBrowserAwareToolExecutor({ loadRuntimeMode })
+          ? deps.createBrowserAwareToolExecutor({
+              loadRuntimeMode,
+              loadBrowserSecurityPolicy,
+            })
           : wrapBrowserToolExecutorWithAuthorization(options.dynamicTools, {
               loadRuntimeMode,
+              loadBrowserSecurityPolicy,
             }),
       async readAccount({
         authState,
@@ -231,6 +247,11 @@ export type RuntimeContextDeps = {
   }): (request: unknown) => Promise<unknown>;
   createBrowserAwareToolExecutor(args: {
     loadRuntimeMode(): Promise<"default" | "demo" | "chaos">;
+    loadBrowserSecurityPolicy(): Promise<{
+      allowedOrigins: string[];
+      allowLocalhost: boolean;
+      allowPrivateNetwork: boolean;
+    }>;
   }): unknown;
   initializePageTelemetry(): void;
   activeProviderApiKey(config: CodexCompatibleConfig): string;

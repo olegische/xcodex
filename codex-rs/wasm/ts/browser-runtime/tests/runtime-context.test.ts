@@ -481,6 +481,11 @@ function createCapturedDeps() {
       },
       createBrowserAwareToolExecutor(_args: {
         loadRuntimeMode(): Promise<"default" | "demo" | "chaos">;
+        loadBrowserSecurityPolicy(): Promise<{
+          allowedOrigins: string[];
+          allowLocalhost: boolean;
+          allowPrivateNetwork: boolean;
+        }>;
       }) {
         return {
           async list() {
