@@ -5,6 +5,7 @@
     "esbuild": "^0.25.12"
   },
   "workspaces": [
+    "apps/nullops",
     "apps/webui",
     "integrations/codexui",
     "ts/browser-codex-runtime",

@@ -1,0 +1,24 @@
+{
+  "name": "codex-wasm-nullops",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "svelte": "^5.38.7",
+    "typescript": "^5.9.2",
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "@browser-codex/wasm-browser-tools": "file:../../ts/browser-tools",
+    "@browser-codex/wasm-model-transport": "file:../../ts/model-transport",
+    "@browser-codex/wasm-runtime-core": "file:../../ts/runtime-core",
+    "xcodex-runtime": "file:../../ts/browser-runtime",
+    "openai": "latest"
+  }
+}

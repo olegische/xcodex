@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NullOps</title>
+    <meta
+      name="description"
+      content="NullOps is a browser-local Codex runtime for generating live apps at runtime."
+    />
+    <meta
+      name="keywords"
+      content="AI-aware web, browser agent runtime, Codex, MCP, remote MCP, llms.txt, schema.org"
+    />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="http://localhost:4181/" />
+    <link rel="alternate" type="text/plain" title="llms.txt" href="/llms.txt" />
+    <link rel="alternate" type="application/rss+xml" title="NullOps Feed" href="/feed.xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="NullOps" />
+    <meta
+      property="og:description"
+      content="Browser-native Codex runtime demo with chat-first control, remote MCP, browser tools, and workspace memory."
+    />
+    <meta property="og:url" content="http://localhost:4181/" />
+    <meta property="og:site_name" content="NullOps" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="NullOps" />
+    <meta
+      name="twitter:description"
+      content="Browser-native Codex runtime demo with chat-first control, remote MCP, browser tools, and workspace memory."
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "NullOps",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web Browser",
+        "description": "Browser-native Codex runtime demo with chat-first control, remote MCP, browser tools, and persistent workspace artifacts.",
+        "url": "http://localhost:4181/",
+        "browserRequirements": "Modern browser with JavaScript enabled",
+        "featureList": [
+          "Chat-first browser agent runtime",
+          "Remote MCP over URL",
+          "Browser context inspection",
+          "Workspace artifact memory",
+          "AI-readable web signal scanning"
+        ],
+        "author": {
+          "@type": "Organization",
+          "name": "Browser Codex"
+        }
+      }
+    </script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #201f1d;
+        --sidebar: #292826;
+        --surface: #312f2d;
+        --border: #4c4843;
+        --text: #e4e7ed;
+        --text-muted: #aaa39a;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      body {
+        overflow: hidden;
+        font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+      }
+    </style>
+    <script>
+      window.__nullopsDocumentLoaded = true;
+      window.addEventListener("DOMContentLoaded", () => {
+        window.setTimeout(() => {
+          if (window.__nullopsEntryResolved === true) {
+            return;
+          }
+          const target = document.getElementById("app");
+          if (target === null) {
+            return;
+          }
+          target.innerHTML = `
+            <div style="min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--text);padding:24px;font-family:Inter,system-ui,sans-serif;">
+              <div style="max-width:560px;border:1px solid var(--border);border-radius:18px;background:var(--surface);padding:20px;display:grid;gap:10px;">
+                <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Preflight</div>
+                <h2 style="margin:0;font-size:24px;">Document loaded, but module bootstrap did not finish.</h2>
+                <p style="margin:0;color:var(--text-muted);">The page HTML rendered, but the module entrypoint never resolved. The next patch should show the exact import/runtime error here.</p>
+              </div>
+            </div>
+          `;
+        }, 800);
+      });
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <div style="min-height:100vh;display:grid;grid-template-columns:260px minmax(0,1fr);background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;">
+        <aside style="padding:12px;border-right:1px solid var(--border);background:var(--sidebar);display:grid;align-content:start;gap:16px;">
+          <div>
+            <div style="font-size:28px;font-weight:700;">NullOps</div>
+            <div style="color:var(--text-muted);">browser mission deck</div>
+          </div>
+          <button style="padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:var(--surface);color:var(--text);text-align:left;">New Mission</button>
+          <div style="display:grid;gap:10px;">
+            <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Runtime</div>
+            <div style="padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surface);">Booting browser mission deck…</div>
+          </div>
+        </aside>
+        <main style="display:grid;grid-template-rows:auto 1fr auto;min-height:100vh;">
+          <header style="padding:16px 20px;border-bottom:1px solid var(--border);">Loading shell</header>
+          <section style="padding:20px;display:grid;place-items:center;">
+            <div style="max-width:640px;width:100%;padding:20px;border:1px solid var(--border);border-radius:18px;background:var(--surface);display:grid;gap:10px;">
+              <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);">Fallback Shell</div>
+              <h2 style="margin:0;">The document loaded.</h2>
+              <p style="margin:0;color:var(--text-muted);">If the live app does not replace this shell, the browser is not completing module bootstrap.</p>
+            </div>
+          </section>
+          <footer style="padding:16px 20px;border-top:1px solid var(--border);">Boot pipeline starting…</footer>
+        </main>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
