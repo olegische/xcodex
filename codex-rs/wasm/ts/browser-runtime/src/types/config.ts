@@ -26,6 +26,8 @@ export type XrouterProvider = "deepseek" | "openai" | "openrouter" | "zai";
 
 export type ProviderKind = "openai" | "openai_compatible" | "xrouter_browser";
 
+export type RuntimeMode = "default" | "demo" | "chaos";
+
 export type CodexModelProviderConfig = {
   name: string;
   baseUrl: string;
@@ -40,6 +42,8 @@ export type CodexModelProviderConfig = {
 export type CodexCompatibleConfig = {
   model: string;
   modelProvider: string;
+  runtime_mode?: RuntimeMode | null;
+  runtime_architecture?: string | null;
   modelReasoningEffort: string | null;
   personality: string | null;
   modelProviders: Record<string, CodexModelProviderConfig>;

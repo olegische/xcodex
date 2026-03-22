@@ -7,6 +7,7 @@ export type {
   DemoTransportMode,
   ModelPreset,
   ProviderKind,
+  RuntimeMode,
   StoredUserConfig,
   XrouterProvider,
 } from "./types/config.ts";

@@ -5,6 +5,7 @@ import {
   mapXrouterOutputItemToCodexResponseItem,
   runResponsesStreamingExecutor,
   runXrouterStreamingExecutor,
+  type BrowserTransportProvider,
   type ModelTransportAdapter,
   type ResponsesStreamEvent,
   type XrouterRuntimeModule,
@@ -27,7 +28,9 @@ export function createBrowserRuntimeModelTransportAdapter(deps: {
   loadXrouterRuntime(): Promise<XrouterRuntimeModule>;
 }): ModelTransportAdapter<CodexCompatibleConfig, ModelPreset, JsonValue> {
   return createResolvedBrowserModelTransportAdapter({
-    getProvider: getActiveProvider,
+    getProvider(config) {
+      return validateBrowserTransportProvider(getActiveProvider(config));
+    },
     getApiKey: activeProviderApiKey,
     normalizeDiscoveredModels,
     modelIdToDisplayName,
@@ -56,6 +59,71 @@ export function createBrowserRuntimeModelTransportAdapter(deps: {
       });
     },
   });
+}
+
+export function validateBrowserTransportProvider(
+  provider: BrowserTransportProvider,
+): BrowserTransportProvider {
+  const normalizedBaseUrl = normalizeProviderBaseUrl(provider.baseUrl);
+  switch (provider.providerKind) {
+    case "openai":
+      assertAllowedProviderBaseUrl(
+        normalizedBaseUrl,
+        new Set(["https://api.openai.com/v1"]),
+        provider,
+      );
+      break;
+    case "xrouter_browser":
+      assertAllowedProviderBaseUrl(
+        normalizedBaseUrl,
+        new Set([
+          "https://api.deepseek.com",
+          "https://api.openai.com/v1",
+          "https://openrouter.ai/api/v1",
+          "https://api.z.ai/api/paas/v4",
+        ]),
+        provider,
+      );
+      break;
+    case "openai_compatible":
+      break;
+  }
+
+  return {
+    ...provider,
+    baseUrl: normalizedBaseUrl,
+  };
+}
+
+function assertAllowedProviderBaseUrl(
+  baseUrl: string,
+  allowedBaseUrls: ReadonlySet<string>,
+  provider: Pick<BrowserTransportProvider, "name" | "providerKind">,
+): void {
+  if (allowedBaseUrls.has(baseUrl)) {
+    return;
+  }
+
+  throw createHostError(
+    "invalid_provider_base_url",
+    `Provider \`${provider.name}\` (${provider.providerKind}) uses a blocked baseUrl: ${baseUrl}`,
+    {
+      providerKind: provider.providerKind,
+      baseUrl,
+      allowedBaseUrls: [...allowedBaseUrls],
+    },
+  );
+}
+
+function normalizeProviderBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (trimmed.length === 0) {
+    throw createHostError(
+      "invalid_provider_base_url",
+      "Provider baseUrl must be a non-empty string.",
+    );
+  }
+  return trimmed;
 }
 
 export function cancelActiveModelRequests(requestId: string): void {

@@ -5,6 +5,12 @@
 This document is a working design and delivery plan for the security model of
 `codex-rs/wasm`.
 
+Current phase status:
+
+- Phase 0 design review: complete
+- Phase 1 config contract hardening: in progress
+- Phases 2-5: not started
+
 It is intentionally not an implementation checklist to execute blindly.
 
 Important operating rule:
@@ -124,6 +130,24 @@ Unknown or unclassified capability surface must fail closed.
 
 Modes alone are not enough.
 
+### 6. Optional Architecture Hint Is Not An Enforcement Input
+
+Consumers may choose to carry an architecture hint such as:
+
+- `os`
+- `wasm`
+
+But for `codex-rs/wasm` this must not become an enforcement input.
+
+The WASM runtime already knows it is the browser-hosted WASM runtime.
+
+Therefore:
+
+- if an architecture field is added, it is client-owned metadata only
+- the WASM runtime must not trust or depend on that field for policy decisions
+- browser security behavior must be derived from the runtime implementation
+  itself, not from a mutable config value
+
 ## Threat Model
 
 This plan is meant to reduce the following classes of risk:
@@ -213,9 +237,19 @@ Downstream UI must own:
 
 ## Security Model
 
+## Layer 0: Runtime Identity
+
+This plan applies to `codex-rs/wasm` specifically.
+
+The WASM runtime does not need a config toggle to discover that fact.
+
+If downstream clients want to attach architecture metadata for their own
+purposes, that is allowed, but this runtime must not use that metadata as a
+policy switch.
+
 ## Layer 1: Runtime Mode
 
-Add `runtimeMode` to persisted config.
+Add `runtime_mode` to persisted config for the WASM runtime only.
 
 Initial shape:
 
@@ -389,6 +423,15 @@ If local development support is needed later, it should be an explicit separate
 policy knob, not silent acceptance.
 
 ## Why This Matters
+
+Important design constraint for phase 1:
+
+- `baseUrl` validation must not rely on persisted browser config integrity
+- IndexedDB is only a storage mechanism, not a trust boundary
+- provider URL enforcement must happen at the transport boundary where Codex
+  hands a request to the model transport / router path
+- config normalization may canonicalize or trim URLs, but transport must remain
+  the enforcement root for provider URL restrictions
 
 If `baseUrl` stays loose:
 
@@ -567,13 +610,46 @@ Implementation status:
 
 Goal:
 
-- add security-relevant config shape without changing runtime behavior too broadly yet
+- add security-relevant runtime shape without coupling enforcement to UI or
+  trusting persisted browser config
 
 Expected outputs:
 
-- `runtimeMode` in config types
-- normalization and migration behavior
-- strict provider base URL validation contract
+- optional architecture metadata may exist for downstream clients, but is not
+  runtime enforcement input
+- `runtime_mode` in WASM config types only
+- normalization and migration behavior for legacy WASM config without
+  `runtime_mode`
+- transport-layer provider `baseUrl` validation contract
+
+Phase 1 design decisions currently agreed:
+
+- `runtime_mode` keeps snake_case naming and is WASM-only
+- any architecture field is optional client-owned metadata and is not enforced
+  by the WASM runtime
+- provider URL validation is enforced in the transport adapter / router
+  boundary, not by trusting IndexedDB config contents
+
+Phase 1 implementation status:
+
+- done: added `runtime_mode` to the WASM browser config contract
+- done: legacy config without `runtime_mode` now normalizes to the safe default
+  `default`
+- done: optional architecture metadata may be carried through config as
+  client-owned metadata only
+- done: web UI config materialization preserves the new runtime metadata fields
+- done: provider `baseUrl` validation now happens at the browser transport
+  boundary
+- done: strict allowlist enforcement is active for `openai`
+- done: strict allowlist enforcement is active for `xrouter_browser`
+- done: `openai_compatible` remains intentionally unrestricted at the `baseUrl`
+  level
+- done: regression tests cover config normalization and provider URL
+  validation
+
+Remaining phase 1 scope:
+
+- none for the agreed phase 1 design
 
 Must be designed separately before implementation.
 

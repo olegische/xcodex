@@ -6,6 +6,7 @@ import type {
   DemoTransportMode,
   JsonValue,
   ModelPreset,
+  RuntimeMode,
   XrouterProvider,
 } from "./types.ts";
 
@@ -30,10 +31,12 @@ export const OPENAI_COMPATIBLE_PROVIDER_ID = "external";
 export const OPENAI_ENV_KEY = "OPENAI_API_KEY";
 export const XROUTER_ENV_KEY = "XROUTER_API_KEY";
 export const OPENAI_COMPATIBLE_ENV_KEY = "OPENAI_COMPATIBLE_API_KEY";
+export const DEFAULT_RUNTIME_MODE: RuntimeMode = "default";
 
 export const DEFAULT_CODEX_CONFIG: CodexCompatibleConfig = {
   model: "",
   modelProvider: XROUTER_BROWSER_PROVIDER_ID,
+  runtime_mode: DEFAULT_RUNTIME_MODE,
   modelReasoningEffort: "medium",
   personality: "pragmatic",
   modelProviders: {
@@ -240,9 +243,13 @@ export function normalizeCodexConfig(
 ): CodexCompatibleConfig {
   const transportMode = detectTransportMode(config);
   const activeProvider = getActiveProvider(config);
+  const runtimeMode = normalizeRuntimeMode(config.runtime_mode);
+  const runtimeArchitecture = normalizeOptionalString(config.runtime_architecture);
   return materializeCodexConfig({
     transportMode,
     model: config.model.trim(),
+    runtimeMode,
+    runtimeArchitecture,
     modelReasoningEffort: config.modelReasoningEffort,
     personality: config.personality,
     displayName: activeProvider.name,
@@ -255,6 +262,8 @@ export function normalizeCodexConfig(
 export function materializeCodexConfig(params: {
   transportMode: DemoTransportMode;
   model: string;
+  runtimeMode?: RuntimeMode | null;
+  runtimeArchitecture?: string | null;
   modelReasoningEffort: string | null;
   personality: string | null;
   displayName: string;
@@ -278,6 +287,8 @@ export function materializeCodexConfig(params: {
   return {
     model: params.model,
     modelProvider,
+    runtime_mode: normalizeRuntimeMode(params.runtimeMode),
+    runtime_architecture: normalizeOptionalString(params.runtimeArchitecture),
     modelReasoningEffort: params.modelReasoningEffort,
     personality: params.personality,
     modelProviders: {
@@ -287,6 +298,27 @@ export function materializeCodexConfig(params: {
       [provider.envKey]: params.apiKey.trim(),
     },
   };
+}
+
+export function normalizeRuntimeMode(
+  runtimeMode: string | null | undefined,
+): RuntimeMode {
+  switch (runtimeMode) {
+    case "default":
+    case "demo":
+    case "chaos":
+      return runtimeMode;
+    default:
+      return DEFAULT_RUNTIME_MODE;
+  }
+}
+
+function normalizeOptionalString(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
 }
 
 export function normalizeDiscoveredModels(

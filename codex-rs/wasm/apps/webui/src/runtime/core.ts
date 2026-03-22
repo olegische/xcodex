@@ -322,6 +322,8 @@ export function buildCodexConfig(base: CodexCompatibleConfig, draft: ProviderDra
   return materializeCodexConfig({
     transportMode: draft.transportMode,
     model: draft.model.trim(),
+    runtimeMode: base.runtime_mode,
+    runtimeArchitecture: base.runtime_architecture,
     modelReasoningEffort: normalizeOptionalText(draft.modelReasoningEffort),
     personality: normalizeOptionalText(draft.personality),
     displayName: draft.providerDisplayName,
