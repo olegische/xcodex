@@ -865,7 +865,7 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     resolveProtectedOrigin: resolveTargetOriginFromInput,
     resolveTargetUrl: resolveTargetUrlFromInput,
     approvalKind: "navigation",
-    approvalEligibleInModes: ["default", "demo", "chaos"],
+    approvalEligibleInModes: ["default", "chaos"],
     approvalReason: "Navigate the current page to the requested URL.",
   },
   {
@@ -894,7 +894,7 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     resolveProtectedOrigin: resolveTargetOriginFromInput,
     resolveTargetUrl: resolveTargetUrlFromInput,
     approvalKind: "network",
-    approvalEligibleInModes: ["default", "demo", "chaos"],
+    approvalEligibleInModes: ["default", "chaos"],
     approvalReason: "Read HTTP response metadata from the target origin.",
   },
   {
@@ -938,7 +938,8 @@ const RUNTIME_MODE_SCOPE_GRANTS: Record<BrowserRuntimeMode, string[]> = {
     "browser.performance:read",
     "browser.page:wait",
     "browser.dom:read",
-    "browser.dom.html:read",
+    "browser.storage:read",
+    "browser.cookies:read",
     "browser.resources:read",
   ],
   chaos: [

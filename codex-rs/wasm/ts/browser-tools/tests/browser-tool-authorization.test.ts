@@ -26,15 +26,24 @@ test("list exposes approval-eligible tools and fails closed for unmapped tools",
   );
 });
 
-test("demo mode exposes broader inspection surface plus approval-eligible tools", async () => {
+test("demo mode exposes only the approved read-only inspection surface", async () => {
   const executor = createWrappedExecutor("demo");
   const { tools } = await executor.list();
 
-  assert(tools.some((tool) => tool.toolName === "inspect_resources"));
-  assert(tools.some((tool) => tool.toolName === "inspect_http"));
-  assert(tools.some((tool) => tool.toolName === "navigate"));
-  assert(!tools.some((tool) => tool.toolName === "click"));
-  assert(!tools.some((tool) => tool.toolName === "evaluate"));
+  assert.deepEqual(
+    tools.map((tool) => `${tool.toolNamespace}__${tool.toolName}`),
+    [
+      "browser__inspect_page",
+      "browser__inspect_dom",
+      "browser__list_interactives",
+      "browser__wait_for",
+      "browser__inspect_performance",
+      "browser__tool_search",
+      "browser__inspect_resources",
+      "browser__inspect_storage",
+      "browser__inspect_cookies",
+    ],
+  );
 });
 
 test("chaos mode exposes evaluate only for allowlisted current origins", async () => {
@@ -97,7 +106,7 @@ test("tool_search in default returns only tools visible in list()", async () => 
   );
 });
 
-test("tool_search in demo does not expose click fill or evaluate", async () => {
+test("tool_search in demo only returns tools from the approved inspection surface", async () => {
   const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
   const executor = createBrowserAwareToolExecutor({
     async loadRuntimeMode() {
@@ -120,7 +129,7 @@ test("tool_search in demo does not expose click fill or evaluate", async () => {
     toolName: "tool_search",
     toolNamespace: "browser",
     input: {
-      query: "click fill evaluate inspect_resources inspect_http",
+      query: "click fill evaluate inspect_storage inspect_cookies inspect_resources inspect_http navigate",
       limit: 20,
     },
   });
@@ -131,8 +140,50 @@ test("tool_search in demo does not expose click fill or evaluate", async () => {
   assert(!searchToolNames.includes("browser__click"));
   assert(!searchToolNames.includes("browser__fill"));
   assert(!searchToolNames.includes("browser__evaluate"));
+  assert(!searchToolNames.includes("browser__inspect_http"));
+  assert(!searchToolNames.includes("browser__navigate"));
+  assert(searchToolNames.includes("browser__inspect_storage"));
+  assert(searchToolNames.includes("browser__inspect_cookies"));
   assert(searchToolNames.includes("browser__inspect_resources"));
-  assert(searchToolNames.includes("browser__inspect_http"));
+});
+
+test("demo mode blocks approval-only and mutating tools policy-wise", async () => {
+  const approvals: string[] = [];
+  const executor = createWrappedExecutor("demo", {
+    browserSecurityPolicy: {
+      allowedOrigins: ["https://allowed.example.test", "https://app.example.test"],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    },
+    currentPageUrl: "https://app.example.test/current",
+    requestApproval: async (request) => {
+      approvals.push(request.canonicalToolName);
+      return { decision: "allow_once" };
+    },
+  });
+
+  for (const [toolName, input] of [
+    ["browser__inspect_http", { url: "https://allowed.example.test/api" }],
+    ["browser__navigate", { url: "https://allowed.example.test/path" }],
+    ["browser__click", {}],
+    ["browser__fill", { selector: "#name", value: "demo" }],
+    ["browser__evaluate", { script: "return 1;" }],
+  ] as const) {
+    await assert.rejects(
+      executor.invoke({
+        callId: `call-${toolName}`,
+        toolName,
+        toolNamespace: "browser",
+        input,
+      }),
+      (error: unknown) =>
+        error instanceof BrowserToolAuthorizationError &&
+        error.code === "insufficient_scope" &&
+        error.runtimeMode === "demo",
+    );
+  }
+
+  assert.deepEqual(approvals, []);
 });
 
 test("invoke normalizes aliases through the canonical policy path", async () => {
