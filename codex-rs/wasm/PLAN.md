@@ -260,31 +260,55 @@ Initial shape:
 But mode is only a top-level preset.
 It is not the final authority by itself.
 
-## Layer 2: Capability Classification
+## Layer 2: Authorization Scope Resolution
 
-Every built-in browser tool should be assigned a capability class.
+Built-in browser tools should not be modeled only as broad internal
+"capabilities".
 
-Initial capability classes:
+They should be modeled as authorization requests over explicit scopes using a
+resource/action shape that can later map cleanly onto external authorization
+systems such as OAuth-style scope strings.
 
-- `read`
-  - safe page inspection with low exfiltration risk
-- `sensitive_read`
-  - storage, cookies, HTML dumps, or other high-sensitivity reads
-- `mutation`
-  - click, fill, navigate, and similar side effects
-- `network`
-  - HTTP requests or any outward network access
-- `code_exec`
-  - arbitrary JavaScript execution or equivalent behavior
+The runtime should resolve each tool request into one or more required
+authorization scopes.
 
-If a tool cannot be confidently classified, it must be treated as denied until
-explicitly classified.
+Recommended scope naming style:
+
+- `resource:action`
+- or `resource.subresource:action` when more precision is needed
+
+Examples:
+
+- `browser.tools:read`
+- `browser.page:read`
+- `browser.dom:read`
+- `browser.dom.html:read`
+- `browser.interactives:read`
+- `browser.storage:read`
+- `browser.cookies:read`
+- `browser.resources:read`
+- `browser.performance:read`
+- `browser.http:read`
+- `browser.page:click`
+- `browser.page:fill`
+- `browser.page:navigate`
+- `browser.page:wait`
+- `browser.js:execute`
+
+Important:
+
+- scopes are implementation-defined by this runtime
+- scopes must be stable and documented once introduced
+- unknown tools or unresolved scope mappings must fail closed
+
+If a tool cannot be confidently mapped to explicit scopes, it must be treated
+as denied until explicitly classified.
 
 ## Layer 3: Runtime Policy
 
 The runtime should evaluate a request using:
 
-1. tool classification
+1. resolved required scopes
 2. current `runtimeMode`
 3. any explicit runtime policy rules
 4. any approval state supplied through the approved contract
@@ -348,43 +372,46 @@ Important:
 
 `code_exec` should still be noisy and explicit even in `chaos`.
 
-## Tool Classification Direction
+## Scope Mapping Direction
 
 The final mapping must be designed in its own phase, but the current direction
 should look roughly like this.
 
-### `read`
+### Baseline Read Scopes
 
-- `browser__tool_search`
-- `browser__inspect_page`
-- `browser__list_interactives`
-- `browser__inspect_performance`
-- tightly scoped DOM inspection if it does not expose sensitive HTML or secrets
+- `browser__tool_search` -> `browser.tools:read`
+- `browser__inspect_page` -> `browser.page:read`
+- `browser__list_interactives` -> `browser.interactives:read`
+- `browser__inspect_performance` -> `browser.performance:read`
+- `browser__wait_for` -> `browser.page:wait`
+- `browser__inspect_dom` without HTML expansion -> `browser.dom:read`
 
-### `sensitive_read`
+### Sensitive Read Scopes
 
-- `browser__inspect_storage`
-- `browser__inspect_cookies`
-- DOM inspection modes that expose raw HTML or sensitive attributes
-- resource inspection if it exposes high-sensitivity URLs or embedded data
+- `browser__inspect_storage` -> `browser.storage:read`
+- `browser__inspect_cookies` -> `browser.cookies:read`
+- `browser__inspect_resources` -> `browser.resources:read`
+- `browser__inspect_dom` with HTML expansion -> `browser.dom.html:read`
 
-### `mutation`
+### Network Scopes
 
-- `browser__click`
-- `browser__fill`
-- `browser__navigate`
+- `browser__inspect_http` -> `browser.http:read`
+- any future browser-originated request tool -> an explicit `browser.http:*`
+  or equivalent network scope
+- provider transport paths remain a separate runtime security surface and are
+  not granted by browser tool scopes
 
-### `network`
+### Mutation Scopes
 
-- `browser__inspect_http`
-- any future network request tool
-- any provider config path that causes outbound requests
+- `browser__click` -> `browser.page:click`
+- `browser__fill` -> `browser.page:fill`
+- `browser__navigate` -> `browser.page:navigate`
 
-### `code_exec`
+### Code Execution Scopes
 
-- `browser__evaluate`
-- aliases like `browser__run_probe`
-- any future JS execution primitive
+- `browser__evaluate` -> `browser.js:execute`
+- aliases like `browser__run_probe` -> `browser.js:execute`
+- any future JS execution primitive -> explicit execute-style scope
 
 ## Provider Base URL Policy
 
@@ -477,10 +504,198 @@ Introduce a policy-aware wrapper around the raw tool executor.
 Suggested conceptual shape:
 
 - raw executor exposes full underlying capability surface
-- policy wrapper classifies tool
-- policy wrapper checks mode
+- policy wrapper normalizes aliases to canonical tool identity
+- policy wrapper resolves required scopes for the request
+- policy wrapper checks mode-derived granted scopes
 - policy wrapper checks approval state if required
-- policy wrapper returns explicit blocked errors
+- policy wrapper returns explicit authorization-style blocked errors
+
+## Standard Authorization Model Direction
+
+Phase 2 should follow standard authorization architecture patterns rather than
+an ad hoc "tool toggle" design.
+
+Recommended structure:
+
+- authorization registry: canonical tool identity, aliases, scope resolution
+- policy decision point (PDP): decides allow/deny from request context
+- policy enforcement point (PEP): wraps `list()` and `invoke()` and enforces
+  PDP decisions
+
+This lines up with established policy-engine / enforcement separation and keeps
+the runtime-owned enforcement root clear.
+
+### Registry Responsibilities
+
+The registry should own:
+
+- canonical tool names
+- alias mappings
+- discovery-time scope requirements
+- invoke-time scope resolution
+
+Important:
+
+- invoke-time resolution may depend on input, not only on tool name
+- this is required for tools like DOM inspection where arguments can change the
+  sensitivity of the request
+
+### PDP Responsibilities
+
+The policy decision point should accept at least:
+
+- canonical tool name
+- original requested tool name
+- required scopes
+- runtime mode
+- request phase (`list` or `invoke`)
+- request input when needed
+
+And should return a structured decision:
+
+- `allow`
+- `deny`
+- later phases may add `allow_with_approval`
+
+### PEP Responsibilities
+
+The enforcement point should:
+
+- wrap both `list()` and `invoke()`
+- filter denied tools from discovery
+- block denied invocations even if the caller already knows the tool name
+- normalize aliases before dispatch
+- surface structured blocked errors
+
+### Error Semantics
+
+Blocked tool access should follow authorization-style error semantics.
+
+Recommended baseline:
+
+- code: `insufficient_scope`
+- include canonical tool name
+- include original requested tool name
+- include required scopes
+- include current `runtime_mode`
+- include a stable machine-readable reason
+
+This is intentionally close to OAuth bearer resource semantics and keeps the
+door open for future integration with external permission systems.
+
+### Deny-By-Default Rules
+
+The following must be denied by default:
+
+- unknown tools
+- unknown aliases
+- tools without explicit scope mappings
+- custom browser dynamic tools without explicit authorization metadata
+- any invoke path that bypasses discovery filtering
+
+### Input-Sensitive Policy
+
+Some tools must resolve scopes from both name and input.
+
+Initial required case:
+
+- `browser__inspect_dom`
+  - without `includeHtml` -> `browser.dom:read`
+  - with `includeHtml: true` -> `browser.dom.html:read`
+
+The runtime must support this distinction from the beginning rather than
+pretending all tool requests are name-only.
+
+### Runtime Mode As Scope Grant Preset
+
+`runtime_mode` should not directly hardcode tool names in policy checks.
+
+Instead, each mode should expand to a granted-scope set.
+
+Initial grant presets:
+
+#### `default`
+
+Grant:
+
+- `browser.tools:read`
+- `browser.page:read`
+- `browser.dom:read`
+- `browser.interactives:read`
+- `browser.performance:read`
+- `browser.page:wait`
+
+Deny by omission:
+
+- `browser.dom.html:read`
+- `browser.storage:read`
+- `browser.cookies:read`
+- `browser.resources:read`
+- `browser.http:read`
+- `browser.page:click`
+- `browser.page:fill`
+- `browser.page:navigate`
+- `browser.js:execute`
+
+#### `demo`
+
+Grant everything from `default`, plus:
+
+- `browser.storage:read`
+- `browser.cookies:read`
+- `browser.resources:read`
+
+Deny by omission:
+
+- `browser.http:read`
+- `browser.page:click`
+- `browser.page:fill`
+- `browser.page:navigate`
+- `browser.js:execute`
+
+#### `chaos`
+
+Grant everything from `demo`, plus:
+
+- `browser.http:read`
+- `browser.page:click`
+- `browser.page:fill`
+- `browser.page:navigate`
+
+Deny by omission:
+
+- `browser.js:execute`
+
+Important:
+
+- `chaos` still does not silently permit arbitrary JS execution
+- `browser.js:execute` remains denied until the explicit approval contract is
+  designed and implemented
+
+### Phase 2 Module Shape
+
+Phase 2 should introduce new modules rather than growing `browser-tools.ts`
+indefinitely.
+
+Recommended split:
+
+- `tool-authorization-registry.ts`
+- `tool-policy.ts`
+- `policy-aware-executor.ts`
+
+Possible responsibilities:
+
+- `tool-authorization-registry.ts`
+  - canonical names
+  - aliases
+  - request-to-scope resolution
+- `tool-policy.ts`
+  - granted scopes per runtime mode
+  - decision function
+  - blocked error builders
+- `policy-aware-executor.ts`
+  - wrap raw executor
+  - enforce decisions in `list()` and `invoke()`
 
 ## Approval And Consent Contract
 
@@ -657,14 +872,47 @@ Must be designed separately before implementation.
 
 Goal:
 
-- introduce runtime-owned capability classification and blocking
+- introduce runtime-owned authorization scope resolution and policy enforcement
 
 Expected outputs:
 
-- built-in tool classification
-- deny-by-default policy for unknown tools
+- built-in tool-to-scope registry
+- alias normalization through the policy layer
+- deny-by-default policy for unknown or unmapped tools
 - wrapper enforcement in `list()` and `invoke()`
-- alias-aware blocking
+- structured authorization-style blocked errors
+- input-sensitive scope resolution where needed
+- mode-to-scope grant presets for `default`, `demo`, and `chaos`
+
+Phase 2 implementation plan:
+
+1. Introduce a dedicated authorization registry module for built-in browser
+   tools.
+2. Normalize aliases to canonical tool identity in one place.
+3. Resolve required scopes from tool name and input.
+4. Introduce a policy decision function that evaluates:
+   - required scopes
+   - current `runtime_mode`
+   - request phase (`list` or `invoke`)
+5. Wrap raw tool discovery so denied tools are filtered out of `list()`.
+6. Wrap raw invocation so denied requests are blocked before dispatch.
+7. Ensure aliases and canonical names always share the same policy path.
+8. Fail closed for custom browser dynamic tools unless they register explicit
+   authorization metadata.
+9. Add regression tests for:
+   - discovery filtering
+   - invoke blocking
+   - alias parity
+   - unknown tool denial
+   - input-sensitive DOM inspection policy
+   - `browser.js:execute` denial in all modes
+
+Phase 2 review checkpoints:
+
+- confirm final scope names before committing them as public contract
+- confirm whether `browser.resources:read` belongs in `demo`
+- confirm whether `browser.page:wait` should stay in `default`
+- confirm whether future custom tools must declare scopes at registration time
 
 Must be designed separately before implementation.
 
