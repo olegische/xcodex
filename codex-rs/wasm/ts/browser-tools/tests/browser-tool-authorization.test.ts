@@ -57,6 +57,84 @@ test("chaos mode exposes evaluate only for allowlisted current origins", async (
   assert(allowedTools.tools.some((tool) => tool.toolName === "evaluate"));
 });
 
+test("tool_search in default returns only tools visible in list()", async () => {
+  const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
+  const executor = createBrowserAwareToolExecutor({
+    async loadRuntimeMode() {
+      return "default";
+    },
+    async loadBrowserSecurityPolicy() {
+      return {
+        allowedOrigins: [],
+        allowLocalhost: false,
+        allowPrivateNetwork: false,
+      };
+    },
+    async getCurrentPageUrl() {
+      return "https://app.example.test/current";
+    },
+  });
+
+  const { tools } = await executor.list();
+  const listedToolNames = new Set(tools.map((tool) => `browser__${tool.toolName}`));
+  const result = await executor.invoke({
+    callId: "call-search-default",
+    toolName: "tool_search",
+    toolNamespace: "browser",
+    input: {
+      query: "click fill inspect_cookies evaluate inspect_http navigate",
+      limit: 20,
+    },
+  });
+  const searchToolNames = ((result.output as { tools?: Array<{ toolName?: string }> }).tools ?? [])
+    .map((tool) => tool.toolName)
+    .filter((toolName): toolName is string => typeof toolName === "string");
+
+  assert(searchToolNames.length > 0);
+  assert.deepEqual(
+    searchToolNames.filter((toolName) => !listedToolNames.has(toolName)),
+    [],
+  );
+});
+
+test("tool_search in demo does not expose click fill or evaluate", async () => {
+  const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
+  const executor = createBrowserAwareToolExecutor({
+    async loadRuntimeMode() {
+      return "demo";
+    },
+    async loadBrowserSecurityPolicy() {
+      return {
+        allowedOrigins: [],
+        allowLocalhost: false,
+        allowPrivateNetwork: false,
+      };
+    },
+    async getCurrentPageUrl() {
+      return "https://app.example.test/current";
+    },
+  });
+
+  const result = await executor.invoke({
+    callId: "call-search-demo",
+    toolName: "tool_search",
+    toolNamespace: "browser",
+    input: {
+      query: "click fill evaluate inspect_resources inspect_http",
+      limit: 20,
+    },
+  });
+  const searchToolNames = ((result.output as { tools?: Array<{ toolName?: string }> }).tools ?? [])
+    .map((tool) => tool.toolName)
+    .filter((toolName): toolName is string => typeof toolName === "string");
+
+  assert(!searchToolNames.includes("browser__click"));
+  assert(!searchToolNames.includes("browser__fill"));
+  assert(!searchToolNames.includes("browser__evaluate"));
+  assert(searchToolNames.includes("browser__inspect_resources"));
+  assert(searchToolNames.includes("browser__inspect_http"));
+});
+
 test("invoke normalizes aliases through the canonical policy path", async () => {
   const calls: Array<{ toolName: string; input: unknown }> = [];
   const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor(calls), {
@@ -282,6 +360,30 @@ test("evaluate can be explicitly enabled for localhost and private network origi
       input: { script: "return 1;" },
     }),
     { output: { ok: true } },
+  );
+});
+
+test("inspect_http on 127.0.0.1 with allow_localhost=true reaches approval-required path", async () => {
+  const executor = createWrappedExecutor("default", {
+    browserSecurityPolicy: {
+      allowedOrigins: ["http://127.0.0.1:4173"],
+      allowLocalhost: true,
+      allowPrivateNetwork: false,
+    },
+    currentPageUrl: "http://127.0.0.1:4173",
+  });
+
+  await assert.rejects(
+    executor.invoke({
+      callId: "call-http-loopback",
+      toolName: "browser__inspect_http",
+      toolNamespace: "browser",
+      input: { url: "http://127.0.0.1:4173/health" },
+    }),
+    (error: unknown) =>
+      error instanceof BrowserToolAuthorizationError &&
+      error.code === "approval_mediator_unavailable" &&
+      error.resolvedOrigin === "http://127.0.0.1:4173",
   );
 });
 
@@ -520,4 +622,46 @@ function tool(toolName: string) {
     description: toolName,
     inputSchema: {},
   };
+}
+
+async function loadBrowserAwareToolExecutor() {
+  installMinimalBrowserGlobals();
+  return await import("../src/browser-tools.ts");
+}
+
+function installMinimalBrowserGlobals(): void {
+  const globalScope = globalThis as Record<string, unknown>;
+  if (globalScope.window !== undefined && globalScope.document !== undefined) {
+    return;
+  }
+
+  const documentStub = {
+    title: "Test Page",
+    readyState: "complete",
+    activeElement: null,
+    documentElement: {},
+    querySelectorAll: () => [],
+    querySelector: () => null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  const windowStub = {
+    location: {
+      href: "https://app.example.test/current",
+      origin: "https://app.example.test",
+      hostname: "app.example.test",
+    },
+    history: {
+      pushState: () => {},
+      replaceState: () => {},
+    },
+    getSelection: () => ({ toString: () => "" }),
+    setTimeout,
+    clearTimeout,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+
+  globalScope.document = documentStub;
+  globalScope.window = windowStub;
 }

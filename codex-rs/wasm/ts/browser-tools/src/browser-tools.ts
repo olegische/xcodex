@@ -17,6 +17,8 @@ import {
   runProbe,
 } from "./browser-sandbox-tools.ts";
 import {
+  authorizeBrowserToolRequest,
+  createBrowserToolAuthorizationContext,
   type BrowserSecurityPolicy,
   type BrowserRuntimeMode,
   wrapBrowserToolExecutorWithAuthorization,
@@ -252,13 +254,17 @@ export function createBrowserAwareToolExecutor(options?: {
   loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
   getCurrentPageUrl?: () => string | null | Promise<string | null>;
 }): BrowserDynamicToolExecutor {
-  return wrapBrowserToolExecutorWithAuthorization(createRawBrowserAwareToolExecutor(), options);
+  return wrapBrowserToolExecutorWithAuthorization(createRawBrowserAwareToolExecutor(options), options);
 }
 
-function createRawBrowserAwareToolExecutor(): BrowserDynamicToolExecutor {
+function createRawBrowserAwareToolExecutor(options?: {
+  loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
+  loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
+  getCurrentPageUrl?: () => string | null | Promise<string | null>;
+}): BrowserDynamicToolExecutor {
   return {
     async list() {
-      const tools = await listBrowserToolCatalog();
+      const tools = await listAuthorizedBrowserToolCatalog(options);
       return {
         tools: tools.map((tool) => ({
           toolName: unqualifyBrowserToolName(tool),
@@ -272,7 +278,7 @@ function createRawBrowserAwareToolExecutor(): BrowserDynamicToolExecutor {
       let output: JsonValue;
       const toolName = qualifyDynamicToolName(params);
       if (toolName === "browser__tool_search") {
-        output = await searchBrowserToolCatalog(asRecord(params.input));
+        output = await searchBrowserToolCatalog(asRecord(params.input), options);
       } else if (toolName === "browser__inspect_page" || toolName === "browser__page_context") {
         output = inspectPageContext(asRecord(params.input));
       } else if (toolName === "browser__inspect_dom" || toolName === "browser__extract_dom") {
@@ -336,7 +342,46 @@ async function listBrowserToolCatalog(): Promise<BrowserToolCatalogEntry[]> {
   return dedupeBrowserToolCatalog([...builtinTools, ...extraTools]);
 }
 
-async function searchBrowserToolCatalog(input: Record<string, JsonValue>): Promise<JsonValue> {
+async function listAuthorizedBrowserToolCatalog(options?: {
+  loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
+  loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
+  getCurrentPageUrl?: () => string | null | Promise<string | null>;
+}): Promise<BrowserToolCatalogEntry[]> {
+  const [catalog, runtimeMode, browserSecurityPolicy, currentPageUrl] = await Promise.all([
+    listBrowserToolCatalog(),
+    options?.loadRuntimeMode?.() ?? "default",
+    options?.loadBrowserSecurityPolicy?.() ?? {
+      allowedOrigins: [],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    } satisfies BrowserSecurityPolicy,
+    options?.getCurrentPageUrl?.() ?? (typeof window === "undefined" ? null : window.location.href),
+  ]);
+  const authorizationContext = createBrowserToolAuthorizationContext({
+    runtimeMode,
+    browserSecurityPolicy,
+  });
+
+  return catalog.filter((tool) => {
+    const decision = authorizeBrowserToolRequest({
+      toolName: qualifyDynamicToolName(tool),
+      input: null,
+      requestPhase: "list",
+      authorizationContext,
+      currentPageUrl,
+    });
+    return decision.decision === "allow" || decision.decision === "requires_approval";
+  });
+}
+
+async function searchBrowserToolCatalog(
+  input: Record<string, JsonValue>,
+  options?: {
+    loadRuntimeMode?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>;
+    loadBrowserSecurityPolicy?: () => BrowserSecurityPolicy | Promise<BrowserSecurityPolicy>;
+    getCurrentPageUrl?: () => string | null | Promise<string | null>;
+  },
+): Promise<JsonValue> {
   const query = typeof input.query === "string" ? input.query.trim() : "";
   if (query.length === 0) {
     throw new Error("browser__tool_search requires a non-empty query");
@@ -344,7 +389,7 @@ async function searchBrowserToolCatalog(input: Record<string, JsonValue>): Promi
 
   const limit = clampNumber(input.limit, 8, 1, 25);
   const includeSchema = input.includeSchema === true;
-  const catalog = await listBrowserToolCatalog();
+  const catalog = await listAuthorizedBrowserToolCatalog(options);
   const queryTerms = tokenizeSearchText(query);
   const results = catalog
     .map((entry) => ({

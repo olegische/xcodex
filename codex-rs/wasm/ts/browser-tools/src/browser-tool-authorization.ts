@@ -750,13 +750,22 @@ function hostnameFromOrigin(origin: string): string | null {
 }
 
 function isLocalhostHostname(hostname: string): boolean {
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return hostname.slice(1, -1).toLowerCase() === "::1";
+  }
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
 function isPrivateNetworkHostname(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return false;
+  }
   if (hostname.startsWith("[") && hostname.endsWith("]")) {
     const normalized = hostname.slice(1, -1).toLowerCase();
-    return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:");
+    if (normalized === "::1") {
+      return false;
+    }
+    return normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:");
   }
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
     return false;
@@ -767,7 +776,6 @@ function isPrivateNetworkHostname(hostname: string): boolean {
     return false;
   }
   return first === 10 ||
-    first === 127 ||
     (first === 192 && second === 168) ||
     (first === 172 && second >= 16 && second <= 31) ||
     (first === 169 && second === 254);
