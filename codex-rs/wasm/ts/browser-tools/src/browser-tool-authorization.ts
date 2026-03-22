@@ -920,6 +920,12 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     approvalEligibleInModes: ["chaos"],
     approvalReason: "Run JavaScript in the current page context.",
   },
+  {
+    canonicalToolName: "browser__apply_patch",
+    aliases: [],
+    discoveryScopes: ["browser.workspace:write"],
+    resolveInvokeScopes: () => ["browser.workspace:write"],
+  },
 ];
 
 const RUNTIME_MODE_SCOPE_GRANTS: Record<BrowserRuntimeMode, string[]> = {
@@ -930,6 +936,7 @@ const RUNTIME_MODE_SCOPE_GRANTS: Record<BrowserRuntimeMode, string[]> = {
     "browser.performance:read",
     "browser.page:wait",
     "browser.dom:read",
+    "browser.workspace:write",
   ],
   demo: [
     "browser.tools:read",
@@ -941,6 +948,7 @@ const RUNTIME_MODE_SCOPE_GRANTS: Record<BrowserRuntimeMode, string[]> = {
     "browser.storage:read",
     "browser.cookies:read",
     "browser.resources:read",
+    "browser.workspace:write",
   ],
   chaos: [
     "browser.tools:read",
@@ -955,6 +963,7 @@ const RUNTIME_MODE_SCOPE_GRANTS: Record<BrowserRuntimeMode, string[]> = {
     "browser.cookies:read",
     "browser.page:click",
     "browser.page:fill",
+    "browser.workspace:write",
   ],
 };
 

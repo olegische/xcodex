@@ -162,6 +162,8 @@ export async function createBrowserCodexRuntimeContextWithDeps(
         options.dynamicTools === undefined
           ? deps.createBrowserAwareToolExecutor({
               getAuthorizationContext: () => authorizationContext,
+              applyPatch: async (input: unknown) =>
+                await options.workspace.applyPatch(input as JsonValue),
               requestApproval: options.requestBrowserToolApproval,
             })
           : wrapBrowserToolExecutorWithAuthorization(options.dynamicTools, {
@@ -263,6 +265,7 @@ export type RuntimeContextDeps = {
       effectiveScopes(origin: string | null): string[];
       hasGrant(origin: string, scopes: string[]): boolean;
     }>;
+    applyPatch?(input: unknown): Promise<unknown>;
     requestApproval?(request: unknown): Promise<unknown>;
   }): unknown;
   initializePageTelemetry(): void;

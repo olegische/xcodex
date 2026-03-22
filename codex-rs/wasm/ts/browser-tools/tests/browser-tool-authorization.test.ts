@@ -22,6 +22,7 @@ test("list exposes approval-eligible tools and fails closed for unmapped tools",
       "browser__tool_search",
       "browser__inspect_http",
       "browser__navigate",
+      "browser__apply_patch",
     ],
   );
 });
@@ -42,6 +43,7 @@ test("demo mode exposes only the approved read-only inspection surface", async (
       "browser__inspect_resources",
       "browser__inspect_storage",
       "browser__inspect_cookies",
+      "browser__apply_patch",
     ],
   );
 });
@@ -190,6 +192,7 @@ test("tool_search honors getAuthorizationContext and matches demo list surface",
     "browser__inspect_cookies",
     "browser__inspect_resources",
     "browser__inspect_performance",
+    "browser__apply_patch",
   ]);
   assert(!searchToolNames.includes("browser__inspect_http"));
   assert(!searchToolNames.includes("browser__navigate"));
@@ -707,6 +710,7 @@ function createRawExecutor(calls: Array<{ toolName: string; input: unknown }>): 
           tool("fill"),
           tool("navigate"),
           tool("evaluate"),
+          tool("apply_patch"),
           tool("custom_tool"),
         ],
       };
