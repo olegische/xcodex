@@ -206,6 +206,11 @@ The first browser-tool approval contract is intentionally narrow and applies to:
 - `browser__inspect_http`
 - `browser__navigate`
 
+The browser workspace write surface also includes `browser__submit_patch`.
+That tool is browser-owned and namespaced on purpose: it applies patch text
+through the browser workspace adapter, but it is not the same protocol tool as
+the upstream core builtin `apply_patch`.
+
 Current runtime behavior:
 
 - `browser__evaluate` is approval-eligible only in `chaos`

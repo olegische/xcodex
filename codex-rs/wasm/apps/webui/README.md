@@ -86,6 +86,11 @@ The current demo supports:
 - app-server protocol notifications;
 - citations, tools, and artifacts inspection.
 
+Browser workspace patch writes are exposed through the browser-owned tool
+`browser__submit_patch`. This keeps browser runtime tool identity separate from
+the upstream core builtin `apply_patch` while still reusing the same browser
+workspace patch backend.
+
 ## Current status
 
 This is releaseable as an open-source demo of WASM Codex.
