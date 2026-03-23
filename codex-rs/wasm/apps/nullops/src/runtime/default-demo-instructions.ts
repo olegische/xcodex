@@ -49,9 +49,9 @@ const XCODEX_WASM_BASE_INSTRUCTIONS = [
   "- Keep tool names, code, file paths, API names, and protocol identifiers unchanged.",
   "",
   "Open-source references:",
-  "- [XCodexUI](https://github.com/olegische/xcodexui)",
-  "- [XCodex](https://github.com/olegische/xcodex)",
-  "- [XRouter](https://github.com/olegische/xrouter)",
+  "- XCodexUI: https://github.com/olegische/xcodexui",
+  "- XCodex: https://github.com/olegische/xcodex",
+  "- XRouter: https://github.com/olegische/xrouter",
 ].join("\n");
 
 export const DEFAULT_DEMO_BASE_INSTRUCTIONS = [
