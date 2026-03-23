@@ -921,7 +921,7 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     approvalReason: "Run JavaScript in the current page context.",
   },
   {
-    canonicalToolName: "browser__apply_patch",
+    canonicalToolName: "browser__submit_patch",
     aliases: [],
     discoveryScopes: ["browser.workspace:write"],
     resolveInvokeScopes: () => ["browser.workspace:write"],

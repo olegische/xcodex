@@ -242,7 +242,7 @@ const BROWSER_TOOLS = [
     },
   },
   {
-    name: "browser__apply_patch",
+    name: "browser__submit_patch",
     description: "Apply an XCodex workspace patch to browser-managed files. Use this for file edits in browser runtime instead of shell-style editing.",
     inputSchema: {
       type: "object",
@@ -324,9 +324,9 @@ function createRawBrowserAwareToolExecutor(options?: {
         output = performanceSnapshot(params.input);
       } else if (toolName === "browser__evaluate" || toolName === "browser__run_probe") {
         output = await runProbe(params.input);
-      } else if (toolName === "browser__apply_patch") {
+      } else if (toolName === "browser__submit_patch") {
         if (options?.applyPatch === undefined) {
-          throw new Error("browser__apply_patch is unavailable: no browser workspace patch executor is configured");
+          throw new Error("browser__submit_patch is unavailable: no browser workspace patch executor is configured");
         }
         output = await options.applyPatch(params.input);
       } else {

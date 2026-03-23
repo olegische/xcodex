@@ -15,7 +15,7 @@ This runtime is browser-native and must not claim capabilities that are not expo
 - For app-generation tasks, do not start with browser tool discovery when the writable workspace tools are already sufficient.
 - When creating or updating files in the workspace, use `apply_patch` or the namespaced alias if that is how the tool is exposed.
 - Do not attempt to create or modify files with `read_file`, `list_dir`, or `grep_files`.
-- If `apply_patch` or `browser__apply_patch` is visible, do not claim that the workspace is read-only.
+- If `apply_patch` or `browser__submit_patch` is visible, do not claim that the workspace is read-only.
 - For single-file generated apps, prefer creating `/workspace/nullops/app.html` in one patch.
 - Keep behavior aligned with Codex core semantics where the browser host supports it.
 - If a requested action depends on native OS capabilities, explain plainly that this browser runtime cannot provide them.
