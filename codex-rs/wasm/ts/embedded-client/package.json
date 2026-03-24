@@ -1,0 +1,60 @@
+{
+  "name": "xcodex-embedded-client",
+  "version": "0.1.0",
+  "description": "High-level embedding client for the XCodex browser-hosted WASM runtime.",
+  "license": "Apache-2.0",
+  "author": "Oleg Romanchuk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olegische/xcodex.git",
+    "directory": "codex-rs/wasm/ts/embedded-client"
+  },
+  "homepage": "https://github.com/olegische/xcodex/tree/wasm/codex-rs/wasm/ts/embedded-client",
+  "bugs": {
+    "url": "https://github.com/olegische/xcodex/issues"
+  },
+  "keywords": [
+    "xcodex",
+    "codex",
+    "browser",
+    "wasm",
+    "embedded",
+    "typescript",
+    "sdk",
+    "web"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10.29.3"
+  },
+  "module": "./dist/index.js",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "xcodex-runtime": "file:../browser-runtime"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./src/types.ts",
+      "import": "./dist/types.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "rm -rf dist && ../../node_modules/.bin/esbuild src/index.ts src/types.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outdir=dist",
+    "build:watch": "../../node_modules/.bin/esbuild src/index.ts src/types.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outdir=dist --watch",
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts"
+  },
+  "packageManager": "pnpm@10.29.3+sha512.498e1fb4cca5aa06c1dcf2611e6fafc50972ffe7189998c409e90de74566444298ffe43e6cd2acdc775ba1aa7cc5e092a8b7054c811ba8c5770f84693d33d2dc"
+}
