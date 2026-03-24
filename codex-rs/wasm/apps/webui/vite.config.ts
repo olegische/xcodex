@@ -18,6 +18,9 @@ export default defineConfig({
       "xcodex-runtime": fileURLToPath(
         new URL("../../ts/browser-runtime/src", import.meta.url),
       ),
+      "xcodex-embedded-client": fileURLToPath(
+        new URL("../../ts/embedded-client/src", import.meta.url),
+      ),
     },
   },
   server: {

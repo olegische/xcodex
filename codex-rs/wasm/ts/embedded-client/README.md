@@ -22,11 +22,27 @@ The intended public API is:
 - `xcodex-embedded-client`
 - `xcodex-embedded-client/types`
 
-## Installation
+## Distribution Model
 
-```bash
-pnpm add xcodex-embedded-client xcodex-runtime
-```
+`xcodex-embedded-client` is not intended as a separate package-manager product
+for downstream browser apps.
+
+It exists as a higher-level TypeScript SDK layer in this repository and is
+expected to be bundled into the shipped browser runtime integration artifacts.
+
+Today those browser bundles are published from the GitHub release tag:
+
+- [xcodex-wasm](https://github.com/olegische/xcodex/releases/tag/xcodex-wasm)
+
+In practice, the consumer-facing model is:
+
+1. fetch or build the browser runtime bundle from this repository
+2. ship the generated browser assets to the embedding app
+3. have the embedding client integrate against the bundled runtime surface
+
+This means embedders should think in terms of hosted browser assets and bundle
+exports, not `pnpm add`, standalone npm package installation, or immutable-tag
+release flows.
 
 ## Exports
 
@@ -71,41 +87,22 @@ UI applications should still own presentation concerns such as:
 
 ## Example
 
-```ts
-import {
-  createBrowserToolApprovalBroker,
-  createEmbeddedCodexClient,
-} from "xcodex-embedded-client";
-import {
-  createIndexedDbCodexStorage,
-  createLocalStorageWorkspaceAdapter,
-  DEFAULT_CODEX_CONFIG,
-  normalizeCodexConfig,
-} from "xcodex-runtime";
+The intended use is inside the repository's browser runtime bundle, or inside a
+downstream application that consumes that generated bundle.
 
+At the API level, the embedding surface looks like:
+
+```ts
 const approvalBroker = createBrowserToolApprovalBroker();
 
 const client = createEmbeddedCodexClient({
   cwd: "/workspace",
-  storage: createIndexedDbCodexStorage({
-    dbName: "codex-wasm-browser-terminal",
-    dbVersion: 1,
-    defaultConfig: DEFAULT_CODEX_CONFIG,
-    normalizeConfig: normalizeCodexConfig,
-    getSessionId(session) {
-      return session.metadata.threadId;
-    },
-    getSessionMetadata(session) {
-      return session.metadata;
-    },
-  }),
-  workspace: createLocalStorageWorkspaceAdapter({
-    rootPath: "/workspace",
-  }),
+  storage,
+  workspace,
   approvalBroker,
 });
 
-const unsubscribe = client.subscribe((notification) => {
+const unsubscribe = await client.subscribe((notification) => {
   console.log(notification.method, notification.params);
 });
 
