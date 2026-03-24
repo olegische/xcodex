@@ -63,11 +63,39 @@ Tarball consumers should load `manifest.json` and `current/*` assets and treat
 They should not assume npm package semantics such as `package.json`, package
 subpath imports, or a `dist/` layout inside the tarball.
 
-## Installation
+## Distribution Model
 
-```bash
-pnpm add xcodex-runtime
+`xcodex-runtime` is primarily shipped as part of the browser WASM release
+bundle, not as a normal npm-installed package in downstream apps.
+
+Today the published browser bundles are distributed from the GitHub release tag:
+
+- [xcodex-wasm](https://github.com/olegische/xcodex/releases/tag/xcodex-wasm)
+
+The expected integration flow is:
+
+1. fetch the browser WASM bundle from the `xcodex-wasm` release
+2. host the bundle assets in the embedding app
+3. load `xcodex-runtime.js` from that hosted bundle
+4. integrate the browser runtime from the loaded bundle exports
+
+The canonical release artifact remains the tarball layout documented above:
+
+```text
+xcodex-wasm/
+  manifest.json
+  current/
+    xcodex.js
+    xcodex_bg.wasm
+    xcodex-runtime.js
+    xcodex-runtime.js.map
+    xcodex.d.ts
+    xcodex_bg.wasm.d.ts
 ```
+
+Downstream clients should treat this as a browser asset bundle contract.
+They should not assume package-manager installation, unpacked npm package
+semantics, or immutable-tag release workflows.
 
 ## Exports
 

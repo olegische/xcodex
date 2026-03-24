@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noUncheckedIndexedAccess": false,
+    "resolveJsonModule": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "sourceMap": true,
+    "declaration": false,
+    "declarationMap": false,
+    "noImplicitAny": false,
+    "outDir": "dist",
+    "stripInternal": true
+  },
+  "include": ["src", "tests"],
+  "exclude": ["dist", "node_modules"]
+}

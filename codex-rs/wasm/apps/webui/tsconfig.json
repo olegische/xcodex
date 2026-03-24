@@ -20,6 +20,8 @@
       "@browser-codex/wasm-model-transport/*": ["../../ts/model-transport/src/*"],
       "@browser-codex/wasm-runtime-core": ["../../ts/runtime-core/src/index.ts"],
       "@browser-codex/wasm-runtime-core/*": ["../../ts/runtime-core/src/*"],
+      "xcodex-embedded-client": ["../../ts/embedded-client/src/index.ts"],
+      "xcodex-embedded-client/*": ["../../ts/embedded-client/src/*"],
       "xcodex-runtime": ["../../ts/browser-runtime/src/index.ts"],
       "xcodex-runtime/*": ["../../ts/browser-runtime/src/*"],
       "openai": ["./node_modules/openai/index.d.ts"]
