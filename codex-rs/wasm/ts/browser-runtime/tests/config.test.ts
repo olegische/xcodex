@@ -7,12 +7,17 @@ import {
   DEFAULT_RUNTIME_MODE,
   DEEPSEEK_API_BASE_URL,
   OPENAI_API_BASE_URL,
+  OPENROUTER_API_BASE_URL,
   createProviderConfig,
   materializeCodexConfig,
   normalizeBrowserSecurityConfig,
   normalizeCodexConfig,
 } from "../src/config.ts";
-import { validateBrowserTransportProvider } from "../src/transport.ts";
+import {
+  getProviderAttributionHeaders,
+  resolveProviderRequestHeaders,
+  validateBrowserTransportProvider,
+} from "../src/transport.ts";
 
 test("normalizeCodexConfig backfills runtime_mode for legacy config", () => {
   const normalized = normalizeCodexConfig({
@@ -133,6 +138,51 @@ test("validateBrowserTransportProvider allows openai-compatible custom URLs", ()
   });
 
   assert.equal(validated.baseUrl, "https://router.example.test/custom/v1");
+});
+
+test("getProviderAttributionHeaders returns OpenRouter app attribution for xrouter OpenRouter", () => {
+  const provider = createProviderConfig(
+    "xrouter-browser",
+    "OpenRouter via Browser Runtime",
+    OPENROUTER_API_BASE_URL,
+    "openrouter",
+  );
+
+  assert.deepEqual(getProviderAttributionHeaders(provider), {
+    "HTTP-Referer": "https://xcodex.chat",
+    "X-OpenRouter-Title": "XCodex",
+    "X-OpenRouter-Categories": "personal-agent,programming-app",
+  });
+});
+
+test("getProviderAttributionHeaders skips non-OpenRouter xrouter providers", () => {
+  const provider = createProviderConfig(
+    "xrouter-browser",
+    "DeepSeek via Browser Runtime",
+    DEEPSEEK_API_BASE_URL,
+    "deepseek",
+  );
+
+  assert.equal(getProviderAttributionHeaders(provider), null);
+});
+
+test("resolveProviderRequestHeaders lets explicit extra headers override built-ins", () => {
+  const provider = createProviderConfig(
+    "xrouter-browser",
+    "OpenRouter via Browser Runtime",
+    OPENROUTER_API_BASE_URL,
+    "openrouter",
+  );
+
+  assert.deepEqual(resolveProviderRequestHeaders(provider, {
+    "X-OpenRouter-Title": "Custom Title",
+    "X-Custom-Header": "enabled",
+  }), {
+    "HTTP-Referer": "https://xcodex.chat",
+    "X-OpenRouter-Title": "Custom Title",
+    "X-OpenRouter-Categories": "personal-agent,programming-app",
+    "X-Custom-Header": "enabled",
+  });
 });
 
 test("validateBrowserTransportProvider rejects non-https openai-compatible URLs", () => {

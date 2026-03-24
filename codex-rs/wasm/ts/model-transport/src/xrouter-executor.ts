@@ -7,6 +7,7 @@ export type XrouterStreamEventPayload = Record<string, unknown>;
 export type XrouterStreamingExecutorParams<TError> = {
   requestId: string;
   requestBody: OpenAI.Responses.ResponseCreateParams;
+  extraHeaders: Record<string, string> | null;
   client: XrouterBrowserClient;
   onRegisterCancel: (cancel: () => void, isCancelled: () => boolean) => void;
   onUnregisterCancel: () => void;
@@ -22,7 +23,10 @@ export type XrouterStreamingExecutorParams<TError> = {
 export async function runXrouterStreamingExecutor<TError>(
   params: XrouterStreamingExecutorParams<TError>,
 ): Promise<OpenAI.Responses.ResponseCreateParams> {
-  const normalizedRequestBody = prepareXrouterResponsesRequest(params.requestBody);
+  const normalizedRequestBody = withRequestHeaders(
+    prepareXrouterResponsesRequest(params.requestBody),
+    params.extraHeaders,
+  );
   let cancelled = false;
   params.onRegisterCancel(
     () => {
@@ -73,6 +77,21 @@ export async function runXrouterStreamingExecutor<TError>(
     throw params.createError("cancelled", "model turn cancelled");
   }
   return normalizedRequestBody;
+}
+
+function withRequestHeaders(
+  requestBody: OpenAI.Responses.ResponseCreateParams,
+  extraHeaders: Record<string, string> | null,
+): OpenAI.Responses.ResponseCreateParams {
+  if (extraHeaders === null) {
+    return requestBody;
+  }
+  return {
+    ...requestBody,
+    headers: {
+      ...extraHeaders,
+    },
+  } as OpenAI.Responses.ResponseCreateParams;
 }
 
 export function createXrouterBrowserClient(params: {

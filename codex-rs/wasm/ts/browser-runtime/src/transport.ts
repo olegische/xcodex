@@ -20,10 +20,16 @@ import {
   modelIdToDisplayName,
   normalizeBrowserSecurityConfig,
   normalizeDiscoveredModels,
+  OPENROUTER_API_BASE_URL,
 } from "./config.ts";
 import type { CodexCompatibleConfig, JsonValue, ModelPreset } from "./types.ts";
 
 const activeModelCancels = new Map<string, () => void>();
+const OPENROUTER_APP_ATTRIBUTION_HEADERS = {
+  "HTTP-Referer": "https://xcodex.chat",
+  "X-OpenRouter-Title": "XCodex",
+  "X-OpenRouter-Categories": "personal-agent,programming-app",
+} as const;
 
 export function createBrowserRuntimeModelTransportAdapter(deps: {
   loadXrouterRuntime(): Promise<XrouterRuntimeModule>;
@@ -47,7 +53,10 @@ export function createBrowserRuntimeModelTransportAdapter(deps: {
         baseUrl: params.provider.baseUrl,
         apiKey: params.apiKey,
         requestBody: params.requestBody,
-        extraHeaders: params.extraHeaders,
+        extraHeaders: resolveProviderRequestHeaders(
+          params.provider,
+          params.extraHeaders,
+        ),
         emitModelEvent: params.emitModelEvent,
       });
     },
@@ -319,6 +328,7 @@ async function runXrouterTurn(params: {
 }): Promise<JsonValue> {
   const runtime = await params.loadXrouterRuntime();
   const provider = getActiveProvider(params.codexConfig);
+  const requestHeaders = resolveProviderRequestHeaders(provider, params.extraHeaders);
   const client = createXrouterBrowserClient({
     runtime,
     provider,
@@ -338,6 +348,7 @@ async function runXrouterTurn(params: {
     await runXrouterStreamingExecutor({
       requestId: params.requestId,
       requestBody: params.requestBody as OpenAI.Responses.ResponseCreateParams,
+      extraHeaders: requestHeaders,
       client,
       onRegisterCancel(cancel) {
         activeModelCancels.set(params.requestId, cancel);
@@ -431,6 +442,36 @@ async function runXrouterTurn(params: {
     await enqueueModelEvent(Promise.resolve(), params.emitModelEvent, completedEvent);
   }
   return params.emitModelEvent === undefined ? modelEvents : [];
+}
+
+export function resolveProviderRequestHeaders(
+  provider: BrowserTransportProvider,
+  extraHeaders: Record<string, string> | null,
+): Record<string, string> | null {
+  const providerHeaders = getProviderAttributionHeaders(provider);
+  if (providerHeaders === null) {
+    return extraHeaders;
+  }
+  if (extraHeaders === null) {
+    return { ...providerHeaders };
+  }
+  return {
+    ...providerHeaders,
+    ...extraHeaders,
+  };
+}
+
+export function getProviderAttributionHeaders(
+  provider: BrowserTransportProvider,
+): Record<string, string> | null {
+  if (
+    provider.providerKind === "xrouter_browser" &&
+    provider.metadata?.xrouterProvider === "openrouter" &&
+    normalizeProviderBaseUrl(provider.baseUrl) === OPENROUTER_API_BASE_URL
+  ) {
+    return { ...OPENROUTER_APP_ATTRIBUTION_HEADERS };
+  }
+  return null;
 }
 
 type StreamingState = {
