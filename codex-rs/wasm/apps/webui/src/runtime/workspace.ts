@@ -7,7 +7,7 @@ import {
   listWorkspaceDir as listSharedWorkspaceDir,
   readWorkspaceFile as readSharedWorkspaceFile,
   searchWorkspace as searchSharedWorkspace,
-} from "xcodex-runtime";
+} from "xcodex-embedded-client/workspace";
 import {
   previewWorkspaceContent,
 } from "./storage";

@@ -39,9 +39,29 @@
       "types": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./assets": {
+      "types": "./src/assets.ts",
+      "import": "./dist/assets.js"
+    },
+    "./config": {
+      "types": "./src/config.ts",
+      "import": "./dist/config.js"
+    },
+    "./storage": {
+      "types": "./src/storage.ts",
+      "import": "./dist/storage.js"
+    },
+    "./transport": {
+      "types": "./src/transport.ts",
+      "import": "./dist/transport.js"
+    },
     "./types": {
       "types": "./src/types.ts",
       "import": "./dist/types.js"
+    },
+    "./workspace": {
+      "types": "./src/workspace.ts",
+      "import": "./dist/workspace.js"
     },
     "./package.json": "./package.json"
   },
@@ -52,8 +72,8 @@
   ],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "rm -rf dist && ../../node_modules/.bin/esbuild src/index.ts src/types.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outdir=dist",
-    "build:watch": "../../node_modules/.bin/esbuild src/index.ts src/types.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outdir=dist --watch",
+    "build": "rm -rf dist && ../../node_modules/.bin/esbuild src/index.ts src/assets.ts src/config.ts src/storage.ts src/transport.ts src/types.ts src/workspace.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outdir=dist",
+    "build:watch": "../../node_modules/.bin/esbuild src/index.ts src/assets.ts src/config.ts src/storage.ts src/transport.ts src/types.ts src/workspace.ts --bundle --format=esm --platform=browser --target=es2022 --sourcemap --outdir=dist --watch",
     "test": "node --experimental-strip-types --test tests/**/*.test.ts"
   },
   "packageManager": "pnpm@10.29.3+sha512.498e1fb4cca5aa06c1dcf2611e6fafc50972ffe7189998c409e90de74566444298ffe43e6cd2acdc775ba1aa7cc5e092a8b7054c811ba8c5770f84693d33d2dc"

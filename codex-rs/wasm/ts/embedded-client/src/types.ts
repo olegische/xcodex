@@ -14,6 +14,9 @@ import type { TurnInterruptResponse } from "../../../../app-server-protocol/sche
 import type { TurnStartParams } from "../../../../app-server-protocol/schema/typescript/v2/TurnStartParams";
 import type { TurnStartResponse } from "../../../../app-server-protocol/schema/typescript/v2/TurnStartResponse";
 import type {
+  Account,
+  AuthState,
+  BrowserSecurityConfig,
   BrowserRuntimeClient,
   BrowserRuntimeContext,
   BrowserRuntimeNotification,
@@ -21,10 +24,25 @@ import type {
   BrowserToolApprovalRequest,
   BrowserToolApprovalResponse,
   BrowserWorkspaceAdapter,
+  CodexCompatibleConfig,
+  CodexModelProviderConfig,
   CreateBrowserCodexRuntimeContextOptions,
+  DemoInstructions,
+  DemoTransportMode,
+  JsonValue,
+  ModelPreset,
+  ProviderKind,
+  RuntimeMode,
+  StoredThreadSession,
+  StoredThreadSessionMetadata,
+  StoredUserConfig,
+  XrouterProvider,
 } from "xcodex-runtime/types";
 
 export type {
+  Account,
+  AuthState,
+  BrowserSecurityConfig,
   BrowserRuntimeClient,
   BrowserRuntimeContext,
   BrowserRuntimeNotification,
@@ -32,7 +50,18 @@ export type {
   BrowserToolApprovalRequest,
   BrowserToolApprovalResponse,
   BrowserWorkspaceAdapter,
+  CodexCompatibleConfig,
+  CodexModelProviderConfig,
   CreateBrowserCodexRuntimeContextOptions,
+  DemoInstructions,
+  DemoTransportMode,
+  JsonValue,
+  ModelPreset,
+  ProviderKind,
+  RuntimeMode,
+  StoredThreadSession,
+  StoredThreadSessionMetadata,
+  StoredUserConfig,
   Thread,
   ThreadListParams,
   ThreadListResponse,
@@ -48,6 +77,7 @@ export type {
   TurnInterruptResponse,
   TurnStartParams,
   TurnStartResponse,
+  XrouterProvider,
 };
 
 export type EmbeddedClientNotification = BrowserRuntimeNotification & {

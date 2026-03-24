@@ -5,7 +5,7 @@ export {
   getActiveProvider,
   materializeCodexConfig,
   normalizeCodexConfig,
-} from "xcodex-runtime";
+} from "xcodex-embedded-client/config";
 export {
   createProviderConfig,
   createHostError,
@@ -15,7 +15,7 @@ export {
   normalizeDemoInstructions,
   normalizeDiscoveredModels,
   toProviderLabel,
-} from "xcodex-runtime/config";
+} from "xcodex-embedded-client/config";
 
 export {
   normalizeHostValue,

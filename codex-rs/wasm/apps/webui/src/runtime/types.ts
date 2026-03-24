@@ -16,7 +16,7 @@ export type {
   StoredThreadSession,
   StoredThreadSessionMetadata,
   XrouterProvider,
-} from "xcodex-runtime/types";
+} from "xcodex-embedded-client/types";
 import type {
   Account,
   AuthState,
@@ -29,7 +29,7 @@ import type {
   JsonValue,
   ModelPreset,
   XrouterProvider,
-} from "xcodex-runtime/types";
+} from "xcodex-embedded-client/types";
 import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ThreadReadResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadReadResponse";
 import type { ThreadResumeParams } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadResumeParams";

@@ -4,4 +4,4 @@ export {
   loadXrouterRuntime,
   toBrowserAssetUrl,
   toBrowserModuleUrl,
-} from "xcodex-embedded-client/assets";
+} from "xcodex-runtime/assets";

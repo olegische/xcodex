@@ -1,4 +1,4 @@
-import type { DemoInstructions } from "xcodex-runtime/types";
+import type { DemoInstructions } from "xcodex-embedded-client/types";
 import { DEFAULT_DEMO_BASE_INSTRUCTIONS } from "./default-demo-instructions";
 
 export const THREAD_SLOT_ID = "codex-browser-terminal-thread";

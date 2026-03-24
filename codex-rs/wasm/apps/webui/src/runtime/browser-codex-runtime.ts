@@ -3,7 +3,7 @@ import type { ServerNotification } from "../../../../../app-server-protocol/sche
 import {
   activeProviderApiKey,
   getActiveProvider,
-} from "xcodex-runtime";
+} from "xcodex-embedded-client/config";
 import {
   createBrowserToolApprovalBroker,
   createEmbeddedCodexClient,
