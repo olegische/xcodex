@@ -1,17 +1,21 @@
 import {
   createIndexedDbCodexStorage,
+} from "xcodex-embedded-client/storage";
+import {
   DEFAULT_CODEX_CONFIG,
+} from "xcodex-embedded-client/config";
+import {
   loadStoredWorkspaceSnapshot,
   normalizeWorkspaceDirectoryPath,
   normalizeWorkspaceFilePath,
   parentDirectory,
   saveStoredWorkspaceSnapshot,
   type WorkspaceSnapshot,
-} from "xcodex-runtime";
+} from "xcodex-embedded-client/workspace";
 import type {
   StoredThreadSession,
   StoredThreadSessionMetadata,
-} from "xcodex-runtime/types";
+} from "xcodex-embedded-client/types";
 import {
   DB_NAME,
   DB_VERSION,

@@ -1,6 +1,6 @@
 # xcodex-embedded-client
 
-High-level embedding client for the browser-hosted XCodex WASM runtime.
+Primary browser SDK facade for the browser-hosted XCodex WASM runtime.
 
 This package builds on top of [`xcodex-runtime`](../browser-runtime/README.md)
 and provides the missing integration layer that most embedders otherwise end up
@@ -15,12 +15,21 @@ rewriting themselves:
 ## Status
 
 This package is an early `v0.1.0` embedding facade for the XCodex browser
-runtime.
+runtime and the recommended SDK surface for new browser integrations.
+
+`xcodex-runtime` remains available as the lower-level runtime package for
+compatibility and internal layering, but new browser consumers should import
+from `xcodex-embedded-client`.
 
 The intended public API is:
 
 - `xcodex-embedded-client`
+- `xcodex-embedded-client/assets`
+- `xcodex-embedded-client/config`
+- `xcodex-embedded-client/storage`
+- `xcodex-embedded-client/transport`
 - `xcodex-embedded-client/types`
+- `xcodex-embedded-client/workspace`
 
 ## Distribution Model
 
@@ -58,6 +67,22 @@ release flows.
 - `toStoredThreadReadResponse`
 - `toIsoDateTime`
 
+### `xcodex-embedded-client/assets`
+
+Runtime asset loading helpers re-exported from `xcodex-runtime`.
+
+### `xcodex-embedded-client/config`
+
+Browser runtime config helpers and constants re-exported from `xcodex-runtime`.
+
+### `xcodex-embedded-client/storage`
+
+IndexedDB storage helpers re-exported from `xcodex-runtime`.
+
+### `xcodex-embedded-client/transport`
+
+Browser model transport helpers re-exported from `xcodex-runtime`.
+
 ### `xcodex-embedded-client/types`
 
 Type-only exports for:
@@ -65,11 +90,32 @@ Type-only exports for:
 - embedded client contracts
 - approval broker contracts
 - stored thread summary contracts
+- browser runtime/config/storage contracts
+
+### `xcodex-embedded-client/workspace`
+
+Browser workspace helpers re-exported from `xcodex-runtime`.
+
+## Positioning
+
+Use `xcodex-embedded-client` as the single public SDK surface for browser
+integrations:
+
+- import the high-level client facade from `xcodex-embedded-client`
+- import browser runtime helpers from `xcodex-embedded-client/assets`,
+  `xcodex-embedded-client/config`, `xcodex-embedded-client/storage`,
+  `xcodex-embedded-client/transport`, and `xcodex-embedded-client/workspace`
+- import shared contracts from `xcodex-embedded-client/types`
+
+`xcodex-runtime` is the lower-level implementation layer underneath that
+surface. It is still published, but it is no longer the preferred package for
+new browser-facing integrations.
 
 ## Design Goal
 
 `xcodex-runtime` owns low-level runtime creation, policy enforcement, storage,
-workspace integration, and model transport.
+workspace integration, and model transport, but new consumers should import
+through `xcodex-embedded-client`.
 
 `xcodex-embedded-client` owns the reusable embedding layer above that runtime:
 

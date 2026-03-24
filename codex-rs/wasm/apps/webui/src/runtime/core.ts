@@ -1,7 +1,7 @@
 import {
   DEFAULT_CODEX_CONFIG,
   XROUTER_PROVIDER_OPTIONS,
-} from "xcodex-runtime";
+} from "xcodex-embedded-client/config";
 import { DEFAULT_DEMO_INSTRUCTIONS } from "./constants";
 import { createBrowserCodexRuntime } from "./browser-codex-runtime";
 import { webUiModelTransportAdapter } from "./transport-adapter";

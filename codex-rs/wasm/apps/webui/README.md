@@ -19,7 +19,7 @@ Legacy browser shells and experiments remain under `codex-rs/wasm-arch`.
 
 ## Running the demo
 
-The app now targets the public `xcodex-runtime` browser SDK contract and the
+The app now targets the public `xcodex-embedded-client` browser SDK contract and the
 released runtime bundle layout:
 
 - `/pkg/manifest.json`
