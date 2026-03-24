@@ -411,8 +411,7 @@ fn validated_network_policy_amendment_host_rejects_mismatch() {
 
 #[tokio::test]
 async fn get_base_instructions_no_user_content() {
-    let prompt_with_apply_patch_instructions =
-        include_str!("../prompt_with_apply_patch_instructions.md");
+    let prompt = include_str!("../prompt.md");
     let models_response: ModelsResponse =
         serde_json::from_str(include_str!("../models.json")).expect("valid models.json");
     let model_info_for_slug = |slug: &str, config: &Config| {
@@ -449,10 +448,7 @@ async fn get_base_instructions_no_user_content() {
     for test_case in test_cases {
         let model_info = model_info_for_slug(test_case.slug, &config);
         if test_case.expects_apply_patch_instructions {
-            assert_eq!(
-                model_info.base_instructions.as_str(),
-                prompt_with_apply_patch_instructions
-            );
+            assert_eq!(model_info.base_instructions.as_str(), prompt);
         }
 
         {

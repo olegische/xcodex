@@ -11,7 +11,7 @@ use codex_protocol::openai_models::WebSearchToolType;
 use codex_protocol::openai_models::default_input_modalities;
 use tracing::warn;
 
-pub const BASE_INSTRUCTIONS: &str = include_str!("../../prompt_with_apply_patch_instructions.md");
+pub const BASE_INSTRUCTIONS: &str = include_str!("../../prompt.md");
 const DEFAULT_PERSONALITY_HEADER: &str = "You are Codex, a coding agent based on GPT-5. You and the user share the same workspace and collaborate to achieve the user's goals.";
 const LOCAL_FRIENDLY_TEMPLATE: &str =
     "You optimize for team morale and being a supportive teammate as much as code quality.";
