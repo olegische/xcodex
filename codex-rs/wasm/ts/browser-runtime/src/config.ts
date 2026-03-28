@@ -32,7 +32,7 @@ export const OPENAI_COMPATIBLE_PROVIDER_ID = "external";
 export const OPENAI_ENV_KEY = "OPENAI_API_KEY";
 export const XROUTER_ENV_KEY = "XROUTER_API_KEY";
 export const OPENAI_COMPATIBLE_ENV_KEY = "OPENAI_COMPATIBLE_API_KEY";
-export const DEFAULT_RUNTIME_MODE: RuntimeMode = "default";
+export const DEFAULT_RUNTIME_MODE: RuntimeMode = "agent";
 export const DEFAULT_BROWSER_SECURITY_CONFIG: Required<BrowserSecurityConfig> = {
   allowed_origins: [],
   allow_localhost: false,
@@ -315,8 +315,10 @@ export function normalizeRuntimeMode(
   runtimeMode: string | null | undefined,
 ): RuntimeMode {
   switch (runtimeMode) {
-    case "default":
-    case "demo":
+    case "chat":
+    case "inspect":
+    case "interact":
+    case "agent":
     case "chaos":
       return runtimeMode;
     default:

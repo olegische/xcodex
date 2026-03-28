@@ -5,7 +5,6 @@ import type { EventMsg } from "../../../../app-server-protocol/schema/typescript
 import type { Personality } from "../../../../app-server-protocol/schema/typescript/Personality";
 import type { ResponseItem } from "../../../../app-server-protocol/schema/typescript/ResponseItem";
 import type { SandboxPolicy } from "../../../../app-server-protocol/schema/typescript/SandboxPolicy";
-import type { JsonValue } from "../../../../app-server-protocol/schema/typescript/serde_json/JsonValue";
 
 export type LoadThreadSessionRequest = {
   threadId: string;
@@ -102,6 +101,9 @@ export type BrowserRuntimeHost = {
     baseInstructions?: string | null;
     developerInstructions?: string | null;
     userInstructions?: string | null;
+    workspaceTools?: boolean;
+    planningTools?: boolean;
+    appTools?: boolean;
     apiKey?: string | null;
     ephemeral?: boolean;
   }>;

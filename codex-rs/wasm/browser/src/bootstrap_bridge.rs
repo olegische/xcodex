@@ -88,6 +88,9 @@ async fn build_bootstrap_config(
         base_instructions: bootstrap.base_instructions.clone(),
         developer_instructions: bootstrap.developer_instructions.clone(),
         user_instructions: bootstrap.user_instructions.clone(),
+        enable_workspace_tools: bootstrap.workspace_tools.unwrap_or(true),
+        enable_planning_tools: bootstrap.planning_tools.unwrap_or(true),
+        enable_app_tools: bootstrap.app_tools.unwrap_or(true),
         ephemeral: bootstrap.ephemeral.unwrap_or(false),
         ..Config::default()
     };

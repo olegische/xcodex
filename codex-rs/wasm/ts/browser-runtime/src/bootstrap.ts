@@ -1,4 +1,5 @@
 import type { BrowserRuntimeHost } from "@browser-codex/wasm-runtime-core/types";
+import type { RuntimeMode } from "./types/config.ts";
 
 export type BrowserRuntimeBootstrapPayload = Awaited<
   ReturnType<BrowserRuntimeHost["loadBootstrap"]>
@@ -8,6 +9,12 @@ export type BrowserRuntimeBootstrapProvider = {
   name: string;
   baseUrl: string;
   envKey: string;
+};
+
+export type BrowserRuntimeCapabilities = {
+  workspaceTools: boolean;
+  planningTools: boolean;
+  appTools: boolean;
 };
 
 export type BrowserRuntimeBootstrapParams = {
@@ -21,6 +28,7 @@ export type BrowserRuntimeBootstrapParams = {
   baseInstructions: string;
   developerInstructions: string | null;
   userInstructions: string | null;
+  capabilities: BrowserRuntimeCapabilities;
   apiKey: string | null;
   ephemeral: boolean;
 };
@@ -54,7 +62,32 @@ export function buildBrowserRuntimeBootstrap(
     baseInstructions: params.baseInstructions,
     developerInstructions: params.developerInstructions,
     userInstructions: params.userInstructions,
+    workspaceTools: params.capabilities.workspaceTools,
+    planningTools: params.capabilities.planningTools,
+    appTools: params.capabilities.appTools,
     apiKey: params.apiKey,
     ephemeral: params.ephemeral,
   };
+}
+
+export function capabilitiesForRuntimeMode(
+  runtimeMode: RuntimeMode,
+): BrowserRuntimeCapabilities {
+  switch (runtimeMode) {
+    case "chat":
+    case "inspect":
+    case "interact":
+      return {
+        workspaceTools: false,
+        planningTools: false,
+        appTools: false,
+      };
+    case "agent":
+    case "chaos":
+      return {
+        workspaceTools: true,
+        planningTools: true,
+        appTools: true,
+      };
+  }
 }

@@ -454,7 +454,7 @@ async function loadCatalogAuthorizationContext(options?: {
   }
 
   const [runtimeMode, browserSecurityPolicy] = await Promise.all([
-    options?.loadRuntimeMode?.() ?? "default",
+    options?.loadRuntimeMode?.() ?? "agent",
     options?.loadBrowserSecurityPolicy?.() ?? {
       allowedOrigins: [],
       allowLocalhost: false,

@@ -258,6 +258,8 @@ pub struct ToolsConfig {
     pub web_search_mode: Option<codex_protocol::config_types::WebSearchMode>,
     pub web_search_config: Option<serde_json::Value>,
     pub allow_login_shell: bool,
+    pub browser_workspace_tools: bool,
+    pub update_plan: bool,
     pub search_tool: bool,
     pub tool_suggest: bool,
     pub request_user_input: bool,
@@ -271,15 +273,23 @@ pub struct ToolsConfigParams<'a> {
     pub features: &'a crate::features::ManagedFeatures,
     pub web_search_mode: Option<codex_protocol::config_types::WebSearchMode>,
     pub session_source: codex_protocol::protocol::SessionSource,
+    pub enable_workspace_tools: bool,
+    pub enable_planning_tools: bool,
+    pub enable_app_tools: bool,
 }
 
 impl ToolsConfig {
     pub fn new(params: &ToolsConfigParams<'_>) -> Self {
-        let request_user_input = !matches!(params.session_source, SessionSource::SubAgent(_));
+        let request_user_input = params.enable_planning_tools
+            && !matches!(params.session_source, SessionSource::SubAgent(_));
         Self {
             web_search_mode: params.web_search_mode,
-            search_tool: params.features.enabled(crate::features::Feature::Apps),
-            tool_suggest: params.features.enabled(crate::features::Feature::Apps)
+            browser_workspace_tools: params.enable_workspace_tools,
+            update_plan: params.enable_planning_tools,
+            search_tool: params.enable_app_tools
+                && params.features.enabled(crate::features::Feature::Apps),
+            tool_suggest: params.enable_app_tools
+                && params.features.enabled(crate::features::Feature::Apps)
                 && params
                     .features
                     .enabled(crate::features::Feature::ToolSuggest),
@@ -308,13 +318,18 @@ impl ToolsConfig {
 }
 
 pub fn browser_builtin_tool_specs(config: &ToolsConfig) -> Vec<ToolSpec> {
-    let mut tools = vec![
-        BrowserBuiltinTool::ReadFile,
-        BrowserBuiltinTool::ListDir,
-        BrowserBuiltinTool::GrepFiles,
-        BrowserBuiltinTool::ApplyPatch,
-        BrowserBuiltinTool::UpdatePlan,
-    ];
+    let mut tools = Vec::new();
+    if config.browser_workspace_tools {
+        tools.extend([
+            BrowserBuiltinTool::ReadFile,
+            BrowserBuiltinTool::ListDir,
+            BrowserBuiltinTool::GrepFiles,
+            BrowserBuiltinTool::ApplyPatch,
+        ]);
+    }
+    if config.update_plan {
+        tools.push(BrowserBuiltinTool::UpdatePlan);
+    }
     if config.request_user_input {
         tools.push(BrowserBuiltinTool::RequestUserInput);
     }
@@ -340,6 +355,8 @@ mod tests {
     #[test]
     fn browser_builtin_specs_expose_expected_tools() {
         let tool_names = browser_builtin_tool_specs(&ToolsConfig {
+            browser_workspace_tools: true,
+            update_plan: true,
             request_user_input: true,
             ..ToolsConfig::default()
         })
@@ -363,6 +380,8 @@ mod tests {
     #[test]
     fn browser_builtin_specs_omit_request_user_input_for_subagents() {
         let tool_names = browser_builtin_tool_specs(&ToolsConfig {
+            browser_workspace_tools: true,
+            update_plan: true,
             request_user_input: false,
             ..ToolsConfig::default()
         })
@@ -385,6 +404,8 @@ mod tests {
     #[test]
     fn request_user_input_description_reflects_default_mode_flag() {
         let default_description = browser_builtin_tool_specs(&ToolsConfig {
+            browser_workspace_tools: true,
+            update_plan: true,
             request_user_input: true,
             default_mode_request_user_input: false,
             ..ToolsConfig::default()
@@ -395,6 +416,8 @@ mod tests {
         .unwrap_or_else(|| unreachable!("request_user_input should be present"));
 
         let enabled_description = browser_builtin_tool_specs(&ToolsConfig {
+            browser_workspace_tools: true,
+            update_plan: true,
             request_user_input: true,
             default_mode_request_user_input: true,
             ..ToolsConfig::default()
@@ -415,6 +438,16 @@ mod tests {
     }
 
     #[test]
+    fn browser_builtin_specs_are_empty_without_agent_tools() {
+        let tool_names = browser_builtin_tool_specs(&ToolsConfig::default())
+            .into_iter()
+            .map(|spec| spec.tool_name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(tool_names, Vec::<String>::new());
+    }
+
+    #[test]
     fn tools_config_enables_default_mode_request_user_input_from_feature_flag() {
         let model_info =
             crate::models_manager::manager::ModelsManager::construct_model_info_offline_for_tests(
@@ -430,6 +463,9 @@ mod tests {
             features: &features,
             web_search_mode: None,
             session_source: SessionSource::Cli,
+            enable_workspace_tools: true,
+            enable_planning_tools: true,
+            enable_app_tools: false,
         });
 
         assert_eq!(config.request_user_input, true);
@@ -452,6 +488,9 @@ mod tests {
             features: &features,
             web_search_mode: None,
             session_source: SessionSource::Cli,
+            enable_workspace_tools: false,
+            enable_planning_tools: false,
+            enable_app_tools: true,
         });
 
         assert_eq!(config.search_tool, true);
@@ -473,6 +512,9 @@ mod tests {
             features: &features,
             web_search_mode: None,
             session_source: SessionSource::Cli,
+            enable_workspace_tools: false,
+            enable_planning_tools: false,
+            enable_app_tools: true,
         });
         assert!(!without_apps.tool_suggest);
 
@@ -483,6 +525,9 @@ mod tests {
             features: &features,
             web_search_mode: None,
             session_source: SessionSource::Cli,
+            enable_workspace_tools: false,
+            enable_planning_tools: false,
+            enable_app_tools: true,
         });
         assert!(with_apps.tool_suggest);
     }

@@ -9,7 +9,7 @@ import type {
 import type { JsonValue } from "@browser-codex/wasm-runtime-core/types";
 import { qualifyDynamicToolName } from "@browser-codex/wasm-runtime-core";
 
-export type BrowserRuntimeMode = "default" | "demo" | "chaos";
+export type BrowserRuntimeMode = "chat" | "inspect" | "interact" | "agent" | "chaos";
 
 export type BrowserSecurityPolicy = {
   allowedOrigins: string[];
@@ -290,7 +290,7 @@ export function authorizeBrowserToolRequest(params: {
   const authorizationContext =
     params.authorizationContext ??
     createBrowserToolAuthorizationContext({
-      runtimeMode: params.runtimeMode ?? "default",
+      runtimeMode: params.runtimeMode ?? "agent",
       browserSecurityPolicy:
         params.browserSecurityPolicy ?? DEFAULT_BROWSER_SECURITY_POLICY,
     });
@@ -300,21 +300,6 @@ export function authorizeBrowserToolRequest(params: {
       decision: "deny",
       canonicalToolName: null,
       reason: "unknown_tool",
-      requiredScopes: [],
-      grantedScopes: authorizationContext.baselineGrants,
-      runtimeMode: authorizationContext.runtimeMode,
-      resolvedOrigin: null,
-    };
-  }
-
-  if (
-    authorizationContext.baselineGrants.length === 0 &&
-    authorizationContext.runtimeMode !== "default"
-  ) {
-    return {
-      decision: "deny",
-      canonicalToolName: entry.canonicalToolName,
-      reason: "invalid_runtime_mode",
       requiredScopes: [],
       grantedScopes: authorizationContext.baselineGrants,
       runtimeMode: authorizationContext.runtimeMode,
@@ -590,7 +575,7 @@ function grantedScopesForRuntimeMode(runtimeMode: BrowserRuntimeMode): string[] 
 async function loadRuntimeMode(
   loadRuntimeModeOverride?: () => BrowserRuntimeMode | Promise<BrowserRuntimeMode>,
 ): Promise<BrowserRuntimeMode> {
-  return (await loadRuntimeModeOverride?.()) ?? "default";
+  return (await loadRuntimeModeOverride?.()) ?? "agent";
 }
 
 async function loadBrowserSecurityPolicy(
@@ -865,7 +850,7 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     resolveProtectedOrigin: resolveTargetOriginFromInput,
     resolveTargetUrl: resolveTargetUrlFromInput,
     approvalKind: "navigation",
-    approvalEligibleInModes: ["default", "chaos"],
+    approvalEligibleInModes: ["chaos"],
     approvalReason: "Navigate the current page to the requested URL.",
   },
   {
@@ -894,7 +879,7 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     resolveProtectedOrigin: resolveTargetOriginFromInput,
     resolveTargetUrl: resolveTargetUrlFromInput,
     approvalKind: "network",
-    approvalEligibleInModes: ["default", "chaos"],
+    approvalEligibleInModes: ["chaos"],
     approvalReason: "Read HTTP response metadata from the target origin.",
   },
   {
@@ -929,24 +914,34 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
 ];
 
 const RUNTIME_MODE_SCOPE_GRANTS: Record<BrowserRuntimeMode, string[]> = {
-  default: [
+  chat: [],
+  inspect: [
     "browser.tools:read",
     "browser.page:read",
     "browser.interactives:read",
     "browser.performance:read",
     "browser.page:wait",
     "browser.dom:read",
-    "browser.workspace:write",
+    "browser.resources:read",
   ],
-  demo: [
+  interact: [
     "browser.tools:read",
     "browser.page:read",
     "browser.interactives:read",
     "browser.performance:read",
     "browser.page:wait",
     "browser.dom:read",
-    "browser.storage:read",
-    "browser.cookies:read",
+    "browser.resources:read",
+    "browser.page:click",
+    "browser.page:fill",
+  ],
+  agent: [
+    "browser.tools:read",
+    "browser.page:read",
+    "browser.interactives:read",
+    "browser.performance:read",
+    "browser.page:wait",
+    "browser.dom:read",
     "browser.resources:read",
     "browser.workspace:write",
   ],

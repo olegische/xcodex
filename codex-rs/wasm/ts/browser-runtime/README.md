@@ -242,8 +242,8 @@ the upstream core builtin `apply_patch`.
 Current runtime behavior:
 
 - `browser__evaluate` is approval-eligible only in `chaos`
-- `browser__inspect_http` and `browser__navigate` are approval-eligible in
-  `default` and `chaos`
+- `browser__inspect_http` and `browser__navigate` are approval-eligible only in
+  `chaos`
 - `allow_once` grants are turn-scoped
 - `allow_for_session` grants survive turn resets within the same runtime
   instance
@@ -332,8 +332,10 @@ const context = await createBrowserCodexRuntimeContext({
 Relevant config fields for browser security:
 
 - `runtime_mode`
-  - `default`
-  - `demo`
+  - `chat`
+  - `inspect`
+  - `interact`
+  - `agent`
   - `chaos`
 - `browser_security.allowed_origins`
 - `browser_security.allow_localhost`
@@ -341,16 +343,17 @@ Relevant config fields for browser security:
 
 Current browser-tool policy matrix:
 
-- `default`
-  - baseline read-only inspection surface
-  - `browser__inspect_http` and `browser__navigate` are approval-gated when
-    origin policy allows them
-- `demo`
-  - approved read-only inspection surface
-  - no approval-only or mutating browser tools
+- `chat`
+  - no browser tools
+- `inspect`
+  - read-only page inspection surface
+- `interact`
+  - `inspect` plus `browser__click` and `browser__fill`
+- `agent`
+  - `inspect` plus browser workspace patch
 - `chaos`
-  - broader browser surface, including `browser__click`, `browser__fill`, and
-    `browser__evaluate`
+  - full browser surface, including `browser__click`, `browser__fill`,
+    `browser__navigate`, `browser__inspect_http`, and `browser__evaluate`
   - `browser__evaluate` requires an allowlisted current origin plus approval
   - localhost/loopback requires `browser_security.allow_localhost`
   - private/link-local targets require `browser_security.allow_private_network`
@@ -369,7 +372,7 @@ Example:
 ```ts
 const config: CodexCompatibleConfig = {
   ...DEFAULT_CODEX_CONFIG,
-  runtime_mode: "demo",
+  runtime_mode: "interact",
   browser_security: {
     allowed_origins: ["https://app.example.com"],
     allow_localhost: false,

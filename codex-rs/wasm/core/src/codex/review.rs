@@ -30,6 +30,9 @@ pub(super) async fn spawn_review_thread(
         features: &review_features,
         web_search_mode: Some(review_web_search_mode),
         session_source: parent_turn_context.session_source.clone(),
+        enable_workspace_tools: config.enable_workspace_tools,
+        enable_planning_tools: config.enable_planning_tools,
+        enable_app_tools: config.enable_app_tools,
     })
     .with_web_search_config(None)
     .with_allow_login_shell(config.permissions.allow_login_shell)

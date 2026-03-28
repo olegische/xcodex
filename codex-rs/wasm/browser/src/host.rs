@@ -73,6 +73,9 @@ export interface BrowserBootstrap {
   baseInstructions?: string | null;
   developerInstructions?: string | null;
   userInstructions?: string | null;
+  workspaceTools?: boolean;
+  planningTools?: boolean;
+  appTools?: boolean;
   apiKey?: string | null;
   modelCatalog?: unknown;
   ephemeral?: boolean;
@@ -115,6 +118,9 @@ pub struct BrowserBootstrap {
     pub base_instructions: Option<String>,
     pub developer_instructions: Option<String>,
     pub user_instructions: Option<String>,
+    pub workspace_tools: Option<bool>,
+    pub planning_tools: Option<bool>,
+    pub app_tools: Option<bool>,
     pub api_key: Option<String>,
     pub model_catalog: Option<ModelsResponse>,
     pub ephemeral: Option<bool>,

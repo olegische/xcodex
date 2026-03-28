@@ -7,28 +7,15 @@ import {
   wrapBrowserToolExecutorWithAuthorization,
 } from "../src/browser-tool-authorization.ts";
 
-test("list exposes approval-eligible tools and fails closed for unmapped tools", async () => {
-  const executor = createWrappedExecutor("default");
+test("chat mode hides the browser tool surface", async () => {
+  const executor = createWrappedExecutor("chat");
   const { tools } = await executor.list();
 
-  assert.deepEqual(
-    tools.map((tool) => `${tool.toolNamespace}__${tool.toolName}`),
-    [
-      "browser__inspect_page",
-      "browser__inspect_dom",
-      "browser__list_interactives",
-      "browser__wait_for",
-      "browser__inspect_performance",
-      "browser__tool_search",
-      "browser__inspect_http",
-      "browser__navigate",
-      "browser__submit_patch",
-    ],
-  );
+  assert.deepEqual(tools, []);
 });
 
-test("demo mode exposes only the approved read-only inspection surface", async () => {
-  const executor = createWrappedExecutor("demo");
+test("inspect mode exposes the read-only page inspection surface", async () => {
+  const executor = createWrappedExecutor("inspect");
   const { tools } = await executor.list();
 
   assert.deepEqual(
@@ -41,8 +28,44 @@ test("demo mode exposes only the approved read-only inspection surface", async (
       "browser__inspect_performance",
       "browser__tool_search",
       "browser__inspect_resources",
-      "browser__inspect_storage",
-      "browser__inspect_cookies",
+    ],
+  );
+});
+
+test("interact mode adds click and fill without navigate or workspace patch", async () => {
+  const executor = createWrappedExecutor("interact");
+  const { tools } = await executor.list();
+
+  assert.deepEqual(
+    tools.map((tool) => `${tool.toolNamespace}__${tool.toolName}`),
+    [
+      "browser__inspect_page",
+      "browser__inspect_dom",
+      "browser__list_interactives",
+      "browser__wait_for",
+      "browser__inspect_performance",
+      "browser__tool_search",
+      "browser__inspect_resources",
+      "browser__click",
+      "browser__fill",
+    ],
+  );
+});
+
+test("agent mode adds workspace patch without navigate or evaluate", async () => {
+  const executor = createWrappedExecutor("agent");
+  const { tools } = await executor.list();
+
+  assert.deepEqual(
+    tools.map((tool) => `${tool.toolNamespace}__${tool.toolName}`),
+    [
+      "browser__inspect_page",
+      "browser__inspect_dom",
+      "browser__list_interactives",
+      "browser__wait_for",
+      "browser__inspect_performance",
+      "browser__tool_search",
+      "browser__inspect_resources",
       "browser__submit_patch",
     ],
   );
@@ -68,11 +91,11 @@ test("chaos mode exposes evaluate only for allowlisted current origins", async (
   assert(allowedTools.tools.some((tool) => tool.toolName === "evaluate"));
 });
 
-test("tool_search in default returns only tools visible in list()", async () => {
+test("tool_search in inspect returns only tools visible in list()", async () => {
   const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
   const executor = createBrowserAwareToolExecutor({
     async loadRuntimeMode() {
-      return "default";
+      return "inspect";
     },
     async loadBrowserSecurityPolicy() {
       return {
@@ -89,11 +112,11 @@ test("tool_search in default returns only tools visible in list()", async () => 
   const { tools } = await executor.list();
   const listedToolNames = new Set(tools.map((tool) => `browser__${tool.toolName}`));
   const result = await executor.invoke({
-    callId: "call-search-default",
+    callId: "call-search-inspect",
     toolName: "tool_search",
     toolNamespace: "browser",
     input: {
-      query: "click fill inspect_cookies evaluate inspect_http navigate",
+      query: "inspect page dom resources performance",
       limit: 20,
     },
   });
@@ -108,11 +131,11 @@ test("tool_search in default returns only tools visible in list()", async () => 
   );
 });
 
-test("tool_search in demo only returns tools from the approved inspection surface", async () => {
+test("tool_search in agent returns browser patch but not interact or chaos-only tools", async () => {
   const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
   const executor = createBrowserAwareToolExecutor({
     async loadRuntimeMode() {
-      return "demo";
+      return "agent";
     },
     async loadBrowserSecurityPolicy() {
       return {
@@ -127,11 +150,11 @@ test("tool_search in demo only returns tools from the approved inspection surfac
   });
 
   const result = await executor.invoke({
-    callId: "call-search-demo",
+    callId: "call-search-agent",
     toolName: "tool_search",
     toolNamespace: "browser",
     input: {
-      query: "click fill evaluate inspect_storage inspect_cookies inspect_resources inspect_http navigate",
+      query: "click fill evaluate inspect_storage inspect_cookies inspect_resources inspect_http navigate submit_patch",
       limit: 20,
     },
   });
@@ -144,17 +167,16 @@ test("tool_search in demo only returns tools from the approved inspection surfac
   assert(!searchToolNames.includes("browser__evaluate"));
   assert(!searchToolNames.includes("browser__inspect_http"));
   assert(!searchToolNames.includes("browser__navigate"));
-  assert(searchToolNames.includes("browser__inspect_storage"));
-  assert(searchToolNames.includes("browser__inspect_cookies"));
   assert(searchToolNames.includes("browser__inspect_resources"));
+  assert(searchToolNames.includes("browser__submit_patch"));
 });
 
-test("tool_search honors getAuthorizationContext and matches demo list surface", async () => {
+test("tool_search honors getAuthorizationContext and matches agent list surface", async () => {
   const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
   const executor = createBrowserAwareToolExecutor({
     async getAuthorizationContext() {
       return createBrowserToolAuthorizationContext({
-        runtimeMode: "demo",
+        runtimeMode: "agent",
         browserSecurityPolicy: {
           allowedOrigins: [],
           allowLocalhost: false,
@@ -170,11 +192,11 @@ test("tool_search honors getAuthorizationContext and matches demo list surface",
   const listed = await executor.list();
   const listedToolNames = listed.tools.map((tool) => `browser__${tool.toolName}`);
   const result = await executor.invoke({
-    callId: "call-search-demo-context",
+    callId: "call-search-agent-context",
     toolName: "tool_search",
     toolNamespace: "browser",
     input: {
-      query: "inspect_storage inspect_cookies inspect_resources inspect_http navigate",
+      query: "submit_patch inspect_resources inspect_http navigate click fill",
       limit: 20,
     },
   });
@@ -188,26 +210,25 @@ test("tool_search honors getAuthorizationContext and matches demo list surface",
     "browser__inspect_dom",
     "browser__list_interactives",
     "browser__wait_for",
-    "browser__inspect_storage",
-    "browser__inspect_cookies",
     "browser__inspect_resources",
     "browser__inspect_performance",
     "browser__submit_patch",
   ]);
   assert(!searchToolNames.includes("browser__inspect_http"));
   assert(!searchToolNames.includes("browser__navigate"));
-  assert(searchToolNames.includes("browser__inspect_storage"));
-  assert(searchToolNames.includes("browser__inspect_cookies"));
+  assert(!searchToolNames.includes("browser__click"));
+  assert(!searchToolNames.includes("browser__fill"));
   assert(searchToolNames.includes("browser__inspect_resources"));
+  assert(searchToolNames.includes("browser__submit_patch"));
   assert.deepEqual(
     searchToolNames.filter((toolName) => !listedToolNames.includes(toolName)),
     [],
   );
 });
 
-test("demo mode blocks approval-only and mutating tools policy-wise", async () => {
+test("inspect mode blocks mutation and chaos-only tools policy-wise", async () => {
   const approvals: string[] = [];
-  const executor = createWrappedExecutor("demo", {
+  const executor = createWrappedExecutor("inspect", {
     browserSecurityPolicy: {
       allowedOrigins: ["https://allowed.example.test", "https://app.example.test"],
       allowLocalhost: false,
@@ -224,7 +245,8 @@ test("demo mode blocks approval-only and mutating tools policy-wise", async () =
     ["browser__inspect_http", { url: "https://allowed.example.test/api" }],
     ["browser__navigate", { url: "https://allowed.example.test/path" }],
     ["browser__click", {}],
-    ["browser__fill", { selector: "#name", value: "demo" }],
+    ["browser__fill", { selector: "#name", value: "inspect" }],
+    ["browser__submit_patch", { patch: "*** Begin Patch\n*** End Patch\n" }],
     ["browser__evaluate", { script: "return 1;" }],
   ] as const) {
     await assert.rejects(
@@ -237,7 +259,7 @@ test("demo mode blocks approval-only and mutating tools policy-wise", async () =
       (error: unknown) =>
         error instanceof BrowserToolAuthorizationError &&
         error.code === "insufficient_scope" &&
-        error.runtimeMode === "demo",
+        error.runtimeMode === "inspect",
     );
   }
 
@@ -248,7 +270,7 @@ test("invoke normalizes aliases through the canonical policy path", async () => 
   const calls: Array<{ toolName: string; input: unknown }> = [];
   const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor(calls), {
     async loadRuntimeMode() {
-      return "default";
+      return "inspect";
     },
   });
 
@@ -289,7 +311,7 @@ test("DOM inspection policy is input-sensitive", async () => {
   const calls: Array<{ toolName: string; input: unknown }> = [];
   const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor(calls), {
     async loadRuntimeMode() {
-      return "default";
+      return "inspect";
     },
   });
 
@@ -322,7 +344,7 @@ test("DOM inspection policy is input-sensitive", async () => {
 });
 
 test("browser.js:execute remains chaos-only and requires explicit approval", async () => {
-  for (const runtimeMode of ["default", "demo"] as const) {
+  for (const runtimeMode of ["inspect", "interact", "agent"] as const) {
     const executor = createWrappedExecutor(runtimeMode, {
       browserSecurityPolicy: {
         allowedOrigins: ["https://app.example.test"],
@@ -473,7 +495,7 @@ test("evaluate can be explicitly enabled for localhost and private network origi
 });
 
 test("inspect_http on 127.0.0.1 with allow_localhost=true reaches approval-required path", async () => {
-  const executor = createWrappedExecutor("default", {
+  const executor = createWrappedExecutor("chaos", {
     browserSecurityPolicy: {
       allowedOrigins: ["http://127.0.0.1:4173"],
       allowLocalhost: true,
@@ -502,7 +524,7 @@ test("navigate and inspect_http require approval when baseline scopes are absent
   const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor(calls), {
     getAuthorizationContext: async () =>
       createBrowserToolAuthorizationContext({
-        runtimeMode: "default",
+        runtimeMode: "chaos",
         browserSecurityPolicy: {
           allowedOrigins: ["https://allowed.example.test"],
           allowLocalhost: false,
@@ -553,7 +575,7 @@ test("navigate and inspect_http require approval when baseline scopes are absent
 });
 
 test("navigate and inspect_http still require allowlisted target origins", async () => {
-  const executor = createWrappedExecutor("default", {
+  const executor = createWrappedExecutor("chaos", {
     browserSecurityPolicy: {
       allowedOrigins: ["https://allowed.example.test"],
       allowLocalhost: false,
@@ -580,7 +602,7 @@ test("navigate and inspect_http still require allowlisted target origins", async
 test("allow_once grants are cleared on new turn boundaries", async () => {
   const calls: Array<{ toolName: string; input: unknown }> = [];
   const authorizationContext = createBrowserToolAuthorizationContext({
-    runtimeMode: "default",
+    runtimeMode: "chaos",
     browserSecurityPolicy: {
       allowedOrigins: ["https://allowed.example.test"],
       allowLocalhost: false,
@@ -622,7 +644,7 @@ test("allow_once grants are cleared on new turn boundaries", async () => {
 
 test("allow_for_session grants survive turn resets", async () => {
   const authorizationContext = createBrowserToolAuthorizationContext({
-    runtimeMode: "default",
+    runtimeMode: "chaos",
     browserSecurityPolicy: {
       allowedOrigins: ["https://allowed.example.test"],
       allowLocalhost: false,
@@ -657,7 +679,7 @@ test("allow_for_session grants survive turn resets", async () => {
 });
 
 function createWrappedExecutor(
-  runtimeMode: "default" | "demo" | "chaos",
+  runtimeMode: "chat" | "inspect" | "interact" | "agent" | "chaos",
   options?: {
     browserSecurityPolicy?: {
       allowedOrigins: string[];

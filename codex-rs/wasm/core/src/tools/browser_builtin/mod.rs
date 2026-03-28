@@ -27,14 +27,22 @@ pub(crate) async fn dispatch_builtin_tool_call(
     call: ToolCall,
 ) -> Result<Option<FunctionToolOutput>, FunctionCallError> {
     let output = match call.tool_name.as_str() {
-        "read_file" => Some(read_file::handle(session, turn, call.payload).await?),
-        "list_dir" => Some(list_dir::handle(session, turn, call.payload).await?),
-        "grep_files" => Some(grep_files::handle(session, turn, call.payload).await?),
-        "apply_patch" => Some(apply_patch::handle(session, turn, call.payload).await?),
-        "update_plan" => {
+        "read_file" if turn.tools_config.browser_workspace_tools => {
+            Some(read_file::handle(session, turn, call.payload).await?)
+        }
+        "list_dir" if turn.tools_config.browser_workspace_tools => {
+            Some(list_dir::handle(session, turn, call.payload).await?)
+        }
+        "grep_files" if turn.tools_config.browser_workspace_tools => {
+            Some(grep_files::handle(session, turn, call.payload).await?)
+        }
+        "apply_patch" if turn.tools_config.browser_workspace_tools => {
+            Some(apply_patch::handle(session, turn, call.payload).await?)
+        }
+        "update_plan" if turn.tools_config.update_plan => {
             Some(collaboration::handle_update_plan(session, turn, call.payload).await?)
         }
-        "request_user_input" => Some(
+        "request_user_input" if turn.tools_config.request_user_input => Some(
             collaboration::handle_request_user_input(session, turn, call.call_id, call.payload)
                 .await?,
         ),
@@ -44,13 +52,18 @@ pub(crate) async fn dispatch_builtin_tool_call(
 }
 
 pub(crate) fn builtin_tool_specs(config: &ToolsConfig) -> Vec<ClientToolSpec> {
-    let mut tools = vec![
-        BrowserBuiltinTool::ReadFile,
-        BrowserBuiltinTool::ListDir,
-        BrowserBuiltinTool::GrepFiles,
-        BrowserBuiltinTool::ApplyPatch,
-        BrowserBuiltinTool::UpdatePlan,
-    ];
+    let mut tools = Vec::new();
+    if config.browser_workspace_tools {
+        tools.extend([
+            BrowserBuiltinTool::ReadFile,
+            BrowserBuiltinTool::ListDir,
+            BrowserBuiltinTool::GrepFiles,
+            BrowserBuiltinTool::ApplyPatch,
+        ]);
+    }
+    if config.update_plan {
+        tools.push(BrowserBuiltinTool::UpdatePlan);
+    }
     if config.request_user_input {
         tools.push(BrowserBuiltinTool::RequestUserInput);
     }

@@ -129,6 +129,9 @@ impl TurnContext {
             features: &features,
             web_search_mode: self.tools_config.web_search_mode,
             session_source: self.session_source.clone(),
+            enable_workspace_tools: self.config.enable_workspace_tools,
+            enable_planning_tools: self.config.enable_planning_tools,
+            enable_app_tools: self.config.enable_app_tools,
         })
         .with_web_search_config(self.tools_config.web_search_config.clone())
         .with_allow_login_shell(self.tools_config.allow_login_shell)

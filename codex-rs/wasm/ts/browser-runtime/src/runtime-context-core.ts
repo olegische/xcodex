@@ -3,6 +3,7 @@ import {
   wrapBrowserToolExecutorWithAuthorization,
 } from "@browser-codex/wasm-browser-tools/browser-tool-authorization";
 import type { JsonValue, StoredThreadSession } from "./types/core.ts";
+import { capabilitiesForRuntimeMode } from "./bootstrap.ts";
 import {
   DEFAULT_BROWSER_CODEX_HOME,
   DEFAULT_BROWSER_WORKSPACE_ROOT,
@@ -45,7 +46,7 @@ export async function createBrowserCodexRuntimeContextWithDeps(
     .catch(() => structuredClone(deps.defaultConfig));
   const browserSecurity = normalizeBrowserSecurityConfig(initialConfig.browser_security);
   const authorizationContext = createBrowserToolAuthorizationContext({
-    runtimeMode: initialConfig.runtime_mode ?? "default",
+    runtimeMode: initialConfig.runtime_mode ?? "agent",
     browserSecurityPolicy: {
       allowedOrigins: browserSecurity.allowed_origins,
       allowLocalhost: browserSecurity.allow_localhost,
@@ -65,6 +66,7 @@ export async function createBrowserCodexRuntimeContextWithDeps(
       ]);
       const provider = deps.getActiveProvider(config);
       const apiKey = fallbackApiKey(authState) || deps.activeProviderApiKey(config);
+      const runtimeMode = config.runtime_mode ?? "agent";
       return deps.buildBrowserRuntimeBootstrap({
         codexHome: options.codexHome ?? DEFAULT_BROWSER_CODEX_HOME,
         cwd: DEFAULT_BROWSER_WORKSPACE_ROOT,
@@ -82,6 +84,7 @@ export async function createBrowserCodexRuntimeContextWithDeps(
           deps.defaultDemoInstructions.baseInstructions,
         developerInstructions: options.bootstrap?.developerInstructions ?? null,
         userInstructions: options.bootstrap?.userInstructions ?? null,
+        capabilities: capabilitiesForRuntimeMode(runtimeMode),
         apiKey: apiKey || null,
         ephemeral: options.bootstrap?.ephemeral ?? false,
       });
@@ -91,7 +94,7 @@ export async function createBrowserCodexRuntimeContextWithDeps(
     search: options.workspace.search,
     applyPatch: options.workspace.applyPatch,
     async loadUserConfig() {
-          return (
+      return (
         (await storage.loadUserConfig()) ?? {
           filePath: `${options.codexHome ?? DEFAULT_BROWSER_CODEX_HOME}/config.toml`,
           version: "0",
@@ -251,7 +254,7 @@ export type RuntimeContextDeps = {
   }): (request: unknown) => Promise<unknown>;
   createBrowserAwareToolExecutor(args: {
     getAuthorizationContext(): Promise<{
-      runtimeMode: "default" | "demo" | "chaos";
+      runtimeMode: "chat" | "inspect" | "interact" | "agent" | "chaos";
       browserSecurityPolicy: {
         allowedOrigins: string[];
         allowLocalhost: boolean;

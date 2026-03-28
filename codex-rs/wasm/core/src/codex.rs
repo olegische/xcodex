@@ -536,6 +536,9 @@ impl Session {
             features: &per_turn_config.features,
             web_search_mode: Some(per_turn_config.web_search_mode.value()),
             session_source: session_source.clone(),
+            enable_workspace_tools: per_turn_config.enable_workspace_tools,
+            enable_planning_tools: per_turn_config.enable_planning_tools,
+            enable_app_tools: per_turn_config.enable_app_tools,
         })
         .with_web_search_config(per_turn_config.web_search_config.clone())
         .with_allow_login_shell(per_turn_config.permissions.allow_login_shell)

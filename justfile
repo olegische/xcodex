@@ -102,3 +102,9 @@ wasm-webui-build-runtime:
 wasm-webui-dev:
     ./wasm/scripts/build-web-runtime.sh --app apps/webui --runtime wasm
     cd wasm/apps/webui && npm run dev
+
+# Build the xcodex-wasm release tarball locally on macOS without touching the
+# GitHub release workflow.
+[no-cd]
+xcodex-wasm-tarball-macos release_sha=`git rev-parse HEAD` release_ref=`git rev-parse --abbrev-ref HEAD` run_id="local-macos" dist_dir="dist":
+    bash ./codex-rs/wasm/scripts/build-xcodex-wasm-tarball.sh --release-sha {{release_sha}} --release-ref {{release_ref}} --run-id {{run_id}} --dist-dir {{dist_dir}}

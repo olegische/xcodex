@@ -64,7 +64,7 @@ test("materializeCodexConfig persists runtime metadata alongside provider config
   const config = materializeCodexConfig({
     transportMode: "xrouter-browser",
     model: "gpt-5",
-    runtimeMode: "demo",
+    runtimeMode: "agent",
     runtimeArchitecture: "web-preview",
     browserSecurity: {
       allowed_origins: ["https://example.com"],
@@ -79,7 +79,7 @@ test("materializeCodexConfig persists runtime metadata alongside provider config
     xrouterProvider: "deepseek",
   });
 
-  assert.equal(config.runtime_mode, "demo");
+  assert.equal(config.runtime_mode, "agent");
   assert.equal(config.runtime_architecture, "web-preview");
   assert.deepEqual(config.browser_security, {
     allowed_origins: ["https://example.com"],

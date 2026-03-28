@@ -26,7 +26,7 @@ export type XrouterProvider = "deepseek" | "openai" | "openrouter" | "zai";
 
 export type ProviderKind = "openai" | "openai_compatible" | "xrouter_browser";
 
-export type RuntimeMode = "default" | "demo" | "chaos";
+export type RuntimeMode = "chat" | "inspect" | "interact" | "agent" | "chaos";
 
 export type BrowserSecurityConfig = {
   allowed_origins?: string[] | null;
