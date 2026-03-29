@@ -458,7 +458,7 @@ You can use your own storage implementation as long as it satisfies the exported
 ## Build
 
 ```bash
-cd /Users/olegromanchuk/Projects/xcodex/codex-rs/wasm
+cd /path/to/xcodex/codex-rs/wasm
 npm install
 npm --workspace xcodex-runtime run build
 ```

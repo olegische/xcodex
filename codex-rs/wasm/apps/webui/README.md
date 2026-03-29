@@ -34,7 +34,7 @@ startup.
 From the repository root, refresh the local browser runtime assets when needed:
 
 ```bash
-cd /Users/olegromanchuk/Projects/xcodex
+cd /path/to/xcodex
 just wasm-runtime-pull apps/webui
 ```
 
@@ -65,7 +65,7 @@ You can override either source explicitly with:
 Then start the app:
 
 ```bash
-cd /Users/olegromanchuk/Projects/xcodex
+cd /path/to/xcodex
 just wasm-webui-dev
 ```
 
