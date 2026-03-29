@@ -54,7 +54,7 @@ jobs:
       - name: Install wasm-bindgen
         uses: taiki-e/install-action@v2
         with:
-          tool: wasm-bindgen
+          tool: wasm-bindgen-cli@0.2.114
 
       - name: Build xcodex-wasm runtime
         shell: bash
