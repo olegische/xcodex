@@ -67,25 +67,42 @@ export async function createLocalCodexRuntime(args: {
   });
 
   if (args.protocolMode === "responses-api") {
-    return createLocalResponsesRuntime(args.baseUrl, connection, notificationBridge);
+    return createLocalResponsesRuntime(
+      args.baseUrl,
+      connection,
+      notificationBridge,
+      unsubscribeRuntimeEvents,
+    );
   }
   if (args.protocolMode === "a2a") {
-    return createLocalA2ARuntime(args.baseUrl, connection, notificationBridge);
+    return createLocalA2ARuntime(
+      args.baseUrl,
+      connection,
+      notificationBridge,
+      unsubscribeRuntimeEvents,
+    );
   }
-  return createLocalAppServerRuntime(connection, notificationBridge);
+  return createLocalAppServerRuntime(connection, notificationBridge, unsubscribeRuntimeEvents);
 }
 
 function createLocalAppServerRuntime(
   connection: CodexAppServerConnection,
   notificationBridge: LocalNotificationBridge,
+  unsubscribeRuntimeEvents: () => void,
 ): BrowserRuntime {
-  return createLocalBaseRuntime("app-server", connection, notificationBridge);
+  return createLocalBaseRuntime(
+    "app-server",
+    connection,
+    notificationBridge,
+    unsubscribeRuntimeEvents,
+  );
 }
 
 function createLocalBaseRuntime(
   protocolMode: DemoProtocolMode,
   connection: CodexAppServerConnection,
   notificationBridge: LocalNotificationBridge,
+  unsubscribeRuntimeEvents: () => void,
 ): BrowserRuntime {
   notificationBridge.setServerRequestHandler(
     protocolMode === "app-server"
@@ -99,7 +116,7 @@ function createLocalBaseRuntime(
     protocolMode,
     async shutdown() {
       unsubscribeRuntimeEvents();
-      await connection.shutdown();
+      await connection.shutdown?.();
     },
     async readAccount() {
       return {
@@ -129,7 +146,7 @@ function createLocalBaseRuntime(
         method: "thread/list",
         params,
       } as ClientRequest);
-      return response as Awaited<NonNullable<BrowserRuntime["listThreads"]>>;
+      return response as Awaited<ReturnType<NonNullable<BrowserRuntime["listThreads"]>>>;
     },
     async threadRead(params) {
       const response = await connection.request({
@@ -173,17 +190,23 @@ function createLocalResponsesRuntime(
   baseUrl: string,
   connection: CodexAppServerConnection,
   notificationBridge: LocalNotificationBridge,
+  unsubscribeRuntimeEvents: () => void,
 ): BrowserRuntime {
   const openai = createCodexOpenAIClient({
     connection,
     apiKey: "xcodex-local-codex",
     baseURL: `${normalizeBaseUrl(baseUrl)}/v1`,
-    defaultCwd: null,
+    defaultCwd: undefined,
     handleServerRequest: handleLocalServerRequest,
   });
 
   return {
-    ...createLocalBaseRuntime("responses-api", connection, notificationBridge),
+    ...createLocalBaseRuntime(
+      "responses-api",
+      connection,
+      notificationBridge,
+      unsubscribeRuntimeEvents,
+    ),
     protocolMode: "responses-api",
     async runResponsesTurn(request) {
       const stream = openai.responses.stream({
@@ -215,9 +238,10 @@ function createLocalA2ARuntime(
   baseUrl: string,
   connection: CodexAppServerConnection,
   notificationBridge: LocalNotificationBridge,
+  unsubscribeRuntimeEvents: () => void,
 ): BrowserRuntime {
   return {
-    ...createLocalBaseRuntime("a2a", connection, notificationBridge),
+    ...createLocalBaseRuntime("a2a", connection, notificationBridge, unsubscribeRuntimeEvents),
     protocolMode: "a2a",
     async runA2ATurn(request) {
       const a2a = await createCodexA2AClient({

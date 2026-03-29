@@ -153,16 +153,16 @@ export async function runChatTurn(
     throw new Error("Select a model before sending a message.");
   }
   if (runtime.protocolMode === "responses-api") {
+    if (runtime.runResponsesTurn === undefined) {
+      throw new Error("Responses runtime is not available.");
+    }
     const previousResponseId = await loadStoredResponsesBinding();
-    const result = await runtime.runResponsesTurn?.({
+    const result = await runtime.runResponsesTurn({
       message,
       model: codexConfig.model.trim(),
       previousResponseId,
       reasoningEffort: normalizeResponsesReasoningEffort(codexConfig.modelReasoningEffort),
     });
-    if (result === undefined) {
-      throw new Error("Responses runtime is not available.");
-    }
     await saveStoredResponsesBinding(result.responseId);
     const threadId = await loadStoredThreadBinding();
     const nextTranscript =
@@ -188,15 +188,15 @@ export async function runChatTurn(
     };
   }
   if (runtime.protocolMode === "a2a") {
+    if (runtime.runA2ATurn === undefined) {
+      throw new Error("A2A runtime is not available.");
+    }
     const previousTaskId = await loadStoredA2ATaskBinding();
-    const result = await runtime.runA2ATurn?.({
+    const result = await runtime.runA2ATurn({
       message,
       model: codexConfig.model.trim(),
       previousTaskId,
     });
-    if (result === undefined) {
-      throw new Error("A2A runtime is not available.");
-    }
     await saveStoredThreadBinding(result.taskId);
     return {
       transcript: result.transcript,
