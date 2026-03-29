@@ -185,6 +185,18 @@ export async function resetThread(): Promise<void> {
   }
 }
 
+export async function selectThread(threadId: string, renderPlan: UiRenderPlan): Promise<void> {
+  try {
+    console.info("[webui] ui:select-thread", { threadId });
+    await runtimeSessionStore.selectThread(threadId);
+    runtimeUiStore.resetThread();
+    toggleInspectorTab("mission", renderPlan);
+  } catch (error) {
+    console.error("[webui] ui:select-thread:failed", error);
+    runtimeSessionStore.setError(`Failed to load thread: ${formatError(error)}`);
+  }
+}
+
 export function toggleEvents(renderPlan: UiRenderPlan): void {
   inspectorStore.toggleEvents(renderPlan.inspectorMode);
 }

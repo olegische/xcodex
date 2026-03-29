@@ -10,6 +10,7 @@ export {
   resetCurrentThread,
   runTurnFromDraft,
   saveDraftProviderConfig,
+  selectExistingThread,
   transportLabel,
 } from "./core";
 export { subscribeRuntimeEvent } from "./events";
@@ -28,5 +29,6 @@ export type {
   RuntimeEvent,
   SendTurnResult,
   TranscriptEntry,
+  WebUiTransportMode,
   XrouterProvider,
 } from "./types";

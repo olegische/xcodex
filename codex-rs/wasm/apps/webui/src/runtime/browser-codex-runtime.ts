@@ -127,7 +127,7 @@ export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
     };
   };
 
-  subscribeToNotifications((notification: ServerNotification) => {
+  const unsubscribeRuntimeEvents = subscribeToNotifications((notification: ServerNotification) => {
     emitRuntimeEvent({
       method: notification.method,
       params: ("params" in notification ? notification.params : null) as JsonValue,
@@ -136,6 +136,9 @@ export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
 
   return {
     protocolMode: "app-server",
+    async shutdown() {
+      unsubscribeRuntimeEvents();
+    },
     async readAccount() {
       const [authState, config] = await Promise.all([
         runtimeClient.loadAuthState(),
@@ -167,6 +170,9 @@ export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
     },
     async threadResume(params) {
       return await client.resumeThread(params);
+    },
+    async listThreads(params) {
+      return await client.listThreads(params);
     },
     async threadRead(params) {
       return await client.readThread(params);

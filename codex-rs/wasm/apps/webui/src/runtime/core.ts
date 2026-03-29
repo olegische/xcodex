@@ -2,9 +2,10 @@ import {
   DEFAULT_CODEX_CONFIG,
   XROUTER_PROVIDER_OPTIONS,
 } from "xcodex-embedded-client/config";
-import { DEFAULT_DEMO_INSTRUCTIONS } from "./constants";
+import { DEFAULT_DEMO_INSTRUCTIONS, DEFAULT_LOCAL_CODEX_BASE_URL } from "./constants";
 import { createA2ACodexRuntime } from "./a2a-codex-runtime";
 import { createBrowserCodexRuntime } from "./browser-codex-runtime";
+import { createLocalCodexRuntime } from "./local-codex-runtime";
 import { createResponsesCodexRuntime } from "./responses-codex-runtime";
 import { webUiModelTransportAdapter } from "./transport-adapter";
 import { buildOutputFromEvents, threadToTranscript } from "./transcript";
@@ -21,15 +22,18 @@ import {
   loadStoredDemoInstructions,
   loadStoredProtocolMode,
   loadStoredResponsesBinding,
+  loadStoredTransportMode,
   loadStoredThreadBinding,
   saveStoredAuthState,
   saveStoredCodexConfig,
   saveStoredProtocolMode,
   saveStoredResponsesBinding,
+  saveStoredTransportMode,
   saveStoredThreadBinding,
   syncStoredThreadRuntimeRevision,
 } from "./storage";
 import { activeProviderApiKey, formatError, getActiveProvider, materializeCodexConfig, normalizeCodexConfig, normalizeDemoInstructions } from "./utils";
+import type { Thread } from "../../../../../app-server-protocol/schema/typescript/v2/Thread";
 import type {
   Account,
   AuthState,
@@ -42,15 +46,18 @@ import type {
   ProviderDraft,
   RuntimeEvent,
   SendTurnResult,
+  WebUiTransportMode,
   WebUiBootstrap,
   XrouterProvider,
 } from "./types";
+import type { ThreadGroupSummary } from "../types";
 
 export function createInitialState(): DemoState {
   return {
     status: "Loading WASM runtime…",
     isError: false,
     protocolMode: "app-server",
+    transportMode: "xrouter-browser",
     runtime: null,
     authState: null,
     codexConfig: structuredClone(DEFAULT_CODEX_CONFIG),
@@ -58,13 +65,24 @@ export function createInitialState(): DemoState {
     account: null,
     requiresOpenaiAuth: true,
     models: [],
+    threadGroups: [],
     transcript: [],
     events: [],
     output: "",
   };
 }
 
-export async function loadRuntime(protocolMode: DemoProtocolMode): Promise<BrowserRuntime> {
+export async function loadRuntime(
+  protocolMode: DemoProtocolMode,
+  transportMode: WebUiTransportMode,
+  codexConfig: CodexCompatibleConfig,
+): Promise<BrowserRuntime> {
+  if (transportMode === "local-codex") {
+    return await createLocalCodexRuntime({
+      protocolMode,
+      baseUrl: getLocalCodexBaseUrl(codexConfig),
+    });
+  }
   if (protocolMode === "responses-api") {
     return await createResponsesCodexRuntime();
   }
@@ -77,22 +95,25 @@ export async function loadRuntime(protocolMode: DemoProtocolMode): Promise<Brows
 export async function saveProviderConfig(
   runtime: BrowserRuntime | null,
   codexConfig: CodexCompatibleConfig,
+  transportMode: WebUiTransportMode,
 ): Promise<{ authState: AuthState | null; codexConfig: CodexCompatibleConfig }> {
   void runtime;
   const normalizedConfig = normalizeCodexConfig(codexConfig);
   const apiKey = activeProviderApiKey(normalizedConfig);
-  if (apiKey.length === 0) {
+  if (transportMode !== "local-codex" && apiKey.length === 0) {
     throw new Error("Enter an API key before saving provider config.");
   }
-  await saveStoredAuthState({
-    authMode: "apiKey",
-    openaiApiKey: apiKey,
-    accessToken: null,
-    refreshToken: null,
-    chatgptAccountId: null,
-    chatgptPlanType: null,
-    lastRefreshAt: null,
-  });
+  if (transportMode !== "local-codex") {
+    await saveStoredAuthState({
+      authMode: "apiKey",
+      openaiApiKey: apiKey,
+      accessToken: null,
+      refreshToken: null,
+      chatgptAccountId: null,
+      chatgptPlanType: null,
+      lastRefreshAt: null,
+    });
+  }
   await saveStoredCodexConfig(normalizedConfig);
   return {
     authState: await loadStoredAuthState(),
@@ -249,7 +270,11 @@ export async function bootstrapWebUi(): Promise<WebUiBootstrap> {
   return {
     runtime: nextState.runtime,
     state: nextState,
-    providerDraft: draftFromConfig(nextState.codexConfig, nextState.protocolMode),
+    providerDraft: draftFromConfig(
+      nextState.codexConfig,
+      nextState.protocolMode,
+      nextState.transportMode,
+    ),
   };
 }
 
@@ -272,10 +297,16 @@ export async function refreshAccountAndModelsFromDraft(
   draft: ProviderDraft,
 ): Promise<{ state: DemoState; providerDraft: ProviderDraft }> {
   await saveStoredProtocolMode(draft.protocolMode);
-  const saved = await saveProviderConfig(runtime, buildCodexConfig(state.codexConfig, draft));
+  await saveStoredTransportMode(draft.transportMode);
+  const saved = await saveProviderConfig(
+    runtime,
+    buildCodexConfig(state.codexConfig, draft),
+    draft.transportMode,
+  );
   const refreshed = await refreshAccountAndModels(runtime, {
     ...state,
     protocolMode: draft.protocolMode,
+    transportMode: draft.transportMode,
     authState: saved.authState,
     codexConfig: saved.codexConfig,
     status: "Provider config applied.",
@@ -283,7 +314,11 @@ export async function refreshAccountAndModelsFromDraft(
   });
   return {
     state: refreshed,
-    providerDraft: draftFromConfig(refreshed.codexConfig, refreshed.protocolMode),
+    providerDraft: draftFromConfig(
+      refreshed.codexConfig,
+      refreshed.protocolMode,
+      refreshed.transportMode,
+    ),
   };
 }
 
@@ -293,10 +328,16 @@ export async function saveDraftProviderConfig(
   draft: ProviderDraft,
 ): Promise<{ state: DemoState; providerDraft: ProviderDraft }> {
   await saveStoredProtocolMode(draft.protocolMode);
-  const saved = await saveProviderConfig(runtime, buildCodexConfig(state.codexConfig, draft));
+  await saveStoredTransportMode(draft.transportMode);
+  const saved = await saveProviderConfig(
+    runtime,
+    buildCodexConfig(state.codexConfig, draft),
+    draft.transportMode,
+  );
   const refreshed = await refreshAccountAndModels(runtime, {
     ...state,
     protocolMode: draft.protocolMode,
+    transportMode: draft.transportMode,
     authState: saved.authState,
     codexConfig: saved.codexConfig,
     status: "Provider config saved.",
@@ -304,7 +345,11 @@ export async function saveDraftProviderConfig(
   });
   return {
     state: refreshed,
-    providerDraft: draftFromConfig(refreshed.codexConfig, refreshed.protocolMode),
+    providerDraft: draftFromConfig(
+      refreshed.codexConfig,
+      refreshed.protocolMode,
+      refreshed.transportMode,
+    ),
   };
 }
 
@@ -320,14 +365,18 @@ export async function clearSavedAuth(
       authState: cleared.authState,
       codexConfig: cleared.codexConfig,
       account: null,
-      requiresOpenaiAuth: true,
+      requiresOpenaiAuth: state.transportMode === "local-codex" ? false : true,
       models: [],
       transcript: [],
       output: "",
       status: "Browser auth cleared.",
       isError: false,
     },
-    providerDraft: draftFromConfig(cleared.codexConfig, state.protocolMode),
+    providerDraft: draftFromConfig(
+      cleared.codexConfig,
+      state.protocolMode,
+      state.transportMode,
+    ),
   };
 }
 
@@ -351,13 +400,14 @@ export async function runTurnFromDraft(
   return {
     state: {
       ...state,
+      transportMode: draft.transportMode,
       codexConfig,
       transcript: result.transcript,
       output: result.output,
       status: "Turn completed.",
       isError: false,
     },
-    providerDraft: draftFromConfig(codexConfig, state.protocolMode),
+    providerDraft: draftFromConfig(codexConfig, state.protocolMode, draft.transportMode),
     result,
   };
 }
@@ -374,19 +424,29 @@ export async function resetCurrentThread(runtime: BrowserRuntime, state: DemoSta
   };
 }
 
-export function draftFromConfig(config: CodexCompatibleConfig, protocolMode: DemoProtocolMode): ProviderDraft {
+export function draftFromConfig(
+  config: CodexCompatibleConfig,
+  protocolMode: DemoProtocolMode,
+  transportModeOverride?: WebUiTransportMode,
+): ProviderDraft {
   const activeProvider = config.modelProviders[config.modelProvider];
   const providerKind = activeProvider?.providerKind ?? "openai";
+  const inferredTransportMode: WebUiTransportMode =
+    providerKind === "xrouter_browser"
+      ? "xrouter-browser"
+      : providerKind === "openai_compatible"
+        ? "openai-compatible"
+        : "openai";
+  const transportMode = transportModeOverride ?? inferredTransportMode;
   return {
     protocolMode,
-    transportMode:
-      providerKind === "xrouter_browser"
-        ? "xrouter-browser"
-        : providerKind === "openai_compatible"
-          ? "openai-compatible"
-          : "openai",
-    providerDisplayName: activeProvider?.name ?? "OpenAI",
-    providerBaseUrl: activeProvider?.baseUrl ?? "https://api.openai.com/v1",
+    transportMode,
+    providerDisplayName:
+      transportMode === "local-codex" ? "Local Codex" : activeProvider?.name ?? "OpenAI",
+    providerBaseUrl:
+      transportMode === "local-codex"
+        ? getLocalCodexBaseUrl(config)
+        : activeProvider?.baseUrl ?? "https://api.openai.com/v1",
     apiKey: activeProvider === undefined ? "" : config.env[activeProvider.envKey] ?? "",
     xrouterProvider: activeProvider?.metadata?.xrouterProvider ?? "deepseek",
     modelReasoningEffort: config.modelReasoningEffort ?? "medium",
@@ -397,7 +457,7 @@ export function draftFromConfig(config: CodexCompatibleConfig, protocolMode: Dem
 
 export function buildCodexConfig(base: CodexCompatibleConfig, draft: ProviderDraft): CodexCompatibleConfig {
   return materializeCodexConfig({
-    transportMode: draft.transportMode,
+    transportMode: draft.transportMode === "local-codex" ? "openai-compatible" : draft.transportMode,
     model: draft.model.trim(),
     runtimeMode: base.runtime_mode,
     runtimeArchitecture: base.runtime_architecture,
@@ -420,6 +480,9 @@ export function transportLabel(draft: ProviderDraft): string {
   if (draft.transportMode === "xrouter-browser") {
     return `${protocolLabel} / XRouter Browser / ${providerPresetLabel(draft.xrouterProvider)}`;
   }
+  if (draft.transportMode === "local-codex") {
+    return `${protocolLabel} / Local Codex`;
+  }
   if (draft.transportMode === "openai-compatible") {
     return `${protocolLabel} / OpenAI-compatible`;
   }
@@ -433,6 +496,11 @@ function providerPresetLabel(provider: XrouterProvider): string {
 function normalizeOptionalText(value: string): string | null {
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function getLocalCodexBaseUrl(config: CodexCompatibleConfig): string {
+  const activeProvider = config.modelProviders[config.modelProvider];
+  return activeProvider?.baseUrl ?? DEFAULT_LOCAL_CODEX_BASE_URL;
 }
 
 function selectModelId(models: ModelPreset[], currentModel: string): string {
@@ -471,11 +539,12 @@ async function ensureThread(runtime: BrowserRuntime): Promise<string> {
 }
 
 async function hydrateState(): Promise<Partial<DemoState>> {
-  const [authState, codexConfig, demoInstructions, protocolMode, revisionChanged, threadId] = await Promise.all([
+  const [authState, codexConfig, demoInstructions, protocolMode, transportMode, revisionChanged, threadId] = await Promise.all([
     loadStoredAuthState(),
     loadStoredCodexConfig(),
     loadStoredDemoInstructions(),
     loadStoredProtocolMode(),
+    loadStoredTransportMode(),
     syncStoredThreadRuntimeRevision(),
     loadStoredThreadBinding(),
   ]);
@@ -490,35 +559,69 @@ async function hydrateState(): Promise<Partial<DemoState>> {
     codexConfig,
     demoInstructions,
     protocolMode,
+    transportMode,
+    threadGroups: [],
     transcript: [],
     runtime: null,
   };
 }
 
 async function syncBootstrapState(state: DemoState): Promise<DemoState> {
+  const isLocalCodex = state.transportMode === "local-codex";
   const provider = getActiveProvider(state.codexConfig);
   const apiKey = activeProviderApiKey(state.codexConfig);
-  const requiresOpenaiAuth = provider.providerKind === "openai" && apiKey.length === 0;
+  const runtime =
+    isLocalCodex || state.codexConfig.model.length > 0
+      ? await loadRuntime(state.protocolMode, state.transportMode, state.codexConfig)
+      : null;
+  if (state.runtime !== null && state.runtime !== runtime) {
+    await state.runtime.shutdown().catch(() => undefined);
+  }
+  const requiresOpenaiAuth = isLocalCodex
+    ? false
+    : provider.providerKind === "openai" && apiKey.length === 0;
   const account =
-    state.authState === null
-      ? null
-      : {
-          email: null,
-          planType: state.authState.chatgptPlanType,
-          chatgptAccountId: state.authState.chatgptAccountId,
-          authMode: state.authState.authMode,
-        };
+    isLocalCodex
+      ? runtime === null
+        ? null
+        : (await runtime.readAccount({ refreshToken: false })).account
+      : state.authState === null
+        ? null
+        : {
+            email: null,
+            planType: state.authState.chatgptPlanType,
+            chatgptAccountId: state.authState.chatgptAccountId,
+            authMode: state.authState.authMode,
+          };
   const modelResult =
-    apiKey.length === 0
-      ? { data: [], nextCursor: null as string | null }
-      : await webUiModelTransportAdapter.discoverModels(state.codexConfig);
+    isLocalCodex
+      ? runtime === null
+        ? { data: [], nextCursor: null as string | null }
+        : await runtime.listModels({ cursor: null, limit: 200 })
+      : apiKey.length === 0
+        ? { data: [], nextCursor: null as string | null }
+        : await webUiModelTransportAdapter.discoverModels(state.codexConfig);
   const codexConfig = {
     ...state.codexConfig,
     model: selectModelId(modelResult.data, state.codexConfig.model),
   };
-  const runtime = codexConfig.model.length > 0 ? await loadRuntime(state.protocolMode) : null;
   let transcript = state.transcript;
+  let threadGroups = state.threadGroups;
   const activeThreadId = await loadStoredThreadBinding();
+  if (runtime?.listThreads !== undefined) {
+    const listedThreads = await runtime.listThreads({
+      archived: false,
+      limit: 100,
+      sortKey: "updated_at",
+    }).catch(() => null);
+    if (listedThreads !== null) {
+      threadGroups = normalizeThreadGroups(
+        listedThreads.data,
+        activeThreadId,
+        state.transportMode === "local-codex",
+      );
+    }
+  }
   if (runtime !== null && runtime.protocolMode === "app-server" && activeThreadId !== null) {
     const resumed = await runtime.threadResume({
       threadId: activeThreadId,
@@ -545,15 +648,97 @@ async function syncBootstrapState(state: DemoState): Promise<DemoState> {
     account,
     requiresOpenaiAuth,
     models: modelResult.data,
+    threadGroups,
     codexConfig,
     transcript,
     status:
-      apiKey.length === 0
-        ? "Waiting for router API key."
+      isLocalCodex
+        ? runtime === null
+          ? "Local Codex transport is not available."
+          : "Local Codex runtime ready."
+        : apiKey.length === 0
+          ? "Waiting for router API key."
         : runtime === null
           ? "Select a model to enter the terminal."
           : "Runtime ready.",
   };
+}
+
+export async function selectExistingThread(
+  runtime: BrowserRuntime,
+  state: DemoState,
+  threadId: string,
+): Promise<DemoState> {
+  const thread = await runtime.threadRead({
+    threadId,
+    includeTurns: true,
+  });
+  await Promise.all([
+    saveStoredThreadBinding(thread.thread.id),
+    clearStoredResponsesBinding(),
+    clearStoredA2ATaskBinding(),
+  ]);
+  return {
+    ...state,
+    transcript: threadToTranscript(thread.thread),
+    threadGroups: markActiveThread(state.threadGroups, thread.thread.id),
+    status: `Loaded thread ${thread.thread.name ?? thread.thread.id}.`,
+    isError: false,
+  };
+}
+
+function normalizeThreadGroups(
+  threads: Thread[],
+  activeThreadId: string | null,
+  groupByProject: boolean,
+): ThreadGroupSummary[] {
+  const groups = new Map<string, ThreadGroupSummary["threads"]>();
+
+  for (const thread of threads) {
+    const title = normalizeThreadTitle(thread);
+    const groupTitle = groupByProject ? projectTitleFromCwd(thread.cwd) : "Workspace";
+    const bucket = groups.get(groupTitle) ?? [];
+    bucket.push({
+      id: thread.id,
+      title,
+      subtitle: thread.preview || thread.cwd,
+      active: thread.id === activeThreadId,
+    });
+    groups.set(groupTitle, bucket);
+  }
+
+  return Array.from(groups.entries())
+    .map(([title, groupedThreads]) => ({
+      title,
+      threads: groupedThreads.sort((left, right) => Number(right.active) - Number(left.active)),
+    }))
+    .sort((left, right) => left.title.localeCompare(right.title));
+}
+
+function markActiveThread(
+  groups: ThreadGroupSummary[],
+  activeThreadId: string,
+): ThreadGroupSummary[] {
+  return groups.map((group) => ({
+    ...group,
+    threads: group.threads.map((thread) => ({
+      ...thread,
+      active: thread.id === activeThreadId,
+    })),
+  }));
+}
+
+function normalizeThreadTitle(thread: Thread): string {
+  const title = thread.name?.trim() || thread.preview.trim();
+  if (title.length > 0) {
+    return title.slice(0, 80);
+  }
+  return `Thread ${thread.id.slice(0, 8)}`;
+}
+
+function projectTitleFromCwd(cwd: string): string {
+  const parts = cwd.split("/").filter(Boolean);
+  return parts.at(-1) ?? cwd ?? "Workspace";
 }
 
 function normalizeResponsesReasoningEffort(value: string | null): "low" | "medium" | "high" | null {

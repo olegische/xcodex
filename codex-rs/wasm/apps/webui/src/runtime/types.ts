@@ -32,6 +32,7 @@ import type {
 } from "xcodex-embedded-client/types";
 import type { ServerNotification } from "../../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ThreadReadResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadReadResponse";
+import type { ThreadListResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadListResponse";
 import type { ThreadResumeParams } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadResumeParams";
 import type { ThreadResumeResponse } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadResumeResponse";
 import type { ThreadStartParams } from "../../../../../app-server-protocol/schema/typescript/v2/ThreadStartParams";
@@ -47,6 +48,7 @@ export type UserInstructions = {
 };
 
 export type DemoProtocolMode = "app-server" | "responses-api" | "a2a";
+export type WebUiTransportMode = DemoTransportMode | "local-codex";
 
 export type SkillInstructions = {
   name: string;
@@ -134,6 +136,7 @@ export type DemoState = {
   status: string;
   isError: boolean;
   protocolMode: DemoProtocolMode;
+  transportMode: WebUiTransportMode;
   runtime: BrowserRuntime | null;
   authState: AuthState | null;
   codexConfig: CodexCompatibleConfig;
@@ -141,6 +144,7 @@ export type DemoState = {
   account: Account | null;
   requiresOpenaiAuth: boolean;
   models: ModelPreset[];
+  threadGroups: import("../types").ThreadGroupSummary[];
   transcript: TranscriptEntry[];
   events: JsonValue[];
   output: string;
@@ -148,12 +152,18 @@ export type DemoState = {
 
 export type BrowserRuntime = {
   protocolMode: DemoProtocolMode;
+  shutdown(): Promise<void>;
   readAccount(request: { refreshToken: boolean }): Promise<{
     account: Account | null;
     requiresOpenaiAuth: boolean;
   }>;
   threadStart(params: ThreadStartParams): Promise<ThreadStartResponse>;
   threadResume(params: ThreadResumeParams): Promise<ThreadResumeResponse>;
+  listThreads?(params: {
+    archived: boolean;
+    limit: number;
+    sortKey: string;
+  }): Promise<ThreadListResponse>;
   threadRead(params: { threadId: string; includeTurns: boolean }): Promise<ThreadReadResponse>;
   turnStart(params: TurnStartParams): Promise<TurnStartResponse>;
   turnInterrupt(params: TurnInterruptParams): Promise<TurnInterruptResponse>;
@@ -176,7 +186,7 @@ export type BrowserRuntime = {
 
 export type ProviderDraft = {
   protocolMode: DemoProtocolMode;
-  transportMode: DemoTransportMode;
+  transportMode: WebUiTransportMode;
   providerDisplayName: string;
   providerBaseUrl: string;
   apiKey: string;

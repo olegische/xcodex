@@ -103,6 +103,10 @@ wasm-webui-dev:
     ./wasm/scripts/build-web-runtime.sh --app apps/webui --runtime wasm
     cd wasm/apps/webui && npm run dev
 
+[no-cd]
+wasm-webui-dev-local-codex:
+    bash ./scripts/start-webui-with-local-codex.sh
+
 # Build the xcodex-wasm release tarball locally on macOS without touching the
 # GitHub release workflow.
 [no-cd]

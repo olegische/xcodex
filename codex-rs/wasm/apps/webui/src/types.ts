@@ -5,6 +5,11 @@ export type ThreadSummary = {
   active: boolean;
 };
 
+export type ThreadGroupSummary = {
+  title: string;
+  threads: ThreadSummary[];
+};
+
 export type PendingApproval = {
   id: string;
   title: string;

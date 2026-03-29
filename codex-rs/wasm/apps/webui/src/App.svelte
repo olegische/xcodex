@@ -18,6 +18,7 @@
     refreshAccountAndModels,
     resetThread,
     saveProviderConfig,
+    selectThread,
     sendTurn,
     stopTurn,
     toggleInspectorTab,
@@ -69,6 +70,7 @@
   onComposerStop={() => void stopTurn()}
   onOpenSettings={openSettings}
   onResetThread={() => void resetThread()}
+  onSelectThread={(threadId) => void selectThread(threadId, workbenchModel.renderPlan)}
   onSelectInspector={(event) => toggleInspectorTab(event.detail.id, workbenchModel.renderPlan)}
   onSelectPlan={() => toggleInspectorTab("plan", workbenchModel.renderPlan)}
   onSelectStatus={() => toggleInspectorTab("status", workbenchModel.renderPlan)}
@@ -79,7 +81,7 @@
   providerSummary={workbenchModel.providerSummary}
   renderPlan={workbenchModel.renderPlan}
   {state}
-  threads={workbenchModel.threads}
+  threadGroups={workbenchModel.threadGroups}
   {uiSystem}
   workspaceFiles={workbenchModel.workspaceFiles}
 />

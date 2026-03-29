@@ -8,7 +8,7 @@
     PlanStepItem,
     RuntimeStatusSummary,
     SessionStatusItem,
-    ThreadSummary,
+    ThreadGroupSummary,
     WorkspaceFileSummary,
   } from "../types";
   import type { MetricItem, UiRenderPlan, UiSystemDocument } from "../ui/types";
@@ -17,7 +17,7 @@
   export let state: DemoState;
   export let renderPlan: UiRenderPlan;
   export let uiSystem: UiSystemDocument;
-  export let threads: ThreadSummary[] = [];
+  export let threadGroups: ThreadGroupSummary[] = [];
   export let approvals: PendingApproval[] = [];
   export let metrics: MetricItem[] = [];
   export let sessionStatus: SessionStatusItem[] = [];
@@ -38,6 +38,7 @@
   export let onOpenSettings: () => void;
   export let onComposerSend: () => void;
   export let onComposerStop: () => void;
+  export let onSelectThread: (threadId: string) => void;
 
   function toggleSidebar() {
     inspectorStore.toggleSidebar();
@@ -72,6 +73,7 @@
   {onComposerStop}
   {onOpenSettings}
   {onResetThread}
+  {onSelectThread}
   {onSelectInspector}
   {onSelectPlan}
   {onSelectStatus}
@@ -84,7 +86,7 @@
   sidebarFooterActions={shellActions.sidebarFooterActions}
   sidebarPrimaryAction={shellActions.sidebarPrimaryAction}
   {state}
-  {threads}
+  {threadGroups}
   {uiSystem}
   {workspaceFiles}
 />

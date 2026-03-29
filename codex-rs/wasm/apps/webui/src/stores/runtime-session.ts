@@ -8,6 +8,7 @@ import {
   resetCurrentThread,
   runTurnFromDraft,
   saveDraftProviderConfig,
+  selectExistingThread,
   type DemoState,
   type ProviderDraft,
   type SendTurnResult,
@@ -122,6 +123,16 @@ function createRuntimeSessionStore() {
       const session = get({ subscribe });
       const runtime = requireRuntime(session.state);
       const nextState = await resetCurrentThread(runtime, session.state);
+      update((current) => ({
+        ...current,
+        state: nextState,
+      }));
+      return nextState;
+    },
+    async selectThread(threadId: string) {
+      const session = get({ subscribe });
+      const runtime = requireRuntime(session.state);
+      const nextState = await selectExistingThread(runtime, session.state, threadId);
       update((current) => ({
         ...current,
         state: nextState,

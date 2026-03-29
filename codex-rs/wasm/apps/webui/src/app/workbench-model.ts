@@ -1,5 +1,4 @@
 import { buildMetrics, buildUiRenderPlan } from "../ui/renderer";
-import { buildThreadList } from "./utils";
 import { transportLabel, type DemoState, type ProviderDraft, type RuntimeActivity } from "../runtime";
 import type { PendingApproval } from "../types";
 import type { UiSystemDocument } from "../ui/types";
@@ -36,7 +35,7 @@ export function createWorkbenchModel(input: {
 
   return {
     providerSummary: transportLabel(input.providerDraft),
-    threads: buildThreadList(input.workspaceFiles),
+    threadGroups: input.state.threadGroups,
     approvals: input.approvals,
     composerDisabled: input.state.runtime === null || input.composerMessage.trim().length === 0 || input.running,
     routerStatus: buildRouterStatus(input.state, input.runtimeActivities, input.running),

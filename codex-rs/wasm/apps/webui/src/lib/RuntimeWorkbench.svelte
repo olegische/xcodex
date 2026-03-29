@@ -13,7 +13,7 @@
     PlanStepItem,
     RuntimeStatusSummary,
     SessionStatusItem,
-    ThreadSummary,
+    ThreadGroupSummary,
     WorkspaceFileSummary,
   } from "../types";
   import type { InspectorTab, MetricItem, ShellActionSpec, UiRenderPlan, UiSystemDocument } from "../ui/types";
@@ -21,7 +21,7 @@
   export let state: DemoState;
   export let renderPlan: UiRenderPlan;
   export let uiSystem: UiSystemDocument;
-  export let threads: ThreadSummary[] = [];
+  export let threadGroups: ThreadGroupSummary[] = [];
   export let approvals: PendingApproval[] = [];
   export let metrics: MetricItem[] = [];
   export let sessionStatus: SessionStatusItem[] = [];
@@ -51,6 +51,7 @@
   export let onOpenSettings: () => void;
   export let onComposerSend: () => void;
   export let onComposerStop: () => void;
+  export let onSelectThread: (threadId: string) => void;
 
   const SHELL_ACTION_HANDLERS = {
     toggle_sidebar: () => onToggleSidebar(),
@@ -188,11 +189,11 @@
     slot="sidebar"
     footerActions={sidebarFooterActions}
     primaryAction={sidebarPrimaryAction}
-    {threads}
+    {threadGroups}
     {routerStatus}
     {codexStatus}
     on:action={(event) => handleShellAction(event.detail)}
-    on:selectthread={() => onSelectInspector(new CustomEvent("selectinspector", { detail: { id: "mission" } }))}
+    on:selectthread={(event) => onSelectThread(event.detail)}
   />
 
   <div slot="main" class="main-column">

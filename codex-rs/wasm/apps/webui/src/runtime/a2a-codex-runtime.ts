@@ -135,7 +135,7 @@ export async function createA2ACodexRuntime(): Promise<BrowserRuntime> {
     };
   };
 
-  subscribeToNotifications((notification: ServerNotification) => {
+  const unsubscribeRuntimeEvents = subscribeToNotifications((notification: ServerNotification) => {
     emitRuntimeEvent({
       method: notification.method,
       params: ("params" in notification ? notification.params : null) as JsonValue,
@@ -177,6 +177,10 @@ export async function createA2ACodexRuntime(): Promise<BrowserRuntime> {
 
   return {
     protocolMode: "a2a",
+    async shutdown() {
+      unsubscribeRuntimeEvents();
+      await connection.shutdown();
+    },
     async readAccount() {
       const [authState, config] = await Promise.all([
         runtimeClient.loadAuthState(),
@@ -208,6 +212,9 @@ export async function createA2ACodexRuntime(): Promise<BrowserRuntime> {
     },
     async threadResume(params) {
       return await client.resumeThread(params);
+    },
+    async listThreads(params) {
+      return await client.listThreads(params);
     },
     async threadRead(params) {
       return await client.readThread(params);

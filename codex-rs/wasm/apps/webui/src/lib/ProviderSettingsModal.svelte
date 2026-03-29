@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
+  import { DEFAULT_LOCAL_CODEX_BASE_URL } from "../runtime/constants";
   import type { ProviderDraft } from "../runtime";
 
   const dispatch = createEventDispatcher<{
@@ -13,6 +14,21 @@
   export let open = false;
   export let disabled = false;
   export let draft: ProviderDraft;
+  let lastTransportMode = draft.transportMode;
+
+  $: if (draft.transportMode !== lastTransportMode) {
+    if (draft.transportMode === "local-codex") {
+      draft.providerDisplayName = "Local Codex";
+      if (
+        draft.providerBaseUrl.trim().length === 0 ||
+        draft.providerBaseUrl === "https://api.openai.com/v1" ||
+        draft.providerBaseUrl === "https://api.deepseek.com"
+      ) {
+        draft.providerBaseUrl = DEFAULT_LOCAL_CODEX_BASE_URL;
+      }
+    }
+    lastTransportMode = draft.transportMode;
+  }
 
   function closeModal() {
     dispatch("close");
@@ -70,6 +86,7 @@
         <label>
           <span>Transport</span>
           <select bind:value={draft.transportMode} disabled={disabled}>
+            <option value="local-codex">Local Codex</option>
             <option value="xrouter-browser">XRouter Browser</option>
             <option value="openai">OpenAI</option>
             <option value="openai-compatible">OpenAI-compatible</option>

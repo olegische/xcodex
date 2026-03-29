@@ -27,6 +27,7 @@ import {
   THREAD_BINDING_STORAGE_KEY,
   THREAD_RUNTIME_REVISION,
   THREAD_RUNTIME_REVISION_STORAGE_KEY,
+  TRANSPORT_MODE_STORAGE_KEY,
 } from "./constants";
 import type {
   AuthState,
@@ -34,6 +35,7 @@ import type {
   DemoProtocolMode,
   DemoInstructions,
   InstructionSnapshot,
+  WebUiTransportMode,
 } from "./types";
 import { normalizeCodexConfig, normalizeDemoInstructions } from "./utils";
 
@@ -123,6 +125,25 @@ export async function loadStoredProtocolMode(): Promise<DemoProtocolMode> {
 
 export async function saveStoredProtocolMode(protocolMode: DemoProtocolMode): Promise<void> {
   window.localStorage.setItem(PROTOCOL_MODE_STORAGE_KEY, protocolMode);
+}
+
+export async function loadStoredTransportMode(): Promise<WebUiTransportMode> {
+  const value = window.localStorage.getItem(TRANSPORT_MODE_STORAGE_KEY);
+  if (
+    value === "local-codex" ||
+    value === "xrouter-browser" ||
+    value === "openai" ||
+    value === "openai-compatible"
+  ) {
+    return value;
+  }
+  return "xrouter-browser";
+}
+
+export async function saveStoredTransportMode(
+  transportMode: WebUiTransportMode,
+): Promise<void> {
+  window.localStorage.setItem(TRANSPORT_MODE_STORAGE_KEY, transportMode);
 }
 
 export async function loadStoredResponsesBinding(): Promise<string | null> {
