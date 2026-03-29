@@ -66,6 +66,15 @@ prepare_current_dir() {
   local source_dir="$1"
   local target_root="$2"
   local current_dir="${target_root}/current"
+  local source_abs
+  local current_abs
+
+  source_abs="$(cd "${source_dir}" && pwd)"
+  current_abs="$(mkdir -p "${current_dir}" && cd "${current_dir}" && pwd)"
+
+  if [[ "${source_abs}" == "${current_abs}" ]]; then
+    return
+  fi
 
   rm -rf "${current_dir}"
   mkdir -p "${current_dir}"
@@ -181,8 +190,21 @@ PUBLIC_XROUTER_PKG_ROOT="${APP_DIR}/public/xrouter-browser"
 
 DEFAULT_XCODEX_WASM_TARBALL="https://github.com/olegische/xcodex/releases/download/xcodex-wasm/xcodex-wasm.tar.gz"
 DEFAULT_XROUTER_BROWSER_TARBALL="https://github.com/olegische/xrouter/releases/download/xrouter-browser-main/xrouter-browser-main.tar.gz"
-XCODEX_WASM_TARBALL_SOURCE="${XCODEX_WASM_TARBALL:-${DEFAULT_XCODEX_WASM_TARBALL}}"
-XROUTER_BROWSER_TARBALL_SOURCE="${XROUTER_BROWSER_TARBALL:-${DEFAULT_XROUTER_BROWSER_TARBALL}}"
+LOCAL_XCODEX_WASM_TARBALL="${CODEX_RS_ROOT}/../dist/xcodex-wasm.tar.gz"
+LOCAL_XROUTER_BROWSER_DIR="${XROUTER_PKG_ROOT}/current"
+LOCAL_XROUTER_BROWSER_PUBLIC_DIR="${PUBLIC_XROUTER_PKG_ROOT}/current"
+if [[ -n "${XCODEX_WASM_TARBALL:-}" ]]; then
+  XCODEX_WASM_TARBALL_SOURCE="${XCODEX_WASM_TARBALL}"
+elif [[ -f "${LOCAL_XCODEX_WASM_TARBALL}" ]]; then
+  XCODEX_WASM_TARBALL_SOURCE="${LOCAL_XCODEX_WASM_TARBALL}"
+else
+  XCODEX_WASM_TARBALL_SOURCE="${DEFAULT_XCODEX_WASM_TARBALL}"
+fi
+if [[ -n "${XROUTER_BROWSER_TARBALL:-}" ]]; then
+  XROUTER_BROWSER_TARBALL_SOURCE="${XROUTER_BROWSER_TARBALL}"
+else
+  XROUTER_BROWSER_TARBALL_SOURCE="${DEFAULT_XROUTER_BROWSER_TARBALL}"
+fi
 
 TMP_DIR="$(mktemp -d)"
 trap '[[ -n "${TMP_DIR:-}" ]] && rm -rf "${TMP_DIR}"' EXIT
@@ -200,21 +222,36 @@ mkdir -p \
   "${XCODEX_UNPACK_DIR}" \
   "${XROUTER_UNPACK_DIR}"
 
-echo "Downloading xcodex-wasm tarball..."
+echo "Downloading xcodex-wasm tarball from ${XCODEX_WASM_TARBALL_SOURCE}..."
 download_if_url "${XCODEX_WASM_TARBALL_SOURCE}" "${XCODEX_TARBALL_PATH}"
-
-echo "Downloading xrouter-browser tarball..."
-download_if_url "${XROUTER_BROWSER_TARBALL_SOURCE}" "${XROUTER_TARBALL_PATH}"
 
 echo "Extracting xcodex-wasm tarball..."
 tar -xzf "${XCODEX_TARBALL_PATH}" -C "${XCODEX_UNPACK_DIR}"
 
-echo "Extracting xrouter-browser tarball..."
-tar -xzf "${XROUTER_TARBALL_PATH}" -C "${XROUTER_UNPACK_DIR}"
-
 XCODEX_BUNDLE_DIR="$(find_dir_with_files "${XCODEX_UNPACK_DIR}" manifest.json current)"
 XCODEX_CURRENT_DIR="${XCODEX_BUNDLE_DIR}/current"
-XROUTER_SOURCE_DIR="$(find_dir_with_files "${XROUTER_UNPACK_DIR}" xrouter_browser.js xrouter_browser_bg.wasm)"
+
+if [[ -n "${XROUTER_BROWSER_TARBALL:-}" ]]; then
+  echo "Downloading xrouter-browser tarball from ${XROUTER_BROWSER_TARBALL_SOURCE}..."
+  download_if_url "${XROUTER_BROWSER_TARBALL_SOURCE}" "${XROUTER_TARBALL_PATH}"
+
+  echo "Extracting xrouter-browser tarball..."
+  tar -xzf "${XROUTER_TARBALL_PATH}" -C "${XROUTER_UNPACK_DIR}"
+  XROUTER_SOURCE_DIR="$(find_dir_with_files "${XROUTER_UNPACK_DIR}" xrouter_browser.js xrouter_browser_bg.wasm)"
+elif [[ -f "${LOCAL_XROUTER_BROWSER_DIR}/xrouter_browser.js" && -f "${LOCAL_XROUTER_BROWSER_DIR}/xrouter_browser_bg.wasm" ]]; then
+  XROUTER_SOURCE_DIR="${LOCAL_XROUTER_BROWSER_DIR}"
+  echo "Using existing xrouter-browser assets from ${XROUTER_SOURCE_DIR}"
+elif [[ -f "${LOCAL_XROUTER_BROWSER_PUBLIC_DIR}/xrouter_browser.js" && -f "${LOCAL_XROUTER_BROWSER_PUBLIC_DIR}/xrouter_browser_bg.wasm" ]]; then
+  XROUTER_SOURCE_DIR="${LOCAL_XROUTER_BROWSER_PUBLIC_DIR}"
+  echo "Using existing xrouter-browser assets from ${XROUTER_SOURCE_DIR}"
+else
+  echo "Downloading xrouter-browser tarball from ${XROUTER_BROWSER_TARBALL_SOURCE}..."
+  download_if_url "${XROUTER_BROWSER_TARBALL_SOURCE}" "${XROUTER_TARBALL_PATH}"
+
+  echo "Extracting xrouter-browser tarball..."
+  tar -xzf "${XROUTER_TARBALL_PATH}" -C "${XROUTER_UNPACK_DIR}"
+  XROUTER_SOURCE_DIR="$(find_dir_with_files "${XROUTER_UNPACK_DIR}" xrouter_browser.js xrouter_browser_bg.wasm)"
+fi
 
 if [[ ! -f "${XCODEX_BUNDLE_DIR}/manifest.json" ]]; then
   echo "xcodex-wasm tarball does not contain manifest.json" >&2

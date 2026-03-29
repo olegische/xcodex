@@ -11,11 +11,16 @@ import {
 import {
   configurePageTelemetry,
 } from "@browser-codex/wasm-browser-tools";
+import {
+  createCodexOpenAIClient,
+  createRpcCodexConnection,
+} from "xcodex-sdk";
 import { emitRuntimeActivity } from "./activity";
 import { emitRuntimeEvent } from "./events";
 import { installRuntimeActivityBridge } from "./notifications";
 import {
   loadStoredDemoInstructions,
+  saveStoredThreadBinding,
   webUiRuntimeStorage,
 } from "./storage";
 import {
@@ -31,7 +36,7 @@ import type {
   RuntimeEvent,
 } from "./types";
 
-export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
+export async function createResponsesCodexRuntime(): Promise<BrowserRuntime> {
   configurePageTelemetry({
     emitActivity(activity) {
       emitRuntimeActivity({
@@ -134,8 +139,48 @@ export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
     } satisfies RuntimeEvent);
   });
 
+  const connection = createRpcCodexConnection({
+    request: async (request) => {
+      switch (request.method) {
+        case "thread/start": {
+          const response = await client.startThread(request.params);
+          await saveStoredThreadBinding(response.thread.id);
+          return response;
+        }
+        case "turn/start":
+          return await client.startTurn(request.params);
+        case "turn/interrupt":
+          return await client.interruptTurn(request.params);
+        default:
+          throw new Error(`Unsupported app-server request in responses runtime: ${request.method}`);
+      }
+    },
+    async notify() {},
+    async resolveServerRequest() {},
+    async rejectServerRequest() {},
+    subscribe(listener) {
+      const unsubscribe = subscribeToNotifications((notification) => {
+        listener({
+          type: "notification",
+          notification,
+        });
+      });
+      return () => {
+        unsubscribe();
+      };
+    },
+    async shutdown() {},
+  });
+
+  const openai = createCodexOpenAIClient({
+    connection,
+    apiKey: "xcodex-webui-local",
+    baseURL: "https://xcodex.local/v1",
+    defaultCwd: "/workspace",
+  });
+
   return {
-    protocolMode: "app-server",
+    protocolMode: "responses-api",
     async readAccount() {
       const [authState, config] = await Promise.all([
         runtimeClient.loadAuthState(),
@@ -178,6 +223,29 @@ export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
       return await client.interruptTurn(params);
     },
     subscribeToNotifications,
+    async runResponsesTurn(request) {
+      const stream = openai.responses.stream({
+        model: request.model,
+        input: request.message,
+        previous_response_id: request.previousResponseId,
+        reasoning:
+          request.reasoningEffort === null
+            ? undefined
+            : {
+                effort: request.reasoningEffort,
+              },
+      });
+
+      for await (const _event of stream) {
+        // Underlying app-server notifications are bridged separately into webui state.
+      }
+
+      const response = await stream.finalResponse();
+      return {
+        responseId: response.id,
+        output: typeof response.output_text === "string" ? response.output_text : "",
+      };
+    },
     async loadAuthState() {
       return await client.loadAuthState();
     },

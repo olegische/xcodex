@@ -19,6 +19,7 @@ export type {
   AuthState,
   BrowserRuntime,
   CodexCompatibleConfig,
+  DemoProtocolMode,
   DemoState,
   DemoTransportMode,
   ModelPreset,

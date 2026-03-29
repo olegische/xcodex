@@ -4,19 +4,25 @@ import {
 } from "xcodex-embedded-client/config";
 import { DEFAULT_DEMO_INSTRUCTIONS } from "./constants";
 import { createBrowserCodexRuntime } from "./browser-codex-runtime";
+import { createResponsesCodexRuntime } from "./responses-codex-runtime";
 import { webUiModelTransportAdapter } from "./transport-adapter";
 import { buildOutputFromEvents, threadToTranscript } from "./transcript";
 import {
   clearStoredAuthState,
   clearStoredCodexConfig,
+  clearStoredResponsesBinding,
   clearStoredThreadBinding,
   deleteStoredThreadSession,
   loadStoredAuthState,
   loadStoredCodexConfig,
   loadStoredDemoInstructions,
+  loadStoredProtocolMode,
+  loadStoredResponsesBinding,
   loadStoredThreadBinding,
   saveStoredAuthState,
   saveStoredCodexConfig,
+  saveStoredProtocolMode,
+  saveStoredResponsesBinding,
   saveStoredThreadBinding,
   syncStoredThreadRuntimeRevision,
 } from "./storage";
@@ -26,6 +32,7 @@ import type {
   AuthState,
   BrowserRuntime,
   CodexCompatibleConfig,
+  DemoProtocolMode,
   DemoState,
   JsonValue,
   ModelPreset,
@@ -40,6 +47,7 @@ export function createInitialState(): DemoState {
   return {
     status: "Loading WASM runtime…",
     isError: false,
+    protocolMode: "app-server",
     runtime: null,
     authState: null,
     codexConfig: structuredClone(DEFAULT_CODEX_CONFIG),
@@ -53,7 +61,10 @@ export function createInitialState(): DemoState {
   };
 }
 
-export async function loadRuntime(): Promise<BrowserRuntime> {
+export async function loadRuntime(protocolMode: DemoProtocolMode): Promise<BrowserRuntime> {
+  if (protocolMode === "responses-api") {
+    return await createResponsesCodexRuntime();
+  }
   return await createBrowserCodexRuntime();
 }
 
@@ -114,6 +125,41 @@ export async function runChatTurn(
   if (codexConfig.model.trim().length === 0) {
     throw new Error("Select a model before sending a message.");
   }
+  if (runtime.protocolMode === "responses-api") {
+    const previousResponseId = await loadStoredResponsesBinding();
+    const result = await runtime.runResponsesTurn?.({
+      message,
+      model: codexConfig.model.trim(),
+      previousResponseId,
+      reasoningEffort: normalizeResponsesReasoningEffort(codexConfig.modelReasoningEffort),
+    });
+    if (result === undefined) {
+      throw new Error("Responses runtime is not available.");
+    }
+    await saveStoredResponsesBinding(result.responseId);
+    const threadId = await loadStoredThreadBinding();
+    const nextTranscript =
+      threadId === null
+        ? [
+            { role: "user" as const, text: message },
+            { role: "assistant" as const, text: result.output },
+          ]
+        : threadToTranscript(
+            (
+              await runtime.threadRead({
+                threadId,
+                includeTurns: true,
+              })
+            ).thread,
+          );
+    return {
+      transcript: nextTranscript,
+      output: result.output,
+      nextTurnCounter: turnCounter + 1,
+      turnId: result.responseId,
+      events: [],
+    };
+  }
   const threadId = await ensureThread(runtime);
   const turnEvents = await collectTurnNotifications(runtime, async () => {
     const response = await runtime.turnStart({
@@ -151,7 +197,10 @@ export async function resetThread(): Promise<void> {
   if (threadId !== null) {
     await deleteStoredThreadSession(threadId);
   }
-  await clearStoredThreadBinding();
+  await Promise.all([
+    clearStoredThreadBinding(),
+    clearStoredResponsesBinding(),
+  ]);
 }
 
 export async function bootstrapWebUi(): Promise<WebUiBootstrap> {
@@ -174,7 +223,7 @@ export async function bootstrapWebUi(): Promise<WebUiBootstrap> {
   return {
     runtime: nextState.runtime,
     state: nextState,
-    providerDraft: draftFromConfig(nextState.codexConfig),
+    providerDraft: draftFromConfig(nextState.codexConfig, nextState.protocolMode),
   };
 }
 
@@ -196,9 +245,11 @@ export async function refreshAccountAndModelsFromDraft(
   state: DemoState,
   draft: ProviderDraft,
 ): Promise<{ state: DemoState; providerDraft: ProviderDraft }> {
+  await saveStoredProtocolMode(draft.protocolMode);
   const saved = await saveProviderConfig(runtime, buildCodexConfig(state.codexConfig, draft));
   const refreshed = await refreshAccountAndModels(runtime, {
     ...state,
+    protocolMode: draft.protocolMode,
     authState: saved.authState,
     codexConfig: saved.codexConfig,
     status: "Provider config applied.",
@@ -206,7 +257,7 @@ export async function refreshAccountAndModelsFromDraft(
   });
   return {
     state: refreshed,
-    providerDraft: draftFromConfig(refreshed.codexConfig),
+    providerDraft: draftFromConfig(refreshed.codexConfig, refreshed.protocolMode),
   };
 }
 
@@ -215,9 +266,11 @@ export async function saveDraftProviderConfig(
   state: DemoState,
   draft: ProviderDraft,
 ): Promise<{ state: DemoState; providerDraft: ProviderDraft }> {
+  await saveStoredProtocolMode(draft.protocolMode);
   const saved = await saveProviderConfig(runtime, buildCodexConfig(state.codexConfig, draft));
   const refreshed = await refreshAccountAndModels(runtime, {
     ...state,
+    protocolMode: draft.protocolMode,
     authState: saved.authState,
     codexConfig: saved.codexConfig,
     status: "Provider config saved.",
@@ -225,7 +278,7 @@ export async function saveDraftProviderConfig(
   });
   return {
     state: refreshed,
-    providerDraft: draftFromConfig(refreshed.codexConfig),
+    providerDraft: draftFromConfig(refreshed.codexConfig, refreshed.protocolMode),
   };
 }
 
@@ -248,7 +301,7 @@ export async function clearSavedAuth(
       status: "Browser auth cleared.",
       isError: false,
     },
-    providerDraft: draftFromConfig(cleared.codexConfig),
+    providerDraft: draftFromConfig(cleared.codexConfig, state.protocolMode),
   };
 }
 
@@ -278,7 +331,7 @@ export async function runTurnFromDraft(
       status: "Turn completed.",
       isError: false,
     },
-    providerDraft: draftFromConfig(codexConfig),
+    providerDraft: draftFromConfig(codexConfig, state.protocolMode),
     result,
   };
 }
@@ -295,10 +348,11 @@ export async function resetCurrentThread(runtime: BrowserRuntime, state: DemoSta
   };
 }
 
-export function draftFromConfig(config: CodexCompatibleConfig): ProviderDraft {
+export function draftFromConfig(config: CodexCompatibleConfig, protocolMode: DemoProtocolMode): ProviderDraft {
   const activeProvider = config.modelProviders[config.modelProvider];
   const providerKind = activeProvider?.providerKind ?? "openai";
   return {
+    protocolMode,
     transportMode:
       providerKind === "xrouter_browser"
         ? "xrouter-browser"
@@ -331,13 +385,14 @@ export function buildCodexConfig(base: CodexCompatibleConfig, draft: ProviderDra
 }
 
 export function transportLabel(draft: ProviderDraft): string {
+  const protocolLabel = draft.protocolMode === "responses-api" ? "Responses API" : "App Server";
   if (draft.transportMode === "xrouter-browser") {
-    return `XRouter Browser / ${providerPresetLabel(draft.xrouterProvider)}`;
+    return `${protocolLabel} / XRouter Browser / ${providerPresetLabel(draft.xrouterProvider)}`;
   }
   if (draft.transportMode === "openai-compatible") {
-    return "OpenAI-compatible";
+    return `${protocolLabel} / OpenAI-compatible`;
   }
-  return "OpenAI";
+  return `${protocolLabel} / OpenAI`;
 }
 
 function providerPresetLabel(provider: XrouterProvider): string {
@@ -385,10 +440,11 @@ async function ensureThread(runtime: BrowserRuntime): Promise<string> {
 }
 
 async function hydrateState(): Promise<Partial<DemoState>> {
-  const [authState, codexConfig, demoInstructions, revisionChanged, threadId] = await Promise.all([
+  const [authState, codexConfig, demoInstructions, protocolMode, revisionChanged, threadId] = await Promise.all([
     loadStoredAuthState(),
     loadStoredCodexConfig(),
     loadStoredDemoInstructions(),
+    loadStoredProtocolMode(),
     syncStoredThreadRuntimeRevision(),
     loadStoredThreadBinding(),
   ]);
@@ -402,6 +458,7 @@ async function hydrateState(): Promise<Partial<DemoState>> {
     authState,
     codexConfig,
     demoInstructions,
+    protocolMode,
     transcript: [],
     runtime: null,
   };
@@ -428,10 +485,10 @@ async function syncBootstrapState(state: DemoState): Promise<DemoState> {
     ...state.codexConfig,
     model: selectModelId(modelResult.data, state.codexConfig.model),
   };
-  const runtime = codexConfig.model.length > 0 ? await loadRuntime() : null;
+  const runtime = codexConfig.model.length > 0 ? await loadRuntime(state.protocolMode) : null;
   let transcript = state.transcript;
   const activeThreadId = await loadStoredThreadBinding();
-  if (runtime !== null && activeThreadId !== null) {
+  if (runtime !== null && runtime.protocolMode === "app-server" && activeThreadId !== null) {
     const resumed = await runtime.threadResume({
       threadId: activeThreadId,
       persistExtendedHistory: true,
@@ -467,6 +524,17 @@ async function syncBootstrapState(state: DemoState): Promise<DemoState> {
           ? "Select a model to enter the terminal."
           : "Runtime ready.",
   };
+}
+
+function normalizeResponsesReasoningEffort(value: string | null): "low" | "medium" | "high" | null {
+  switch (value) {
+    case "low":
+    case "medium":
+    case "high":
+      return value;
+    default:
+      return null;
+  }
 }
 
 export { formatError };

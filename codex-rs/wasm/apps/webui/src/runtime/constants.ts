@@ -3,6 +3,8 @@ import { DEFAULT_DEMO_BASE_INSTRUCTIONS } from "./default-demo-instructions";
 
 export const THREAD_SLOT_ID = "codex-browser-terminal-thread";
 export const THREAD_BINDING_STORAGE_KEY = "codex.wasm.thread-binding.codex-browser-terminal";
+export const RESPONSES_BINDING_STORAGE_KEY = "codex.wasm.responses-binding.codex-browser-terminal";
+export const PROTOCOL_MODE_STORAGE_KEY = "codex.wasm.protocol-mode.codex-browser-terminal";
 export const THREAD_RUNTIME_REVISION_STORAGE_KEY = "codex.wasm.thread-revision.codex-browser-terminal";
 export const THREAD_RUNTIME_REVISION = "protocol-first-ledger-v2";
 export const DB_NAME = "codex-wasm-browser-terminal";
