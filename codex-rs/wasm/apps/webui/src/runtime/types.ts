@@ -46,6 +46,8 @@ export type UserInstructions = {
   text: string;
 };
 
+export type DemoProtocolMode = "app-server" | "responses-api" | "a2a";
+
 export type SkillInstructions = {
   name: string;
   path: string;
@@ -131,6 +133,7 @@ export type WorkspaceDebugFile = {
 export type DemoState = {
   status: string;
   isError: boolean;
+  protocolMode: DemoProtocolMode;
   runtime: BrowserRuntime | null;
   authState: AuthState | null;
   codexConfig: CodexCompatibleConfig;
@@ -144,6 +147,7 @@ export type DemoState = {
 };
 
 export type BrowserRuntime = {
+  protocolMode: DemoProtocolMode;
   readAccount(request: { refreshToken: boolean }): Promise<{
     account: Account | null;
     requiresOpenaiAuth: boolean;
@@ -154,12 +158,24 @@ export type BrowserRuntime = {
   turnStart(params: TurnStartParams): Promise<TurnStartResponse>;
   turnInterrupt(params: TurnInterruptParams): Promise<TurnInterruptResponse>;
   subscribeToNotifications(listener: (notification: ServerNotification) => void): () => void;
+  runResponsesTurn?(request: {
+    message: string;
+    model: string;
+    previousResponseId: string | null;
+    reasoningEffort: "low" | "medium" | "high" | null;
+  }): Promise<ResponsesTurnResult>;
+  runA2ATurn?(request: {
+    message: string;
+    model: string;
+    previousTaskId: string | null;
+  }): Promise<A2ATurnResult>;
 } & Pick<
   BrowserRuntimeClient,
   "loadAuthState" | "saveAuthState" | "clearAuthState" | "listModels"
 >;
 
 export type ProviderDraft = {
+  protocolMode: DemoProtocolMode;
   transportMode: DemoTransportMode;
   providerDisplayName: string;
   providerBaseUrl: string;
@@ -182,4 +198,15 @@ export type SendTurnResult = {
   output: string;
   turnId: string;
   events: RuntimeEvent[];
+};
+
+export type ResponsesTurnResult = {
+  responseId: string;
+  output: string;
+};
+
+export type A2ATurnResult = {
+  taskId: string;
+  output: string;
+  transcript: TranscriptEntry[];
 };

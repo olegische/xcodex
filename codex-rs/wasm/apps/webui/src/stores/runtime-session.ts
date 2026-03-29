@@ -25,6 +25,7 @@ type RuntimeTurnOutcome = {
 };
 
 const initialProviderDraft: ProviderDraft = {
+  protocolMode: "app-server",
   transportMode: "xrouter-browser",
   providerDisplayName: "DeepSeek via XRouter Browser",
   providerBaseUrl: "https://api.deepseek.com",

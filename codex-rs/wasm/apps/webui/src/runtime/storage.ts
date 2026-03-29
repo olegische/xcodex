@@ -17,10 +17,13 @@ import type {
   StoredThreadSessionMetadata,
 } from "xcodex-embedded-client/types";
 import {
+  A2A_TASK_BINDING_STORAGE_KEY,
   DB_NAME,
   DB_VERSION,
   DEFAULT_DEMO_INSTRUCTIONS,
   INSTRUCTIONS_STORAGE_KEY,
+  PROTOCOL_MODE_STORAGE_KEY,
+  RESPONSES_BINDING_STORAGE_KEY,
   THREAD_BINDING_STORAGE_KEY,
   THREAD_RUNTIME_REVISION,
   THREAD_RUNTIME_REVISION_STORAGE_KEY,
@@ -28,6 +31,7 @@ import {
 import type {
   AuthState,
   CodexCompatibleConfig,
+  DemoProtocolMode,
   DemoInstructions,
   InstructionSnapshot,
 } from "./types";
@@ -107,6 +111,60 @@ export async function saveStoredThreadBinding(threadId: string): Promise<void> {
 
 export async function clearStoredThreadBinding(): Promise<void> {
   window.localStorage.removeItem(THREAD_BINDING_STORAGE_KEY);
+}
+
+export async function loadStoredProtocolMode(): Promise<DemoProtocolMode> {
+  const value = window.localStorage.getItem(PROTOCOL_MODE_STORAGE_KEY);
+  if (value === "responses-api" || value === "a2a") {
+    return value;
+  }
+  return "app-server";
+}
+
+export async function saveStoredProtocolMode(protocolMode: DemoProtocolMode): Promise<void> {
+  window.localStorage.setItem(PROTOCOL_MODE_STORAGE_KEY, protocolMode);
+}
+
+export async function loadStoredResponsesBinding(): Promise<string | null> {
+  const value = window.localStorage.getItem(RESPONSES_BINDING_STORAGE_KEY);
+  if (value === null) {
+    return null;
+  }
+  const responseId = value.trim();
+  return responseId.length === 0 ? null : responseId;
+}
+
+export async function saveStoredResponsesBinding(responseId: string): Promise<void> {
+  const normalizedResponseId = responseId.trim();
+  if (normalizedResponseId.length === 0) {
+    throw new Error("cannot persist an empty response id");
+  }
+  window.localStorage.setItem(RESPONSES_BINDING_STORAGE_KEY, normalizedResponseId);
+}
+
+export async function clearStoredResponsesBinding(): Promise<void> {
+  window.localStorage.removeItem(RESPONSES_BINDING_STORAGE_KEY);
+}
+
+export async function loadStoredA2ATaskBinding(): Promise<string | null> {
+  const value = window.localStorage.getItem(A2A_TASK_BINDING_STORAGE_KEY);
+  if (value === null) {
+    return null;
+  }
+  const taskId = value.trim();
+  return taskId.length === 0 ? null : taskId;
+}
+
+export async function saveStoredA2ATaskBinding(taskId: string): Promise<void> {
+  const normalizedTaskId = taskId.trim();
+  if (normalizedTaskId.length === 0) {
+    throw new Error("cannot persist an empty A2A task id");
+  }
+  window.localStorage.setItem(A2A_TASK_BINDING_STORAGE_KEY, normalizedTaskId);
+}
+
+export async function clearStoredA2ATaskBinding(): Promise<void> {
+  window.localStorage.removeItem(A2A_TASK_BINDING_STORAGE_KEY);
 }
 
 export async function syncStoredThreadRuntimeRevision(): Promise<boolean> {

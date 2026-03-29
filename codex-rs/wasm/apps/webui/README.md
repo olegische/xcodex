@@ -50,8 +50,14 @@ This refresh step prepares:
 
 If you want to audit how browser routing, provider access, and API-key handling work, start there.
 
-By default, the runtime pull step downloads both release tarballs from GitHub.
-You can override that with:
+By default, the runtime pull step prefers a local `dist/xcodex-wasm.tar.gz`
+from the repository root when it exists, and falls back to the GitHub release
+tarball otherwise.
+
+`xrouter-browser` reuses the already installed local `xrouter-browser-pkg/current`
+bundle when present, and otherwise falls back to the GitHub release tarball.
+
+You can override either source explicitly with:
 
 - `XCODEX_WASM_TARBALL=/path/to/xcodex-wasm.tar.gz`
 - `XROUTER_BROWSER_TARBALL=/path/to/xrouter-browser.tar.gz`

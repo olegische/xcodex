@@ -59,6 +59,15 @@
       <form class="settings-form" on:submit|preventDefault={() => dispatch("save", draft)}>
       <div class="settings-grid">
         <label>
+          <span>Protocol</span>
+          <select bind:value={draft.protocolMode} disabled={disabled}>
+            <option value="app-server">App Server compatible</option>
+            <option value="responses-api">Responses API compatible</option>
+            <option value="a2a">Google A2A compatible</option>
+          </select>
+        </label>
+
+        <label>
           <span>Transport</span>
           <select bind:value={draft.transportMode} disabled={disabled}>
             <option value="xrouter-browser">XRouter Browser</option>

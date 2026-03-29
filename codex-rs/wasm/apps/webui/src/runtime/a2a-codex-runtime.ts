@@ -11,11 +11,18 @@ import {
 import {
   configurePageTelemetry,
 } from "@browser-codex/wasm-browser-tools";
+import {
+  createCodexA2AClient,
+  createRpcCodexConnection,
+} from "xcodex-sdk";
 import { emitRuntimeActivity } from "./activity";
 import { emitRuntimeEvent } from "./events";
 import { installRuntimeActivityBridge } from "./notifications";
 import {
+  clearStoredA2ATaskBinding,
   loadStoredDemoInstructions,
+  saveStoredA2ATaskBinding,
+  saveStoredThreadBinding,
   webUiRuntimeStorage,
 } from "./storage";
 import {
@@ -29,9 +36,10 @@ import type {
   BrowserRuntime,
   JsonValue,
   RuntimeEvent,
+  TranscriptEntry,
 } from "./types";
 
-export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
+export async function createA2ACodexRuntime(): Promise<BrowserRuntime> {
   configurePageTelemetry({
     emitActivity(activity) {
       emitRuntimeActivity({
@@ -134,8 +142,41 @@ export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
     } satisfies RuntimeEvent);
   });
 
+  const connection = createRpcCodexConnection({
+    request: async (request) => {
+      switch (request.method) {
+        case "thread/start": {
+          const response = await client.startThread(request.params);
+          await saveStoredThreadBinding(response.thread.id);
+          return response;
+        }
+        case "turn/start":
+          return await client.startTurn(request.params);
+        case "turn/interrupt":
+          return await client.interruptTurn(request.params);
+        default:
+          throw new Error(`Unsupported app-server request in A2A runtime: ${request.method}`);
+      }
+    },
+    async notify() {},
+    async resolveServerRequest() {},
+    async rejectServerRequest() {},
+    subscribe(listener) {
+      const unsubscribe = subscribeToNotifications((notification) => {
+        listener({
+          type: "notification",
+          notification,
+        });
+      });
+      return () => {
+        unsubscribe();
+      };
+    },
+    async shutdown() {},
+  });
+
   return {
-    protocolMode: "app-server",
+    protocolMode: "a2a",
     async readAccount() {
       const [authState, config] = await Promise.all([
         runtimeClient.loadAuthState(),
@@ -178,6 +219,80 @@ export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
       return await client.interruptTurn(params);
     },
     subscribeToNotifications,
+    async runA2ATurn(request) {
+      const a2a = await createCodexA2AClient({
+        connection,
+        baseUrl: "https://xcodex.local",
+        defaultModel: request.model,
+      });
+      let previousTaskId = request.previousTaskId;
+      if (previousTaskId !== null) {
+        const existingTask = await a2a.getTask({
+          id: previousTaskId,
+          historyLength: 1,
+        }).catch(() => null);
+        if (existingTask === null) {
+          previousTaskId = null;
+          await clearStoredA2ATaskBinding();
+        }
+      }
+      const stream = a2a.sendMessageStream({
+        message: {
+          kind: "message",
+          messageId: crypto.randomUUID(),
+          role: "user",
+          taskId: previousTaskId ?? undefined,
+          contextId: previousTaskId ?? undefined,
+          parts: [
+            {
+              kind: "text",
+              text: request.message,
+            },
+          ],
+        },
+      });
+
+      let taskId = request.previousTaskId;
+      let output = "";
+      for await (const event of stream) {
+        if (event.kind === "task") {
+          taskId = event.id;
+          continue;
+        }
+        if (event.kind === "artifact-update") {
+          if (event.artifact.artifactId.startsWith("assistant:")) {
+            for (const part of event.artifact.parts) {
+              if (part.kind === "text") {
+                output += part.text;
+              }
+            }
+          }
+          continue;
+        }
+        if (event.kind === "status-update" && event.status.state === "completed") {
+          const message = event.status.message;
+          if (message !== undefined && output.length === 0) {
+            output = message.parts
+              .flatMap((part) => (part.kind === "text" ? [part.text] : []))
+              .join("\n");
+          }
+        }
+      }
+
+      if (taskId === null) {
+        throw new Error("A2A runtime did not return a task id.");
+      }
+      const task = await a2a.getTask({
+        id: taskId,
+        historyLength: 200,
+      });
+      await saveStoredA2ATaskBinding(taskId);
+      return {
+        taskId,
+        output,
+        transcript: transcriptFromA2ATask(task.history),
+      };
+    },
     async loadAuthState() {
       return await client.loadAuthState();
     },
@@ -191,6 +306,32 @@ export async function createBrowserCodexRuntime(): Promise<BrowserRuntime> {
       return await client.listModels(request);
     },
   } as BrowserRuntime;
+}
+
+function transcriptFromA2ATask(
+  history: Array<{
+    role: "user" | "agent";
+    parts: Array<{ kind: string; text?: string }>;
+  }> | undefined,
+): TranscriptEntry[] {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+  return history.flatMap((message) => {
+    const text = message.parts
+      .flatMap((part) => (part.kind === "text" && typeof part.text === "string" ? [part.text] : []))
+      .join("\n")
+      .trim();
+    if (text.length === 0) {
+      return [];
+    }
+    return [
+      {
+        role: message.role === "agent" ? "assistant" : "user",
+        text,
+      } satisfies TranscriptEntry,
+    ];
+  });
 }
 
 function buildSkillInstructions(

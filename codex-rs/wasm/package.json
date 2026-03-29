@@ -15,6 +15,7 @@
     "ts/xcodex-sdk",
     "ts/model-transport",
     "ts/runtime-client",
-    "ts/runtime-core"
+    "ts/runtime-core",
+    "ts/xcodex-sdk"
   ]
 }
