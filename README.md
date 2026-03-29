@@ -42,6 +42,7 @@ Security boundary:
 
 Start here:
 
+- Public demo: [xcodex.chat](https://xcodex.chat/)
 - Official browser demo: [`codex-rs/wasm/apps/webui/README.md`](./codex-rs/wasm/apps/webui/README.md)
 
 That guide covers:

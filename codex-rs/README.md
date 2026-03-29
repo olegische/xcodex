@@ -2,6 +2,8 @@
 
 We provide Codex CLI as a standalone, native executable to ensure a zero-dependency install.
 
+For the browser-native fork track in this repository, you can also try the public XCodex WASM demo at [xcodex.chat](https://xcodex.chat/).
+
 ## Installing Codex
 
 Today, the easiest way to install Codex is via `npm`:
