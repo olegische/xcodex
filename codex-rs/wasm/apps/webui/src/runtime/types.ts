@@ -46,7 +46,7 @@ export type UserInstructions = {
   text: string;
 };
 
-export type DemoProtocolMode = "app-server" | "responses-api";
+export type DemoProtocolMode = "app-server" | "responses-api" | "a2a";
 
 export type SkillInstructions = {
   name: string;
@@ -164,6 +164,11 @@ export type BrowserRuntime = {
     previousResponseId: string | null;
     reasoningEffort: "low" | "medium" | "high" | null;
   }): Promise<ResponsesTurnResult>;
+  runA2ATurn?(request: {
+    message: string;
+    model: string;
+    previousTaskId: string | null;
+  }): Promise<A2ATurnResult>;
 } & Pick<
   BrowserRuntimeClient,
   "loadAuthState" | "saveAuthState" | "clearAuthState" | "listModels"
@@ -198,4 +203,10 @@ export type SendTurnResult = {
 export type ResponsesTurnResult = {
   responseId: string;
   output: string;
+};
+
+export type A2ATurnResult = {
+  taskId: string;
+  output: string;
+  transcript: TranscriptEntry[];
 };

@@ -3,17 +3,20 @@ import {
   XROUTER_PROVIDER_OPTIONS,
 } from "xcodex-embedded-client/config";
 import { DEFAULT_DEMO_INSTRUCTIONS } from "./constants";
+import { createA2ACodexRuntime } from "./a2a-codex-runtime";
 import { createBrowserCodexRuntime } from "./browser-codex-runtime";
 import { createResponsesCodexRuntime } from "./responses-codex-runtime";
 import { webUiModelTransportAdapter } from "./transport-adapter";
 import { buildOutputFromEvents, threadToTranscript } from "./transcript";
 import {
   clearStoredAuthState,
+  clearStoredA2ATaskBinding,
   clearStoredCodexConfig,
   clearStoredResponsesBinding,
   clearStoredThreadBinding,
   deleteStoredThreadSession,
   loadStoredAuthState,
+  loadStoredA2ATaskBinding,
   loadStoredCodexConfig,
   loadStoredDemoInstructions,
   loadStoredProtocolMode,
@@ -64,6 +67,9 @@ export function createInitialState(): DemoState {
 export async function loadRuntime(protocolMode: DemoProtocolMode): Promise<BrowserRuntime> {
   if (protocolMode === "responses-api") {
     return await createResponsesCodexRuntime();
+  }
+  if (protocolMode === "a2a") {
+    return await createA2ACodexRuntime();
   }
   return await createBrowserCodexRuntime();
 }
@@ -160,6 +166,25 @@ export async function runChatTurn(
       events: [],
     };
   }
+  if (runtime.protocolMode === "a2a") {
+    const previousTaskId = await loadStoredA2ATaskBinding();
+    const result = await runtime.runA2ATurn?.({
+      message,
+      model: codexConfig.model.trim(),
+      previousTaskId,
+    });
+    if (result === undefined) {
+      throw new Error("A2A runtime is not available.");
+    }
+    await saveStoredThreadBinding(result.taskId);
+    return {
+      transcript: result.transcript,
+      output: result.output,
+      nextTurnCounter: turnCounter + 1,
+      turnId: result.taskId,
+      events: [],
+    };
+  }
   const threadId = await ensureThread(runtime);
   const turnEvents = await collectTurnNotifications(runtime, async () => {
     const response = await runtime.turnStart({
@@ -200,6 +225,7 @@ export async function resetThread(): Promise<void> {
   await Promise.all([
     clearStoredThreadBinding(),
     clearStoredResponsesBinding(),
+    clearStoredA2ATaskBinding(),
   ]);
 }
 
@@ -385,7 +411,12 @@ export function buildCodexConfig(base: CodexCompatibleConfig, draft: ProviderDra
 }
 
 export function transportLabel(draft: ProviderDraft): string {
-  const protocolLabel = draft.protocolMode === "responses-api" ? "Responses API" : "App Server";
+  const protocolLabel =
+    draft.protocolMode === "responses-api"
+      ? "Responses API"
+      : draft.protocolMode === "a2a"
+        ? "Google A2A"
+        : "App Server";
   if (draft.transportMode === "xrouter-browser") {
     return `${protocolLabel} / XRouter Browser / ${providerPresetLabel(draft.xrouterProvider)}`;
   }
@@ -508,7 +539,6 @@ async function syncBootstrapState(state: DemoState): Promise<DemoState> {
       transcript = threadToTranscript(thread.thread);
     }
   }
-
   return {
     ...state,
     runtime,

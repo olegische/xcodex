@@ -63,6 +63,7 @@
           <select bind:value={draft.protocolMode} disabled={disabled}>
             <option value="app-server">App Server compatible</option>
             <option value="responses-api">Responses API compatible</option>
+            <option value="a2a">Google A2A compatible</option>
           </select>
         </label>
 

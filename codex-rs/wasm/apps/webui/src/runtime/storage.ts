@@ -17,6 +17,7 @@ import type {
   StoredThreadSessionMetadata,
 } from "xcodex-embedded-client/types";
 import {
+  A2A_TASK_BINDING_STORAGE_KEY,
   DB_NAME,
   DB_VERSION,
   DEFAULT_DEMO_INSTRUCTIONS,
@@ -114,7 +115,10 @@ export async function clearStoredThreadBinding(): Promise<void> {
 
 export async function loadStoredProtocolMode(): Promise<DemoProtocolMode> {
   const value = window.localStorage.getItem(PROTOCOL_MODE_STORAGE_KEY);
-  return value === "responses-api" ? "responses-api" : "app-server";
+  if (value === "responses-api" || value === "a2a") {
+    return value;
+  }
+  return "app-server";
 }
 
 export async function saveStoredProtocolMode(protocolMode: DemoProtocolMode): Promise<void> {
@@ -140,6 +144,27 @@ export async function saveStoredResponsesBinding(responseId: string): Promise<vo
 
 export async function clearStoredResponsesBinding(): Promise<void> {
   window.localStorage.removeItem(RESPONSES_BINDING_STORAGE_KEY);
+}
+
+export async function loadStoredA2ATaskBinding(): Promise<string | null> {
+  const value = window.localStorage.getItem(A2A_TASK_BINDING_STORAGE_KEY);
+  if (value === null) {
+    return null;
+  }
+  const taskId = value.trim();
+  return taskId.length === 0 ? null : taskId;
+}
+
+export async function saveStoredA2ATaskBinding(taskId: string): Promise<void> {
+  const normalizedTaskId = taskId.trim();
+  if (normalizedTaskId.length === 0) {
+    throw new Error("cannot persist an empty A2A task id");
+  }
+  window.localStorage.setItem(A2A_TASK_BINDING_STORAGE_KEY, normalizedTaskId);
+}
+
+export async function clearStoredA2ATaskBinding(): Promise<void> {
+  window.localStorage.removeItem(A2A_TASK_BINDING_STORAGE_KEY);
 }
 
 export async function syncStoredThreadRuntimeRevision(): Promise<boolean> {
