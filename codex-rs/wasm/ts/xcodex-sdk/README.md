@@ -29,8 +29,9 @@ SDK shape you want.
 npm install @xcodexai/sdk openai @a2a-js/sdk
 ```
 
-If you embed the Codex WASM runtime, keep that bootstrap in your own app and
-pass the resulting app-server connection into `@xcodexai/sdk`.
+If you embed the [XCodex WASM runtime](https://github.com/olegische/xcodex),
+keep that bootstrap in your own app and pass the resulting app-server
+connection into `@xcodexai/sdk`.
 
 ## Mental Model
 
