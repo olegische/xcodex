@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { JsonValue } from "@browser-codex/wasm-runtime-core/types";
+import type { JsonValue } from "../../../../app-server-protocol/schema/typescript/serde_json/JsonValue";
 import {
   asRecord,
   formatErrorMessage,

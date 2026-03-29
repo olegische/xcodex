@@ -3,16 +3,7 @@ import type { ClientRequest } from "../../../../app-server-protocol/schema/types
 import type { RequestId } from "../../../../app-server-protocol/schema/typescript/RequestId";
 import type { ServerNotification } from "../../../../app-server-protocol/schema/typescript/ServerNotification";
 import type { ServerRequest } from "../../../../app-server-protocol/schema/typescript/ServerRequest";
-import {
-  AppServerClient,
-  type AppServerClientEvent,
-  startBrowserAppServerClient,
-} from "@browser-codex/wasm-runtime-core";
-import type {
-  JsonValue,
-  RuntimeModule,
-  WasmProtocolRuntime,
-} from "@browser-codex/wasm-runtime-core/types";
+import type { JsonValue } from "../../../../app-server-protocol/schema/typescript/serde_json/JsonValue";
 
 export type ConnectionEvent =
   | { type: "notification"; notification: ServerNotification }
@@ -53,21 +44,6 @@ export type CodexRpcConnectionOptions = {
   shutdown?(): Promise<void>;
 };
 
-export type CodexAbiConnectionOptions =
-  | {
-      runtime: WasmProtocolRuntime;
-      clientName?: string;
-      clientVersion?: string;
-      experimentalApi?: boolean;
-      optOutNotificationMethods?: string[];
-      channelCapacity?: number;
-    }
-  | {
-      runtimeModule: RuntimeModule;
-      host: unknown;
-      experimentalApi?: boolean;
-    };
-
 export type CodexServerRequestHandler = (request: ServerRequest) => Promise<JsonValue>;
 
 export const JSON_HEADERS = {
@@ -91,24 +67,6 @@ export function createRpcCodexConnection(
     subscribe: options.subscribe,
     shutdown: options.shutdown,
   };
-}
-
-export async function createAbiCodexConnection(
-  options: CodexAbiConnectionOptions,
-): Promise<CodexAppServerConnection> {
-  const client =
-    "runtime" in options
-      ? await AppServerClient.start(options.runtime, {
-          clientName: options.clientName,
-          clientVersion: options.clientVersion,
-          experimentalApi: options.experimentalApi ?? true,
-          optOutNotificationMethods: options.optOutNotificationMethods,
-          channelCapacity: options.channelCapacity,
-        })
-      : await startBrowserAppServerClient(options.runtimeModule, options.host, {
-          experimentalApi: options.experimentalApi ?? true,
-        });
-  return createConnectionFromAppServerClient(client);
 }
 
 export async function defaultServerRequestHandler(request: ServerRequest): Promise<JsonValue> {
@@ -178,64 +136,4 @@ export function unixTimestampSeconds(): number {
 
 export function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function createConnectionFromAppServerClient(client: AppServerClient): CodexAppServerConnection {
-  const listeners = new Set<(event: ConnectionEvent) => void>();
-  void pumpEvents(client, listeners);
-  return {
-    request(request) {
-      return client.request(request);
-    },
-    notify(notification) {
-      return client.notify(notification);
-    },
-    resolveServerRequest(requestId, result) {
-      return client.resolveServerRequest(requestId, result);
-    },
-    rejectServerRequest(requestId, error) {
-      return client.rejectServerRequest(requestId, error);
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    shutdown() {
-      return client.shutdown();
-    },
-  };
-}
-
-async function pumpEvents(
-  client: AppServerClient,
-  listeners: Set<(event: ConnectionEvent) => void>,
-): Promise<void> {
-  while (true) {
-    const event = await client.nextEvent();
-    if (event === null) {
-      return;
-    }
-    const mapped = mapAppServerEvent(event);
-    if (mapped === null) {
-      continue;
-    }
-    for (const listener of listeners) {
-      listener(mapped);
-    }
-  }
-}
-
-function mapAppServerEvent(event: AppServerClientEvent): ConnectionEvent | null {
-  switch (event.type) {
-    case "notification":
-      return { type: "notification", notification: event.notification };
-    case "serverRequest":
-      return { type: "serverRequest", request: event.request };
-    case "lagged":
-      return { type: "lagged", skipped: event.skipped };
-    default:
-      return null;
-  }
 }

@@ -9,7 +9,7 @@ through familiar client APIs:
 - Google `A2A`
 
 The goal is straightforward: your app talks to official SDKs, while `xcodex-sdk`
-bridges those SDK calls into a local or embedded Codex runtime.
+bridges those SDK calls into a Codex app-server connection.
 
 ## What This Package Is
 
@@ -20,12 +20,8 @@ It is an adapter layer that sits between:
 - a Codex app-server connection
 - an official client SDK such as `openai` or `@a2a-js/sdk`
 
-Today it supports two integration styles:
-
-1. `ABI mode`
-   Connect directly to an in-process/browser WASM runtime via `createAbiCodexConnection(...)`.
-2. `RPC mode`
-   Bring your own app-server transport and expose it through `createRpcCodexConnection(...)`.
+You bring your own Codex app-server connection and project it into the client
+SDK shape you want.
 
 ## Installation
 
@@ -33,9 +29,8 @@ Today it supports two integration styles:
 npm install xcodex-sdk openai @a2a-js/sdk
 ```
 
-If you are using the Codex WASM runtime packages from this repo, you will
-typically also depend on the appropriate browser/runtime package that provides
-your runtime module and host integration.
+If you embed the Codex WASM runtime, keep that bootstrap in your own app and
+pass the resulting app-server connection into `xcodex-sdk`.
 
 ## Mental Model
 
@@ -64,7 +59,6 @@ lossless export of every internal app-server event.
 ### Connection factories
 
 - `createRpcCodexConnection(...)`
-- `createAbiCodexConnection(...)`
 
 ### OpenAI adapter
 
@@ -77,19 +71,22 @@ lossless export of every internal app-server event.
 - `createCodexA2AClient(...)`
 - `createCodexA2AFetch(...)`
 
-## Choosing RPC vs ABI
+## Connection Boundary
 
-Use `createAbiCodexConnection(...)` when:
+`xcodex-sdk` does not bootstrap a runtime for you.
 
-- your app embeds the Codex WASM runtime directly
-- you already have `runtimeModule + host` or a `WasmProtocolRuntime`
-- you want the shortest path from UI to runtime
+That boundary is intentional:
 
-Use `createRpcCodexConnection(...)` when:
+- your app owns runtime startup, transport, and host-specific wiring
+- `xcodex-sdk` owns protocol adaptation on top of an existing app-server connection
 
-- you already have your own transport layer
-- you are proxying app-server calls over websocket, postMessage, worker RPC, or another bridge
-- you do not want `xcodex-sdk` to own runtime bootstrap
+Use `createRpcCodexConnection(...)` to wrap whatever transport or host bridge
+you already have, including:
+
+- websocket or worker RPC
+- browser host bridges
+- embedded WASM runtime clients
+- custom app-server proxies
 
 ## Quickstart: OpenAI Responses
 
@@ -97,13 +94,26 @@ This is the main path if you want to reuse the official `openai` JavaScript SDK.
 
 ```ts
 import {
-  createAbiCodexConnection,
+  createRpcCodexConnection,
   createCodexOpenAIClient,
 } from "xcodex-sdk";
 
-const connection = await createAbiCodexConnection({
-  runtimeModule,
-  host,
+const connection = createRpcCodexConnection({
+  request: async (request) => {
+    return await myCodexTransport.request(request);
+  },
+  notify: async (notification) => {
+    await myCodexTransport.notify(notification);
+  },
+  resolveServerRequest: async (requestId, result) => {
+    await myCodexTransport.resolveServerRequest(requestId, result);
+  },
+  rejectServerRequest: async (requestId, error) => {
+    await myCodexTransport.rejectServerRequest(requestId, error);
+  },
+  subscribe(listener) {
+    return myCodexTransport.subscribe(listener);
+  },
 });
 
 const openai = createCodexOpenAIClient({
@@ -171,13 +181,26 @@ This path is built to work with the official `@a2a-js/sdk` client.
 
 ```ts
 import {
-  createAbiCodexConnection,
+  createRpcCodexConnection,
   createCodexA2AClient,
 } from "xcodex-sdk";
 
-const connection = await createAbiCodexConnection({
-  runtimeModule,
-  host,
+const connection = createRpcCodexConnection({
+  request: async (request) => {
+    return await myCodexTransport.request(request);
+  },
+  notify: async (notification) => {
+    await myCodexTransport.notify(notification);
+  },
+  resolveServerRequest: async (requestId, result) => {
+    await myCodexTransport.resolveServerRequest(requestId, result);
+  },
+  rejectServerRequest: async (requestId, error) => {
+    await myCodexTransport.rejectServerRequest(requestId, error);
+  },
+  subscribe(listener) {
+    return myCodexTransport.subscribe(listener);
+  },
 });
 
 const client = await createCodexA2AClient({
