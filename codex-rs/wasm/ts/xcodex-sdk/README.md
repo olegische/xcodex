@@ -9,16 +9,13 @@ app-server connection layer:
 - Google `A2A`
 - LangChain `Agent Protocol`
 
-The first implemented adapter is OpenAI compatibility. It lets you point the
-official `openai` JavaScript SDK at a Codex app-server connection instead of
-the network `Responses API`.
+Implemented adapters today:
 
-Current focus:
+- OpenAI `Responses API`
+- Google `A2A` v1
 
-- `responses.create()`
-- streaming via `client.responses.create({ ..., stream: true })`
-- in-memory `responses.retrieve()`
-- in-memory `responses.inputItems.list()`
+The SDK is built around one shared Codex app-server connection layer and then
+projects it into protocol-specific surfaces.
 
 The package exposes:
 
@@ -26,5 +23,68 @@ The package exposes:
   - `createRpcCodexConnection(...)`
   - `createAbiCodexConnection(...)`
 - OpenAI adapter:
-- `createCodexOpenAIClient(...)`
-- `createCodexResponsesFetch(...)`
+  - `createCodexOpenAIClient(...)`
+  - `createCodexResponsesFetch(...)`
+- A2A adapter:
+  - `createCodexA2AAgentCard(...)`
+  - `createCodexA2AClient(...)`
+  - `createCodexA2AFetch(...)`
+
+## OpenAI adapter
+
+This lets you point the official `openai` JavaScript SDK at a Codex
+app-server connection instead of the network `Responses API`.
+
+Currently implemented:
+
+- `responses.create()`
+- streaming `responses.create({ stream: true })`
+- in-memory `responses.retrieve()`
+- in-memory `responses.inputItems.list()`
+
+## A2A adapter
+
+This adapter is built to work with the official `@a2a-js/sdk` client.
+
+Current `A2A v1` scope:
+
+- `message/send`
+- `message/stream`
+- `tasks/get`
+- `tasks/cancel`
+- text input / text output
+- `Task = Thread` mapping
+
+Example:
+
+```ts
+import { createCodexA2AClient, createAbiCodexConnection } from "xcodex-sdk";
+
+const connection = await createAbiCodexConnection({
+  runtimeModule,
+  host,
+});
+
+const client = await createCodexA2AClient({
+  connection,
+  baseUrl: "https://xcodex.local",
+  defaultModel: "gpt-5",
+});
+
+const task = await client.sendMessage({
+  message: {
+    kind: "message",
+    messageId: crypto.randomUUID(),
+    role: "user",
+    parts: [{ kind: "text", text: "Summarize the repo status." }],
+  },
+});
+```
+
+Known tradeoffs in `A2A v1`:
+
+- approvals and elicitation are projected lossily
+- dynamic client-side tool calls are not represented losslessly
+- push notifications are not supported
+- task history is session-local and in-memory
+- `blocking`/advanced configuration fields are currently best-effort, not full fidelity
