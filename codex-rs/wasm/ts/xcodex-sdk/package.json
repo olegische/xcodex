@@ -1,5 +1,5 @@
 {
-  "name": "xcodex-sdk",
+  "name": "@xcodexai/sdk",
   "version": "0.1.0",
   "description": "Unified SDK for Codex App Server Protocol adapters, including OpenAI Responses and Google A2A compatibility.",
   "license": "Apache-2.0",

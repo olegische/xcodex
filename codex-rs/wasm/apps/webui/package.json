@@ -19,7 +19,7 @@
     "@browser-codex/wasm-model-transport": "file:../../ts/model-transport",
     "@browser-codex/wasm-runtime-core": "file:../../ts/runtime-core",
     "xcodex-embedded-client": "file:../../ts/embedded-client",
-    "xcodex-sdk": "file:../../ts/xcodex-sdk",
+    "@xcodexai/sdk": "file:../../ts/xcodex-sdk",
     "openai": "latest"
   }
 }

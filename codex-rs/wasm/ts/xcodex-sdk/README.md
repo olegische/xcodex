@@ -1,6 +1,6 @@
-# xcodex-sdk
+# @xcodexai/sdk
 
-`xcodex-sdk` is a frontend-friendly adapter SDK for the Codex app-server protocol.
+`@xcodexai/sdk` is a frontend-friendly adapter SDK for the Codex app-server protocol.
 
 It lets you keep `Codex app-server` as the execution/runtime layer and expose it
 through familiar client APIs:
@@ -8,7 +8,7 @@ through familiar client APIs:
 - OpenAI `Responses API`
 - Google `A2A`
 
-The goal is straightforward: your app talks to official SDKs, while `xcodex-sdk`
+The goal is straightforward: your app talks to official SDKs, while `@xcodexai/sdk`
 bridges those SDK calls into a Codex app-server connection.
 
 ## What This Package Is
@@ -26,15 +26,15 @@ SDK shape you want.
 ## Installation
 
 ```bash
-npm install xcodex-sdk openai @a2a-js/sdk
+npm install @xcodexai/sdk openai @a2a-js/sdk
 ```
 
 If you embed the Codex WASM runtime, keep that bootstrap in your own app and
-pass the resulting app-server connection into `xcodex-sdk`.
+pass the resulting app-server connection into `@xcodexai/sdk`.
 
 ## Mental Model
 
-`xcodex-sdk` keeps one shared Codex connection layer and projects it into
+`@xcodexai/sdk` keeps one shared Codex connection layer and projects it into
 protocol-specific shapes.
 
 ### OpenAI Responses
@@ -73,12 +73,12 @@ lossless export of every internal app-server event.
 
 ## Connection Boundary
 
-`xcodex-sdk` does not bootstrap a runtime for you.
+`@xcodexai/sdk` does not bootstrap a runtime for you.
 
 That boundary is intentional:
 
 - your app owns runtime startup, transport, and host-specific wiring
-- `xcodex-sdk` owns protocol adaptation on top of an existing app-server connection
+- `@xcodexai/sdk` owns protocol adaptation on top of an existing app-server connection
 
 Use `createRpcCodexConnection(...)` to wrap whatever transport or host bridge
 you already have, including:
@@ -96,7 +96,7 @@ This is the main path if you want to reuse the official `openai` JavaScript SDK.
 import {
   createRpcCodexConnection,
   createCodexOpenAIClient,
-} from "xcodex-sdk";
+} from "@xcodexai/sdk";
 
 const connection = createRpcCodexConnection({
   request: async (request) => {
@@ -150,10 +150,10 @@ console.log(finalResponse.output_text);
 
 ### Low-level Responses Fetch
 
-Use this if you do not want `xcodex-sdk` to instantiate `new OpenAI(...)` for you.
+Use this if you do not want `@xcodexai/sdk` to instantiate `new OpenAI(...)` for you.
 
 ```ts
-import { createCodexResponsesFetch } from "xcodex-sdk";
+import { createCodexResponsesFetch } from "@xcodexai/sdk";
 
 const fetch = createCodexResponsesFetch({
   connection,
@@ -183,7 +183,7 @@ This path is built to work with the official `@a2a-js/sdk` client.
 import {
   createRpcCodexConnection,
   createCodexA2AClient,
-} from "xcodex-sdk";
+} from "@xcodexai/sdk";
 
 const connection = createRpcCodexConnection({
   request: async (request) => {
@@ -250,7 +250,7 @@ Use this if you want to expose an A2A-compatible HTTP surface yourself or wire i
 into a custom client setup.
 
 ```ts
-import { createCodexA2AFetch } from "xcodex-sdk";
+import { createCodexA2AFetch } from "@xcodexai/sdk";
 
 const fetch = createCodexA2AFetch({
   connection,

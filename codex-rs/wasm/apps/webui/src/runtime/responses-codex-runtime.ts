@@ -14,7 +14,7 @@ import {
 import {
   createCodexOpenAIClient,
   createRpcCodexConnection,
-} from "xcodex-sdk";
+} from "@xcodexai/sdk";
 import { emitRuntimeActivity } from "./activity";
 import { emitRuntimeEvent } from "./events";
 import { installRuntimeActivityBridge } from "./notifications";
