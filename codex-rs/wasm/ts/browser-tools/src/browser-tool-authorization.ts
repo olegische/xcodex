@@ -95,6 +95,7 @@ type BrowserToolAuthorizationEntry = {
   discoveryScopes: string[];
   resolveInvokeScopes(input: JsonValue): string[];
   resolveProtectedOrigin?(context: BrowserToolRequestContext): string | null;
+  protectedOriginPolicy?: "allowlist" | "public_web";
   resolveTargetUrl?(input: JsonValue, currentPageUrl: string | null): string | null;
   enforceOriginPolicyInList?: boolean;
   approvalKind?: BrowserToolApprovalKind;
@@ -668,6 +669,7 @@ function resolveOriginAuthorizationDecision(
   const originDecision = authorizeProtectedOrigin(
     resolvedOrigin,
     context.browserSecurityPolicy,
+    entry.protectedOriginPolicy ?? "allowlist",
   );
   if (originDecision !== "allow") {
     return {
@@ -686,6 +688,7 @@ function resolveOriginAuthorizationDecision(
 function authorizeProtectedOrigin(
   origin: string,
   browserSecurityPolicy: BrowserSecurityPolicy,
+  policy: "allowlist" | "public_web",
 ):
   | "allow"
   | "origin_not_allowlisted"
@@ -704,9 +707,11 @@ function authorizeProtectedOrigin(
     return "private_network_not_allowed";
   }
 
-  return browserSecurityPolicy.allowedOrigins.includes(origin)
-    ? "allow"
-    : "origin_not_allowlisted";
+  if (policy === "public_web") {
+    return "allow";
+  }
+
+  return browserSecurityPolicy.allowedOrigins.includes(origin) ? "allow" : "origin_not_allowlisted";
 }
 
 function originFromUrl(url: string | null | undefined, baseUrl?: string | null): string | null {
@@ -848,6 +853,7 @@ const BROWSER_TOOL_AUTHORIZATION_REGISTRY: BrowserToolAuthorizationEntry[] = [
     discoveryScopes: ["browser.page:navigate"],
     resolveInvokeScopes: () => ["browser.page:navigate"],
     resolveProtectedOrigin: resolveTargetOriginFromInput,
+    protectedOriginPolicy: "public_web",
     resolveTargetUrl: resolveTargetUrlFromInput,
     approvalKind: "navigation",
     approvalEligibleInModes: ["chaos"],

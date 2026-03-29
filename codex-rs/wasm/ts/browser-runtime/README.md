@@ -354,6 +354,12 @@ Current browser-tool policy matrix:
 - `chaos`
   - full browser surface, including `browser__click`, `browser__fill`,
     `browser__navigate`, `browser__inspect_http`, and `browser__evaluate`
+  - `browser__navigate` allows public `http` and `https` targets by default
+  - `browser__navigate` still blocks localhost/loopback unless
+    `browser_security.allow_localhost=true`
+  - `browser__navigate` still blocks private/link-local targets unless
+    `browser_security.allow_private_network=true`
+  - `browser__inspect_http` requires an allowlisted target origin plus approval
   - `browser__evaluate` requires an allowlisted current origin plus approval
   - localhost/loopback requires `browser_security.allow_localhost`
   - private/link-local targets require `browser_security.allow_private_network`
@@ -366,6 +372,15 @@ For `browser__evaluate`, origin policy and approval are both required:
   `browser_security.allow_private_network=true`
 - when those checks pass in `chaos`, `browser__evaluate` proceeds through the
   approval path
+
+For `browser__navigate`, origin policy is broader:
+
+- public `http` and `https` targets are allowed without an explicit
+  `browser_security.allowed_origins` entry
+- localhost/loopback targets are denied unless
+  `browser_security.allow_localhost=true`
+- private/link-local targets are denied unless
+  `browser_security.allow_private_network=true`
 
 Example:
 
@@ -388,6 +403,9 @@ Consumers should treat the following as expected runtime behavior, not SDK bugs:
 - dangerous browser tools fail when no approval mediator is configured
 - browser tool requests fail when origin policy blocks the current page or
   target URL
+- `browser__navigate` is expected to work on public web targets without an
+  allowlist entry, while still fail-closing on localhost and private-network
+  targets unless explicitly enabled
 - `browser__evaluate` may execute once approved when the current origin is
   structurally allowed by runtime policy
 - `openai-compatible` providers fail with `invalid_provider_base_url` when the

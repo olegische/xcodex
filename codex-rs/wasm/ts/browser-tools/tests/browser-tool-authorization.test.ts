@@ -574,7 +574,67 @@ test("navigate and inspect_http require approval when baseline scopes are absent
   ]);
 });
 
-test("navigate and inspect_http still require allowlisted target origins", async () => {
+test("navigate allows public web targets without an explicit allowlist entry", async () => {
+  const executor = createWrappedExecutor("chaos", {
+    browserSecurityPolicy: {
+      allowedOrigins: ["https://allowed.example.test"],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    },
+    currentPageUrl: "https://app.example.test/current",
+    requestApproval: async () => ({ decision: "allow_once" }),
+  });
+
+  assert.deepEqual(
+    await executor.invoke({
+      callId: "call-nav-public",
+      toolName: "browser__navigate",
+      toolNamespace: "browser",
+      input: { url: "https://www.google.com/search?q=xcodex" },
+    }),
+    { output: { ok: true } },
+  );
+});
+
+test("navigate still blocks localhost and private network targets by default", async () => {
+  const executor = createWrappedExecutor("chaos", {
+    browserSecurityPolicy: {
+      allowedOrigins: [],
+      allowLocalhost: false,
+      allowPrivateNetwork: false,
+    },
+    currentPageUrl: "https://app.example.test/current",
+    requestApproval: async () => ({ decision: "allow_once" }),
+  });
+
+  await assert.rejects(
+    executor.invoke({
+      callId: "call-nav-localhost",
+      toolName: "browser__navigate",
+      toolNamespace: "browser",
+      input: { url: "http://127.0.0.1:4173/health" },
+    }),
+    (error: unknown) =>
+      error instanceof BrowserToolAuthorizationError &&
+      error.code === "localhost_not_allowed" &&
+      error.resolvedOrigin === "http://127.0.0.1:4173",
+  );
+
+  await assert.rejects(
+    executor.invoke({
+      callId: "call-nav-private",
+      toolName: "browser__navigate",
+      toolNamespace: "browser",
+      input: { url: "http://192.168.1.20:8080/dashboard" },
+    }),
+    (error: unknown) =>
+      error instanceof BrowserToolAuthorizationError &&
+      error.code === "private_network_not_allowed" &&
+      error.resolvedOrigin === "http://192.168.1.20:8080",
+  );
+});
+
+test("inspect_http still requires allowlisted target origins", async () => {
   const executor = createWrappedExecutor("chaos", {
     browserSecurityPolicy: {
       allowedOrigins: ["https://allowed.example.test"],
@@ -587,10 +647,10 @@ test("navigate and inspect_http still require allowlisted target origins", async
 
   await assert.rejects(
     executor.invoke({
-      callId: "call-nav-deny",
-      toolName: "browser__navigate",
+      callId: "call-http-deny",
+      toolName: "browser__probe_http",
       toolNamespace: "browser",
-      input: { url: "https://denied.example.test/path" },
+      input: { url: "https://denied.example.test/api" },
     }),
     (error: unknown) =>
       error instanceof BrowserToolAuthorizationError &&
