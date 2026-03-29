@@ -12,6 +12,7 @@
     "ts/browser-runtime",
     "ts/browser-host",
     "ts/browser-tools",
+    "ts/xcodex-sdk",
     "ts/model-transport",
     "ts/runtime-client",
     "ts/runtime-core"
