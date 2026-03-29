@@ -15,7 +15,7 @@ test("approval broker queues pending requests and resolves replies", async () =>
     toolName: "browser__navigate",
     canonicalToolName: "browser__navigate",
     requiredScopes: ["browser.page:navigate"],
-    runtimeMode: "default",
+    runtimeMode: "agent",
     origin: "https://example.test",
     displayOrigin: "https://example.test",
     targetOrigin: "https://example.test",

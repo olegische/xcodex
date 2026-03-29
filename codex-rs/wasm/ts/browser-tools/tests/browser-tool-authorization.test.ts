@@ -3,6 +3,7 @@ import test from "node:test";
 import type { BrowserDynamicToolExecutor } from "@browser-codex/wasm-browser-codex-runtime/types";
 import {
   BrowserToolAuthorizationError,
+  type BrowserRuntimeMode,
   createBrowserToolAuthorizationContext,
   wrapBrowserToolExecutorWithAuthorization,
 } from "../src/browser-tool-authorization.ts";
@@ -94,7 +95,7 @@ test("chaos mode exposes evaluate only for allowlisted current origins", async (
 test("tool_search in inspect returns only tools visible in list()", async () => {
   const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
   const executor = createBrowserAwareToolExecutor({
-    async loadRuntimeMode() {
+    async loadRuntimeMode(): Promise<BrowserRuntimeMode> {
       return "inspect";
     },
     async loadBrowserSecurityPolicy() {
@@ -134,7 +135,7 @@ test("tool_search in inspect returns only tools visible in list()", async () => 
 test("tool_search in agent returns browser patch but not interact or chaos-only tools", async () => {
   const { createBrowserAwareToolExecutor } = await loadBrowserAwareToolExecutor();
   const executor = createBrowserAwareToolExecutor({
-    async loadRuntimeMode() {
+    async loadRuntimeMode(): Promise<BrowserRuntimeMode> {
       return "agent";
     },
     async loadBrowserSecurityPolicy() {
@@ -269,7 +270,7 @@ test("inspect mode blocks mutation and chaos-only tools policy-wise", async () =
 test("invoke normalizes aliases through the canonical policy path", async () => {
   const calls: Array<{ toolName: string; input: unknown }> = [];
   const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor(calls), {
-    async loadRuntimeMode() {
+    async loadRuntimeMode(): Promise<BrowserRuntimeMode> {
       return "inspect";
     },
   });
@@ -310,7 +311,7 @@ test("invoke denies unknown tools by default", async () => {
 test("DOM inspection policy is input-sensitive", async () => {
   const calls: Array<{ toolName: string; input: unknown }> = [];
   const executor = wrapBrowserToolExecutorWithAuthorization(createRawExecutor(calls), {
-    async loadRuntimeMode() {
+    async loadRuntimeMode(): Promise<BrowserRuntimeMode> {
       return "inspect";
     },
   });

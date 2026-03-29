@@ -56,7 +56,7 @@ export type BrowserToolApprovalRequest = {
   toolName: string;
   canonicalToolName: string;
   requiredScopes: string[];
-  runtimeMode: "default" | "demo" | "chaos";
+  runtimeMode: "chat" | "inspect" | "interact" | "agent" | "chaos";
   origin: string;
   displayOrigin: string;
   targetOrigin: string | null;
